@@ -23,5 +23,6 @@ link CLAUDE.md
 link settings.json
 link skills
 link commands
+link statusline-fancy.sh
 
 echo "Done."
