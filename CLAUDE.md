@@ -3,12 +3,102 @@
 - fd: findの代わりにfdコマンドを使用
 - rg (ripgrep): grepの代わりにrgを使用
 
-## Version Control
-- Use jujutsu (jj) instead of git for version control
-- Use `jj --help` for command reference
-- When creating pull requests: `gh pr create --head <bookmark name> --base <base bookmark>`
-- When starting new phase or task: `jj new -m <description>`
-- Use rg instead of grep
+## Version Control (Jujutsu)
+
+### 基本概念
+
+- **ステージングエリアがない**: ファイルへの変更は自動的にワーキングコピーコミット（`@`）にスナップショットされる
+- **`@`**: 現在のワーキングコピーコミット。常に編集中の状態を指す
+- **`@-`**: `@` の親コミット
+- **Change ID**: コミットをrebase/amendしても変わらない安定した識別子（小文字）。コミットIDとは別物
+
+### コミット操作
+
+```bash
+jj describe -m "message"   # @ に説明をつける（新コミットは作らない）
+jj new                     # 新しい空のWCを作成（@ の子になる）
+jj new -m "message"        # 説明付きで新しいWCを作成
+jj commit -m "message"     # describe + new を一度に行う（作業を確定して次へ進む）
+```
+
+**重要**: `jj new -m "message"` は「次の作業」の説明であり、**現在の `@` にメッセージをつけるわけではない**。
+現在の `@` に説明をつけるには `jj describe -m "message"` を使う。
+
+**典型的なワークフロー**:
+```bash
+# ファイルを編集（自動でスナップショット）
+jj describe -m "Add feature X"   # 現在の作業に説明
+jj new                            # 次の作業へ進む
+# または
+jj commit -m "Add feature X"     # 上記2つを一度に
+```
+
+### ブックマーク（= Gitのブランチ）
+
+```bash
+jj bookmark create <name>              # @ にブックマーク作成
+jj bookmark create <name> -r <rev>    # 指定revisionにブックマーク作成
+jj bookmark set <name> -r <rev>       # ブックマークを移動（作成も兼ねる）
+jj bookmark list                       # 一覧表示
+jj bookmark track <name> --remote=origin  # リモートブックマークをトラッキング
+```
+
+### Git リモート操作
+
+```bash
+jj git init --colocate             # 既存gitリポジトリでjjを初期化
+jj git remote add origin <url>     # リモート追加
+jj git fetch                       # リモートの変更を取得
+jj git push --bookmark <name>      # ブックマークをpush
+```
+
+**新規リポジトリのセットアップ**:
+```bash
+jj git init --colocate
+jj git remote add origin git@github.com:user/repo.git
+# ファイルを追加・編集
+jj describe -m "Initial commit"
+jj bookmark create main
+jj bookmark track main --remote=origin
+jj git push --bookmark main
+```
+
+**既存のリモートブランチにpushするとき**、リモートに同名ブックマークが既にある場合は先に `fetch` してから `bookmark track` が必要:
+```bash
+jj git fetch
+jj bookmark track main --remote=origin
+jj git push --bookmark main
+```
+
+### Rebase
+
+```bash
+jj rebase -r <rev> -d <dest>    # 単一コミットをdestの子に移動（子孫は元の場所に残る）
+jj rebase -s <rev> -d <dest>    # revとその子孫すべてをdestに移動
+jj rebase -b <rev> -d <dest>    # revを含むブランチ全体をdestに移動
+```
+
+- `-r`: 1コミットだけ移動。子孫は自動でリベースされる
+- `-s`: サブツリー全体を移動（feature branchをmainに追従させるときなど）
+- `-b`: ブランチ全体（mainからの分岐点まで含む）
+
+### PR作成
+
+```bash
+jj bookmark create <name> -r @-    # pushするrevisionにブックマーク作成
+jj git push --bookmark <name>
+gh pr create --head <name> --base main
+```
+
+### その他
+
+```bash
+jj log                   # コミットログ表示
+jj diff                  # WCの差分
+jj diffu                 # upstream（@-）との差分
+jj status                # 変更ファイル一覧
+jj squash                # WCの変更を親コミットにまとめる
+```
 
 ## Tmp Directory
 
@@ -24,8 +114,6 @@
 ## Working Rules
 
 - コミット粒度: 適切な粒度で作業内容をコミット
-- jj workflow: jj new -m '...' で新revision作成、または jj commit で説明追加と新空revisionの作成
-- jj desc / jj commit は実行しない。
 - workspace/xxx/ はJJワークスペース（git worktree相当）で、リポジトリの独立した作業コピー
   - workspace/xxx/ 配下のファイルのみ参照・編集可能（リポジトリルートや他のworkspaceのファイルは禁止）
   - JJコマンド（jj log, jj diffu, jj bookmark等）はworkspace/xxx/ 内で実行すればそのworkspaceのrevisionに対して操作される
