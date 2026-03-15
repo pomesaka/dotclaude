@@ -18,7 +18,7 @@
 jj describe -m "message"   # @ に説明をつける（新コミットは作らない）
 jj new                     # 新しい空のWCを作成（@ の子になる）
 jj new -m "message"        # 説明付きで新しいWCを作成
-jj commit -m "message"     # describe + new を一度に行う（作業を確定して次へ進む）
+jj commit -m "message"     # describe -m + new と同等（作業を確定して次へ進む）
 ```
 
 **重要**: `jj new -m "message"` は「次の作業」の説明であり、**現在の `@` にメッセージをつけるわけではない**。
@@ -27,10 +27,7 @@ jj commit -m "message"     # describe + new を一度に行う（作業を確定
 **典型的なワークフロー**:
 ```bash
 # ファイルを編集（自動でスナップショット）
-jj describe -m "Add feature X"   # 現在の作業に説明
-jj new                            # 次の作業へ進む
-# または
-jj commit -m "Add feature X"     # 上記2つを一度に
+jj commit -m "Add feature X"     # 現在の @ に説明をつけて新しい空の @ を作成
 ```
 
 ### ブックマーク（= Gitのブランチ）
