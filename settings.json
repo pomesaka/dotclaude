@@ -24,7 +24,7 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "/Users/pomesaka/.claude/statusline-fancy.sh"
+    "command": "~/.claude/statusline-fancy.sh"
   },
   "enabledPlugins": {
     "typescript-lsp@claude-plugins-official": true,
