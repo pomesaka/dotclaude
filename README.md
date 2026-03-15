@@ -1,2 +1,0 @@
-# dotclaude
-~/.claude共有
