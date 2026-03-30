@@ -1,71 +1,119 @@
 ---
 name: review-team-adet-ai
-description: ADeT-AIのAgent Teamコードレビュー＆修正ループ。typescript-reviewer・design-reviewerが並列レビューし、fixerが修正する。TypeScript(Bun)モノレポ固有ルール適用済み。
+description: adet-aiのコードレビュー＆修正ループ。reviewer 1名が全観点をレビューし、Coordinator（自分）が直接修正する。
 ---
 
-# review-team-adet-ai: チームレビュー＆修正ループ（Coordinator用）
+# review-team-adet-ai: レビュー＆修正ループ（Coordinator用）
 
-あなたはCoordinator。teammateを調整してレビュー＆修正サイクルを回す。
-
-**各teammateはドキュメントを初回一度だけ読み込む。差分取得・レビューも各自が行う。Coordinatorは結果の集約とループ制御に集中する。**
+あなたはCoordinator。reviewer 1名にレビューを依頼し、指摘に基づいて**自分で修正**する。
 
 ## チーム構成
 
-| teammate | 担当 | 差分取得コマンド |
-|---|---|---|
-| typescript-reviewer | TypeScript/Bunポリシー・プロジェクト規約 | `jj diffu -r 'main..@'` |
-| design-reviewer | 凝集度・可読性・設計品質 | `jj diffu -r 'main..@'` |
-| fixer | 修正実装・lint実行 | `jj diffu -r 'main..@'`（参照用） |
+| teammate | 担当 |
+|---|---|
+| reviewer | TypeScriptポリシー・設計品質・凝集度・可読性・ドキュメント・テスト網羅性を一括レビュー |
+
+fixer は不要。**Coordinatorが直接修正する。**
 
 ---
 
-## Step 0: チーム作成（チームが存在しない場合のみ）
+## Step 0: チーム作成
 
-すでに `review-team-adet-ai` チームが存在する場合はそのまま再利用する。存在しない場合のみ作成する:
+毎回新規作成する。reviewer 1名のみ:
 
 ```
-Create an agent team with 3 teammates: typescript-reviewer, design-reviewer, fixer
+Create an agent team with 1 teammate: reviewer
 ```
 
 ---
 
-## Step 1: 各teammateの初期化
+## Step 1: reviewer の初期化
 
-チームを新規作成した場合のみ実施する。既存チームを再利用する場合はスキップしてStep 2へ進む。
+**毎回実施する。** teammate のコンテキストはセッションをまたいで保持されない。
 
-全員に**並列で**初期化メッセージを送る。全員から「初期化完了」が返るまで待つ。
+reviewer に以下を送る。返信を待つ。
 
-### typescript-reviewer に送るメッセージ:
+---
 
-!`cat ~/.claude/skills/review-team-adet-ai/teammate-typescript.md 2>/dev/null`
+# reviewer 初期化
 
-### design-reviewer に送るメッセージ:
+あなたはコードレビュアー（reviewer）。以下の全観点を一人で担当する。
 
-!`cat ~/.claude/skills/review-team-adet-ai/teammate-design.md 2>/dev/null`
+**今すぐ以下のドキュメントを Read で読み込んでください。** 以降のレビュー依頼では再読込しない。
 
-### fixer に送るメッセージ:
+プロジェクト固有ルール（優先）:
+- ./CLAUDE.md
 
-!`cat ~/.claude/skills/review-team-adet-ai/teammate-fix.md 2>/dev/null`
+設計・可読性基準:
+- ~/.claude/docs/cohesion.md
+- ~/.claude/docs/readability.md
+- ~/.claude/docs/design.md
+
+TypeScript/Bunスタック:
+- ~/.claude/docs/typescript.md
+
+ドキュメント品質:
+- ~/.claude/docs/technical-writing.md
+
+加えて、プロジェクトの `.md` ファイル一覧を Glob で把握しておく（内容は読まない）。
+
+## 担当する観点
+
+- **TypeScript ポリシー**: `as` キャスト禁止、型安全性、Valibot スキーマ
+- **プロジェクト規約**: CLAUDE.md のコーディングポリシー（WHY コメント重視）
+- **Bunスタック**: Bun 固有イディオム、アーキテクチャ整合性
+- **設計品質**: 凝集度・可読性・設計（言語非依存の構造的問題）
+- **ドキュメント品質**: 差分に含まれる `.md` の明瞭性・WHY・用語揺れ
+- **ドキュメント網羅性**: 仕様変更・機能追加に対応する `.md` 更新漏れ
+- **テスト網羅性**: カバレッジ不足・エッジケース漏れ・テスト未作成
+
+## レビュー時の姿勢
+
+**毎回ゼロベースで。** 過去のラウンドの内容は考慮しない。差分だけを見て判断する。
+
+## レビュー手順
+
+1. 差分を取得: `jj diffu -r 'main..@'`
+2. 差分に含まれるテストファイル・ソースファイルを必要に応じて Read する
+3. 差分に含まれる `.md` ファイルがあれば Read する
+4. 全観点でレビューを実施する
+
+## レポートフォーマット
+
+```
+## Review Result
+
+### <ファイルパス>
+- [カテゴリ] 説明（行番号と修正案）
+- Nit: 説明
+
+### <ファイルパス>
+- 問題なし
+```
+
+カテゴリ: `ポリシー違反` / `整合性` / `設計` / `凝集度` / `可読性` / `ドキュメント` / `テスト` / `Nit`
+
+初期化が完了したら「reviewer 初期化完了」と team-lead に SendMessage で報告してください。
 
 ---
 
 ## Step 2: レビューラウンド（最大5ラウンド）
 
-### 2a. 並列レビュー依頼
+### 2a. レビュー依頼
 
-全レビュアーに**同時に**以下を送る:
+reviewer に送る:
 
 ```
 【ラウンドN レビュー開始】
 
-担当の差分を取得してレビューしてください。
+差分を取得してレビューしてください。
 ```
 
-全員から結果が返るまで待つ。
+返信を待つ。
 
 ### 2b. 結果集約・分類
 
-- **非Nit**: ポリシー違反・整合性・凝集度・可読性・設計（「提案」も含む）
+- **非Nit**: ポリシー違反・整合性・設計・凝集度・可読性・ドキュメント・テスト
 - **Nit**: 明示的に「Nit:」と書かれているもの
 
 ### 2c. 終了判定
@@ -74,38 +122,29 @@ Create an agent team with 3 teammates: typescript-reviewer, design-reviewer, fix
 |---|---|
 | 非Nit = 0 | Step 3（完了）へ |
 | 非Nit > 0 かつラウンド < 5 | 2d へ |
-| ラウンド = 5 到達 | 残存指摘を表示して終了（人間に委ねる） |
+| ラウンド = 5 到達 | 残存指摘を表示して終了 |
 
-### 2d. 修正依頼
+### 2d. Coordinator が直接修正
 
-fixer に以下を送る:
+reviewer の指摘リストをもとに**自分で**修正を適用する。
 
-```
-【ラウンドN 修正依頼】
-
-以下の指摘を全て修正してください。Nitも可能な範囲で一緒に直してください。
-
-## 非Nit指摘
-<一覧>
-
-## Nit指摘（任意）
-<一覧>
-
-修正後はlintを実行して結果を報告してください。
+修正後:
+```bash
+bun run typecheck   # 型チェック
+bun run format      # フォーマット
 ```
 
-### 2e. 次ラウンドへ
-
-fixerが「修正完了」を報告したらStep 2aへ戻る。
+通過したら Step 2a へ戻る。
 
 ---
 
 ## Step 3: 完了
 
+reviewer をシャットダウン後、TeamDelete でチームを削除する。
+
 ```
 ## レビュー＆修正ループ完了
 
-- チーム構成: typescript-reviewer, design-reviewer, fixer
 - ラウンド数: N
 - 修正した指摘数: M件
 - 残存するNit: （一覧、なければ「なし」）
