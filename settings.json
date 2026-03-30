@@ -1,4 +1,27 @@
 {
+  "statusLine": {
+    "type": "command",
+    "command": "/Users/pomesaka/.local/share/claude-deck/statusline.sh"
+  },
+  "enabledPlugins": {
+    "typescript-lsp@claude-plugins-official": true,
+    "gopls-lsp@claude-plugins-official": true,
+    "claude-deck@claude-deck": true
+  },
+  "extraKnownMarketplaces": {
+    "claude-deck": {
+      "source": {
+        "source": "github",
+        "repo": "pomesaka/claude-deck"
+      }
+    }
+  },
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "feedbackSurveyState": {
+    "lastShownTime": 1754021250248
+  },
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
     "allow": [
@@ -16,30 +39,24 @@
       "Bash(bun run:*)",
       "Bash(task:*)",
       "Read(**/.env.example)",
-      "Read(**/.env.template)"
+      "Read(**/.env.template)",
+      "Read(/Users/pomesaka/.claude/**)",
+      "Bash(cat ~/.claude/:*)",
+      "Bash(cat:*)",
+      "Bash(sed:*)",
+      "Bash(grep:*)",
+      "Bash(wc:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(awk:*)",
+      "Bash(playwright-cli:*)"
     ],
     "deny": [
       "Read(**/.env)"
+    ],
+    "additionalDirectories": [
+      "/Users/pomesaka/.claude",
+      "/Users/pomesaka/github.com/pomesaka/dotclaude"
     ]
-  },
-  "statusLine": {
-    "type": "command",
-    "command": "~/.claude/statusline-fancy.sh"
-  },
-  "enabledPlugins": {
-    "typescript-lsp@claude-plugins-official": true,
-    "gopls-lsp@claude-plugins-official": true,
-    "claude-deck@claude-deck": true
-  },
-  "extraKnownMarketplaces": {
-    "claude-deck": {
-      "source": {
-        "source": "github",
-        "repo": "pomesaka/claude-deck"
-      }
-    }
-  },
-  "feedbackSurveyState": {
-    "lastShownTime": 1754021250248
   }
 }

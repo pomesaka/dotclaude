@@ -3,6 +3,7 @@ name: fix-audit-bun
 description: bun audit --audit-level=highを実行し、脆弱性を修正してPRを作成する。
 user-invocable: true
 argument-hint: "[project-dir]"
+allowed-tools: Bash(jj *), Bash(gh *), Bash(task *), Bash(bun *), Read, Glob, Edit, Write, Grep
 ---
 
 # Bun Audit Fix & PR作成スキル
@@ -10,22 +11,16 @@ argument-hint: "[project-dir]"
 bun auditで検出された脆弱性を修正し、PRを作成する。
 $ARGUMENTS が指定されている場合はそのディレクトリで作業する。
 
-## Step 1: mainから新しいrevisionを作成
-
-```bash
-jj new main -m 'fix: security audit vulnerabilities'
-```
-
-## Step 2: 脆弱性の確認
+## Step 1: 脆弱性の確認
 
 ```bash
 bun audit --audit-level=high
 ```
 
 結果を分析し、修正が必要なパッケージを特定する。
-脆弱性が検出されなかった場合は「脆弱性は検出されませんでした」と報告し、revisionを破棄(`jj abandon`)して終了する。
+脆弱性が検出されなかった場合は「脆弱性は検出されませんでした」と報告して終了する。
 
-## Step 3: 脆弱性の修正
+## Step 2: 脆弱性の修正
 
 検出された脆弱性に対して、以下の方針で修正を行う:
 
@@ -35,9 +30,9 @@ bun audit --audit-level=high
 
 修正後に再度 `bun audit --audit-level=high` を実行して脆弱性が解消されたことを確認する。
 
-## Step 4: revisionの説明を更新
+## Step 3: revisionの説明を設定してPR作成
 
-修正内容に基づいて説明を更新する:
+修正内容に基づいて `jj desc` で説明を設定し、`/create-pr` でPRを作成する:
 
 ```bash
 jj desc -m "$(cat <<'EOF'
@@ -52,36 +47,7 @@ EOF
 )"
 ```
 
-## Step 5: bookmarkを作成してpush
-
-bookmark名は `audit/YYYY-MM-DD` 形式（当日の日付）を使用する。
-
-```bash
-jj bookmark create audit/YYYY-MM-DD
-jj git push --allow-new --bookmark audit/YYYY-MM-DD
-```
-
-## Step 6: PRを作成
-
-```bash
-gh pr create --base main --head audit/YYYY-MM-DD --title 'fix: resolve high severity audit vulnerabilities' --body "$(cat <<'EOF'
-## 概要
-`bun audit --audit-level=high` で検出された脆弱性を修正
-
-## 変更点
-- <修正したパッケージと内容を列挙>
-
-## 確認方法
-```
-bun audit --audit-level=high
-```
-
-🤖 Generated with [Claude Code](https://claude.ai/code)
-EOF
-)"
-```
-
-PRのURLを表示して完了。
+その後 `/create-pr` を呼び出してPRを作成する。
 
 ## 注意事項
 - メジャーバージョンアップが必要な場合は、ユーザーに確認を取ること

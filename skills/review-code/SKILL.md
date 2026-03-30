@@ -1,73 +1,89 @@
 ---
 name: review-code
-description: 変更差分を凝集度・可読性・設計品質の観点でレビューする。プロジェクト非依存の汎用コードレビュー。コード変更後のセルフチェックや、レビュー依頼時に使用する。
-allowed-tools: Read, Grep, Glob, Bash(jj diff *), Bash(jj log *), Bash(git diff *), Bash(git log *)
+description: 変更差分をレビューする。凝集度・可読性・設計品質の基準に加え、tech stack（Go/TypeScript/React/Next.js）の観点とプロジェクト固有ルール（CLAUDE.md等）を自動で適用する。
+allowed-tools: Read, Grep, Glob, Bash(jj diff *), Bash(jj log *), Bash(jj diffu *), Bash(git diff *), Bash(git log *)
 context: fork
 agent: general-purpose
 ---
 
-# コードレビュー（汎用）
+# コードレビュー
 
-変更差分を凝集度・可読性・設計品質の基準でレビューする。
+変更差分を以下の基準でレビューする。差分に含まれる技術スタックに関係するルールのみ適用し、無関係なものは無視する。
 
-## レビュー基準
+## 基本基準（常に適用）
 
-!`cat ~/.claude/skills/review-code/criteria.md`
+### 凝集度
+
+!`cat ~/.claude/docs/cohesion.md 2>/dev/null`
+
+### 可読性
+
+!`cat ~/.claude/docs/readability.md 2>/dev/null`
+
+### 設計品質
+
+!`cat ~/.claude/docs/design.md 2>/dev/null`
+
+## 技術スタック別観点（差分に含まれる技術のみ適用）
+
+### Go
+
+!`cat ~/.claude/docs/go.md 2>/dev/null`
+
+### TypeScript
+
+!`cat ~/.claude/docs/typescript.md 2>/dev/null`
+
+### React
+
+!`cat ~/.claude/docs/react.md 2>/dev/null`
+
+### Next.js
+
+!`cat ~/.claude/docs/nextjs.md 2>/dev/null`
+
+## プロジェクト固有ルール（存在する場合のみ適用）
+
+!`cat ./CLAUDE.md 2>/dev/null`
+
+!`cat ./CODING_CONVENTIONS.md 2>/dev/null`
+
+!`cat ./.claude/rules/*.md 2>/dev/null`
+
+---
 
 ## 手順
 
 ### Step 1: 差分の確認
 
-差分が空の場合は以下で直近の変更を取得する:
-```
-jj log -r @ 2>/dev/null || git log --oneline -1
-jj diff -r @ 2>/dev/null || git diff HEAD~1
+```bash
+jj diffu -r 'main..@' 2>/dev/null || git diff main...HEAD
 ```
 
-### Step 2: コードレベルのレビュー
+差分が空の場合は `jj diff -r @` または `git diff HEAD~1` で直近の変更を取得する。
 
-変更差分の各ファイルについて、読み込んだ基準（命名・制御フロー・関数設計）に問題がないかチェックする。
+### Step 2: レビュー
 
-### Step 3: 凝集度・可読性・設計品質のレビュー
+差分の各ファイルについて、上記の基準を適用する。些細な指摘は省き、設計上の改善が見込めるものだけを報告する。
 
-criteria.md の各セクションを適用する。些細な指摘は省き、設計上の改善が見込めるものだけを報告する。
+プロジェクト固有ルールが読み込まれている場合は、ポリシー違反・アーキテクチャ整合性も確認する。
 
-重点チェック項目:
-
-**凝集度**: 関数やモジュールが単一の目的に集中しているか
-- 「and」テスト: 関数の目的を一文で説明するとき接続詞が必要になるか
-- フラグ引数で振る舞いを切り替えていないか
-- Feature Envy / Shotgun Surgery / Divergent Change のスメルがないか
-
-**可読性**: コードの意図が読み手に素早く伝わるか
-- 名前だけで目的が分かるか
-- ガード節による早期リターンでネストが浅くなっているか（3段階まで）
-- WHYコメントがあるべき箇所にあるか
-
-**設計品質**: linterで検出できない構造上の問題
-- 実装が1つしかない不要な抽象化がないか（YAGNI）
-- 失敗モードが型で表現されているか
-- APIが誤用しにくい設計になっているか
-
-### Step 4: 報告
-
-以下の形式で報告する。指摘には「なぜ問題か」と「どう直すか」をセットで含める:
+### Step 3: 報告
 
 ```
 ## レビュー結果
 
 ### <ファイルパス>
-- [カテゴリ] 説明（行番号と修正案を含める）
+- [カテゴリ] 説明（行番号と修正案）
 
 ### <ファイルパス>
 - 問題なし
 ```
 
-カテゴリは以下のいずれか:
+カテゴリ:
+- `ポリシー違反` — プロジェクト固有ルールへの違反
+- `整合性` — 既存コードのパターンとの不整合
 - `凝集度` — 責務の分離、モジュール設計の問題
 - `可読性` — 命名、制御フロー、抽象レベルの問題
 - `設計` — エラーハンドリング、型安全性、API設計の問題
-
-## 変更差分
-
-!`jj diffu 2>/dev/null || git diff`
+- `Nit` — 些細な指摘
