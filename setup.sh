@@ -24,6 +24,7 @@ link settings.json
 link skills
 link commands
 link statusline-fancy.sh
+link docs
 
 # Generate machine-specific settings.local.json for statusLine (path must be absolute)
 settings_local="$CLAUDE_DIR/settings.local.json"
