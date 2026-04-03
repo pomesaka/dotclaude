@@ -101,6 +101,11 @@ jj status                # 変更ファイル一覧
 jj squash                # WCの変更を親コミットにまとめる
 ```
 
+## ~/.claude の管理
+
+`~/.claude/skills/` と `~/.claude/commands/` はシンボリックリンクで、実体は `~/github.com/pomesaka/dotclaude/` で管理されている。
+スキルやコマンドを追加・編集する際は dotclaude リポジトリ側に変更を入れることになる（symlink経由で自動反映）。
+
 ## Tmp Directory
 
 - ~/.claude/tmp/ を一時ファイル保存場所として使用
