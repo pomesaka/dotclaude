@@ -111,11 +111,25 @@ jj squash                # WCの変更を親コミットにまとめる
 - ~/.claude/tmp/ を一時ファイル保存場所として使用
 - 作業ログや調査中のエラーログなどの保存に利用
 
+## Frontend Implementation
+
+フロントエンド（HTML/CSS/JS/React/Next.js）を実装するときは、デザイン品質を意識すること。
+
+- プロジェクトルートに `DESIGN.md` があれば最優先のデザイン基準として読み込む
+- ない場合は `~/.claude/docs/design-md/` のコレクション（linear / vercel / notion / stripe / claude）から `/use-design` で適用できる
+- AIが生成しがちな「Inter フォント・紫グラデーション・cookie-cutter レイアウト」は避け、意図的な美学を持つUIを目指す
+
+@~/.claude/skills/frontend-design/SKILL.md
+
 ## Coding Policy
 
 - ドキュメント: 外部から使用される可能性があるものには必ずドキュメントを記載
 - コメント: 複雑なロジックには WHY（なぜそうしたか）を重視したコメントを記載
 - TypeScript: as キャストは禁止
+
+## Interaction Rules
+
+- ユーザーへの質問は極力 `AskUserQuestion` ツールを使う
 
 ## Working Rules
 

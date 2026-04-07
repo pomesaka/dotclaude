@@ -49,7 +49,10 @@
       "Bash(head:*)",
       "Bash(tail:*)",
       "Bash(awk:*)",
-      "Bash(playwright-cli:*)"
+      "Bash(playwright-cli:*)",
+      "Bash(gh project:*)",
+      "Bash(bun run:*)",
+      "Bash(python3 *)"
     ],
     "deny": [
       "Read(**/.env)"

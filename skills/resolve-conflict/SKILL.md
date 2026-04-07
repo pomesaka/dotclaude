@@ -39,12 +39,13 @@ jj git fetch
 jj bookmark track <bookmark>@origin
 ```
 
-### 3. コンフリクト解決用のrevisionを作成
+### 3. コンフリクト解決用のmerge commitを作成
 
-mainと対象bookmarkを両親に持つマージrevisionを作成する。
+feature branchを第1親、mainを第2親にしてmerge commitを作成する。
+**第1親をfeature branchにすることが重要**（first-parentをたどるツールがfeature branchの履歴を辿れる）。
 
 ```bash
-jj new main <bookmark> -m 'resolve conflict'
+jj new <bookmark> main -m 'merge main into <bookmark>'
 ```
 
 ### 4. コンフリクト状況を確認
@@ -84,29 +85,14 @@ task lint
 
 エラーがあれば修正する。
 
-### 7. mainのみを親とする非マージリビジョンにリライトしてpush
+### 7. bookmarkを前に進めてpush
 
-GitHubのPR diffはthree-dot diff（`base...head`）で計算される。
-マージコミット（mainを親に持つ）をそのままpushすると、GitHubのmerge-base計算が狂い、mainの変更がPR diffに混入する。
-これを回避するため、**マージコミットのツリーを保持しつつ、mainのみを親とする単一親リビジョンに作り直す**。
+`@` はfeature bookmarkの子孫なので `--allow-backwards` 不要。
+merge commitはfeature tipの子孫なのでforce pushも不要（fast-forward）。
 
 ```bash
-# 現在の@はマージコミット（ステップ3で作成したもの）
-
-# Step 1: マージコミットのrevision IDを控える
-MERGE_REV=@
-
-# Step 2: mainのみを親とする新リビジョンを作成
-jj new main -m 'resolve conflict between main and <bookmark>'
-
-# Step 3: マージコミットのツリーを復元
-jj restore --from <MERGE_REVのID>
-
-# Step 4: feature branchの変更のみであることを確認
-jj diff --stat  # feature branchのファイルのみが表示されること
-
-# Step 5: bookmarkをセットしてpush
-jj bookmark set -r @ <bookmark> --allow-backwards && jj git push
+jj bookmark set <bookmark> -r @
+jj git push --bookmark <bookmark>
 ```
 
 ### 8. 確認
@@ -122,4 +108,5 @@ gh pr diff <PR番号またはbookmark> --name-only  # feature branchの変更フ
 
 - コンフリクト解決前に必ず両方の変更内容を理解すること
 - リントエラーがある場合は必ず修正してからpushすること
-- マージコミットを直接PRブランチのheadにすると、GitHubのdiff表示が壊れる。必ずmain単一親リビジョンに作り直すこと
+- `--allow-backwards` は使わない（過去のコミット履歴が失われる）
+- force pushは使わない（merge commitはfeature tipの子孫なのでfast-forwardになる）
