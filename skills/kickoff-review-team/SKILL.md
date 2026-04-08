@@ -1,6 +1,6 @@
 ---
 name: kickoff-review-team
-description: リポジトリを分析して最適なAgent Team構成を決定し、プロジェクト固有のreview-teamスキルを生成する。生成されたスキルをユーザーが呼び出すことでレビュー＆修正ループが始まる。
+description: プロジェクト固有のレビューチームスキルを生成する。「レビューチームを作って」「このプロジェクト用のレビュースキルを作りたい」と言われたときに使用する。既に review-team-xxx スキルがある場合は不要。
 allowed-tools: Read, Grep, Glob, Bash(jj git remote list), Bash(ls *), Write
 ---
 

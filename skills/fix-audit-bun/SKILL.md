@@ -1,6 +1,6 @@
 ---
 name: fix-audit-bun
-description: bun audit --audit-level=highを実行し、脆弱性を修正してPRを作成する。
+description: bun audit で脆弱性を検出・修正して PR を作成する。「脆弱性を修正して」「audit を通して」「セキュリティの問題を直して」と言われたときに使用する。
 user-invocable: true
 argument-hint: "[project-dir]"
 allowed-tools: Bash(jj *), Bash(gh *), Bash(task *), Bash(bun *), Read, Glob, Edit, Write, Grep

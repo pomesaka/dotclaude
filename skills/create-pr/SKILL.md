@@ -1,6 +1,6 @@
 ---
 name: create-pr
-description: jjでブックマークを作成・プッシュし、gh pr create でPRを作成する。/create-pr [base-branch] で呼び出す。
+description: jj + gh を使って新しい PR を作成する。「PRを作って」「プルリクを出して」「push して PR を作成して」と言われたときに使用する。既存 PR の更新は update-pr を使う。
 disable-model-invocation: false
 argument-hint: "[base-branch]"
 allowed-tools: Bash(jj *), Bash(gh *), Bash(task *), Bash(bun *), Read, Glob

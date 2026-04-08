@@ -1,6 +1,6 @@
 ---
 name: check-pr
-description: PRをキャッチアップする。jj git fetch → bookmark track → jj new でPRブランチを手元に展開し、概要・コメント・差分を読み込む。別セッションからの引き継ぎやレビュー依頼のファーストフェーズとして使う。/check-pr [PR番号] または /check-pr [owner/repo#PR番号] で呼び出す。
+description: PR の内容をキャッチアップする。「PR #123 を確認して」「このPRをレビューしたい」「別セッションの作業を引き継ぎたい」と言われたときに使用する。
 argument-hint: "[PR番号 または owner/repo#PR番号]"
 allowed-tools: Bash(jj *), Bash(gh *)
 ---
