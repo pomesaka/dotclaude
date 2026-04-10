@@ -3,6 +3,7 @@ name: jjcommit
 description: jj commit で現在の変更をコミットする。/jjcommit で呼び出す。
 disable-model-invocation: true
 allowed-tools: Bash(jj *)
+model: sonnet
 ---
 
 # Jujutsu Commit

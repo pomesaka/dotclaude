@@ -2,6 +2,7 @@
 name: setup-docs
 description: プロジェクトのドキュメント体制を整備する。「ドキュメント体制を整えて」「docs の構成を作りたい」「CLAUDE.md にドキュメントのルールを追加して」と言われたときに使用する。
 allowed-tools: Read, Glob, Bash(jj git remote list), Bash(ls *), Bash(find . -name "*.md" -not -path "*/node_modules/*" -not -path "*/.git/*"), Write, Edit, AskUserQuestion
+model: sonnet
 ---
 
 # setup-docs: ドキュメント体制の整備

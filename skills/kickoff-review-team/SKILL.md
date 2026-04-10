@@ -2,6 +2,7 @@
 name: kickoff-review-team
 description: プロジェクト固有のレビューチームスキルを生成する。「レビューチームを作って」「このプロジェクト用のレビュースキルを作りたい」と言われたときに使用する。既に review-team-xxx スキルがある場合は不要。
 allowed-tools: Read, Grep, Glob, Bash(jj git remote list), Bash(ls *), Write
+model: sonnet
 ---
 
 # kickoff-review-team: プロジェクト固有レビュースキルの生成

@@ -3,6 +3,7 @@ name: update-docs
 description: セッション中の作業や指摘を分析してCLAUDE.mdやrulesの更新を提案。作業完了時や学習内容を永続化したい時に使用。
 user-invocable: true
 argument-hint: "[focus: all|mistakes|changes]"
+model: sonnet
 ---
 
 # ドキュメント更新スキル

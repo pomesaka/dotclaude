@@ -4,6 +4,7 @@ description: 既存 PR にコードを push してタイトル・ボディを更
 disable-model-invocation: false
 argument-hint: "[PR番号]"
 allowed-tools: Bash(jj *), Bash(gh *), Bash(bun *), Read, Glob
+model: haiku
 ---
 
 # Update Pull Request

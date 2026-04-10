@@ -3,6 +3,7 @@ name: rebase-main
 description: jj git fetchしてmainにrebaseする。コンフリクト発生時は解消し、PRがあればupdate-prを呼ぶ。/rebase-main で呼び出す。
 disable-model-invocation: true
 allowed-tools: Bash(jj *), Bash(gh *), Bash(bun *), Read, Glob, Skill
+model: sonnet
 ---
 
 # Rebase on Main

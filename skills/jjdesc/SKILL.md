@@ -3,6 +3,7 @@ name: jjdesc
 description: jj desc で現在のリビジョンの説明を更新する。/jjdesc で呼び出す。
 disable-model-invocation: true
 allowed-tools: Bash(jj *)
+model: sonnet
 ---
 
 # Jujutsu Description Update

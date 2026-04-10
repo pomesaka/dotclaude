@@ -1,6 +1,7 @@
 ---
 name: review-team-claude-deck
 description: claude-deckのAgent Teamコードレビュー＆修正ループ。reviewer 1名がレビューし、Coordinator（自分）が直接修正する。Go TUIダッシュボードプロジェクト固有ルール適用済み。
+model: sonnet
 ---
 
 # review-team-claude-deck: チームレビュー＆修正ループ（Coordinator用）

@@ -4,6 +4,7 @@ description: Claude Code のベストプラクティスリポジトリ（shanrai
 allowed-tools: WebFetch, Read, Glob, Grep
 context: fork
 agent: general-purpose
+model: sonnet
 ---
 
 # Claude Code ベストプラクティス環境チェック
