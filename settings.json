@@ -42,6 +42,7 @@
       "/Users/pomesaka/github.com/pomesaka/dotclaude"
     ]
   },
+  "model": "opusplan",
   "statusLine": {
     "type": "command",
     "command": "/Users/pomesaka/.local/share/claude-deck/statusline.sh"
@@ -62,6 +63,5 @@
   "effortLevel": "high",
   "feedbackSurveyState": {
     "lastShownTime": 1754021250248
-  },
-  "model": "opus"
+  }
 }
