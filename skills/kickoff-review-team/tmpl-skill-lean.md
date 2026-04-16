@@ -29,25 +29,25 @@ description: {project}のAgent Teamコードレビュー＆修正ループ。rev
 
 ---
 
-## Step 0: チーム作成（チームが存在しない場合のみ）
+## Step 0: チーム作成
 
-すでに `review-team-{project}` チームが存在する場合はそのまま再利用する。存在しない場合のみ作成する:
+!`ws=$(basename $(git rev-parse --show-toplevel 2>/dev/null || jj workspace root 2>/dev/null || pwd)); rm -rf ~/.claude/teams/review-{project}-$ws ~/.claude/tasks/review-{project}-$ws 2>/dev/null; echo "チーム名: review-{project}-$ws"`
+
+上記のチーム名でチームを作成する:
 
 ```
-Create an agent team with 1 teammate: reviewer
+Create an agent team named "<チーム名>" with 1 teammate: reviewer
 ```
 
 ---
 
 ## Step 1: reviewer の初期化
 
-チームを新規作成した場合のみ実施する。既存チームを再利用する場合はスキップしてStep 2へ進む。
-
 reviewer に初期化メッセージを送り、「reviewer 初期化完了」が返るまで待つ。
 
 ### reviewer に送るメッセージ:
 
-{reviewer_init}
+!`cat ~/.claude/skills/review-team-{project}/teammate-reviewer.md 2>/dev/null`
 
 ---
 

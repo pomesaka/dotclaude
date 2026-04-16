@@ -35,6 +35,11 @@
 - コメント: 複雑なロジックには WHY（なぜそうしたか）を重視したコメントを記載
 - TypeScript: as キャストは禁止
 
+## Testing Policy
+
+- テストはできるだけ **table driven test** で書く（Go: `t.Run` + スライス、Bun/Jest: `test.each`）
+- 個別の `test(...)` 呼び出しは、テーブル化できない固有のセットアップが必要なケースに限る
+
 ## Interaction Rules
 
 - ユーザーへの質問は極力 `AskUserQuestion` ツールを使う

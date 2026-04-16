@@ -19,19 +19,19 @@ model: sonnet
 
 ---
 
-## Step 0: チーム作成（チームが存在しない場合のみ）
+## Step 0: チーム作成
 
-すでに `review-team-claude-deck` チームが存在する場合はそのまま再利用する。存在しない場合のみ作成する:
+!`ws=$(basename $(git rev-parse --show-toplevel 2>/dev/null || jj workspace root 2>/dev/null || pwd)); rm -rf ~/.claude/teams/review-claude-deck-$ws ~/.claude/tasks/review-claude-deck-$ws 2>/dev/null; echo "チーム名: review-claude-deck-$ws"`
+
+上記のチーム名でチームを作成する:
 
 ```
-Create an agent team with 1 teammate: reviewer
+Create an agent team named "<チーム名>" with 1 teammate: reviewer
 ```
 
 ---
 
 ## Step 1: reviewer の初期化
-
-チームを新規作成した場合のみ実施する。既存チームを再利用する場合はスキップしてStep 2へ進む。
 
 reviewer に初期化メッセージを送り、「reviewer 初期化完了」が返るまで待つ。
 
@@ -74,7 +74,7 @@ Coordinatorが指摘を全て修正する。Nitも可能な範囲で一緒に修
 
 修正後はビルド・vetで確認:
 ```bash
-cd /Users/pomesaka/github.com/pomesaka/claude-deck && GOEXPERIMENT=jsonv2 go build ./... && GOEXPERIMENT=jsonv2 go vet ./...
+GOEXPERIMENT=jsonv2 go build ./... && GOEXPERIMENT=jsonv2 go vet ./...
 ```
 
 ### 2e. 次ラウンドへ

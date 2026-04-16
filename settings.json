@@ -61,7 +61,9 @@
     }
   },
   "effortLevel": "high",
+  "teammateMode": "in-process",
   "feedbackSurveyState": {
     "lastShownTime": 1754021250248
-  }
+  },
+  "skipAutoPermissionPrompt": true
 }

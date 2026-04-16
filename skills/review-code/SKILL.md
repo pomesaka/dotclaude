@@ -47,9 +47,7 @@ model: sonnet
 
 !`cat ./CLAUDE.md 2>/dev/null`
 
-!`cat ./CODING_CONVENTIONS.md 2>/dev/null`
-
-!`cat ./.claude/rules/*.md 2>/dev/null`
+!`[ -d ./.claude/rules ] && cat ./.claude/rules/*.md 2>/dev/null || true`
 
 ---
 
