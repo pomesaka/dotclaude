@@ -1,7 +1,8 @@
 ---
 name: check-best-practices
-description: Claude Code のベストプラクティスリポジトリ（shanraisshan/claude-code-best-practice）を調査し、現在の dotclaude 環境との差分を分析して改善提案を行う。「ベストプラクティス確認して」「dotclaudeを改善したい」と言われたときに使う。
-allowed-tools: WebFetch, Read, Glob, Grep
+description: Claude Code のベストプラクティスリポジトリを調査し、dotclaude 環境との差分を分析して改善提案を行う。
+when_to_use: 「ベストプラクティス確認して」「dotclaudeを改善したい」と言われたとき。
+allowed-tools: Bash(bash ~/.claude/skills/check-best-practices/fetch.sh), Bash(bash ~/.claude/skills/check-best-practices/env.sh)
 context: fork
 agent: general-purpose
 model: sonnet
@@ -9,31 +10,23 @@ model: sonnet
 
 # Claude Code ベストプラクティス環境チェック
 
+## ベストプラクティスリポジトリ（スキルロード時に取得済み）
+
+!`bash ~/.claude/skills/check-best-practices/fetch.sh`
+
+## 現在の dotclaude 環境（スキルロード時に取得済み）
+
+!`bash ~/.claude/skills/check-best-practices/env.sh`
+
+---
+
 ## 目的
 
-`shanraisshan/claude-code-best-practice` リポジトリの最新内容と、現在の dotclaude 環境を比較し、取り込む価値のある改善点を提案する。
+上記のベストプラクティス内容と現在の dotclaude 環境を比較し、取り込む価値のある改善点を提案する。
 
 ## 手順
 
-### Step 1: ベストプラクティスリポジトリを取得
-
-以下の URL から主要コンテンツを取得する:
-
-- `https://raw.githubusercontent.com/shanraisshan/claude-code-best-practice/main/README.md`
-- `https://raw.githubusercontent.com/shanraisshan/claude-code-best-practice/main/best-practice/claude-skills.md`
-- `https://raw.githubusercontent.com/shanraisshan/claude-code-best-practice/main/best-practice/claude-subagents.md`
-- `https://raw.githubusercontent.com/shanraisshan/claude-code-best-practice/main/best-practice/claude-memory.md`
-
-### Step 2: 現在の環境を読み込む
-
-```
-~/.claude/CLAUDE.md
-~/github.com/pomesaka/dotclaude/skills/ （各 SKILL.md のフロントマターのみ）
-~/github.com/pomesaka/dotclaude/commands/ （ファイル一覧）
-~/github.com/pomesaka/dotclaude/docs/ （ファイル一覧）
-```
-
-### Step 3: 差分分析
+### Step 1: 差分分析（スキルロード時に取得済みのデータを使う）
 
 以下の観点で比較する:
 
@@ -53,7 +46,7 @@ model: sonnet
 - コンテキスト管理の指示（50% でコンパクト等）
 - human-gated task list ワークフロー
 
-### Step 4: 提案レポートを出力
+### Step 2: 提案レポートを出力
 
 以下の形式で報告する:
 

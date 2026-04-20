@@ -1,6 +1,7 @@
 ---
 name: update-pr
-description: 既存 PR にコードを push してタイトル・ボディを更新する。「PR を更新して」「PRの説明を直して」「変更を push して PR を更新して」と言われたときに使用する。新規 PR 作成は create-pr を使う。
+description: 既存 PR にコードを push してタイトル・ボディを更新する。
+when_to_use: 「PR を更新して」「PRの説明を直して」「変更を push して PR を更新して」と言われたとき。新規 PR 作成は create-pr を使う。
 disable-model-invocation: false
 argument-hint: "[PR番号]"
 allowed-tools: Bash(jj *), Bash(gh *), Bash(bun *), Read, Glob

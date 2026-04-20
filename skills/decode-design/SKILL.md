@@ -1,6 +1,7 @@
 ---
 name: decode-design
-description: コードから設計意図・メンタルモデルを読み解く。「このコードの設計を理解したい」「メンタルモデルを教えて」「どういうロジックになってるか」「設計意図を読み解いて」「design docを起こして」と言われたときに使用する。
+description: コードから設計意図・メンタルモデルを読み解く。
+when_to_use: 「このコードの設計を理解したい」「メンタルモデルを教えて」「どういうロジックになってるか」「設計意図を読み解いて」「design docを起こして」と言われたとき。
 argument-hint: "[ファイルパス / ディレクトリ / PR番号 / キーワード など]"
 context: fork
 agent: general-purpose

@@ -1,6 +1,7 @@
 ---
 name: upload-screenshots
-description: ローカルのスクリーンショット（PNG/JPEG/GIF）や動画（WebM/MP4→GIF自動変換）をGitHubのIssueまたはPRコメントに投稿する。「スクショをPRにあげて」「動画をコメントに投稿して」と言われたときに使用する。
+description: ローカルのスクリーンショット（PNG/JPEG/GIF）や動画（WebM/MP4→GIF自動変換）をGitHubのIssueまたはPRコメントに投稿する。
+when_to_use: 「スクショをPRにあげて」「動画をコメントに投稿して」と言われたとき。
 argument-hint: "[pr-number or issue-number]"
 model: haiku
 ---

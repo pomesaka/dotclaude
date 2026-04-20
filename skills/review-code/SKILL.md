@@ -1,6 +1,7 @@
 ---
 name: review-code
-description: 変更差分に対してコードレビューを実施する。「レビューして」「差分を見て」「PR前に確認して」「コードを見てほしい」と言われたときに使用する。ドメイン設計・型設計の分析は review-domain を使う。
+description: 変更差分に対してコードレビューを実施する。
+when_to_use: 「レビューして」「差分を見て」「PR前に確認して」「コードを見てほしい」と言われたとき。ドメイン設計・型設計の分析は review-domain を使う。
 allowed-tools: Read, Grep, Glob, Bash(jj diff *), Bash(jj log *), Bash(jj diffu *), Bash(git diff *), Bash(git log *)
 context: fork
 agent: general-purpose

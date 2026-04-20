@@ -1,6 +1,7 @@
 ---
 name: create-pr
-description: jj + gh を使って新しい PR を作成する。「PRを作って」「プルリクを出して」「push して PR を作成して」と言われたときに使用する。既存 PR の更新は update-pr を使う。
+description: jj + gh を使って新しい PR を作成する。
+when_to_use: 「PRを作って」「プルリクを出して」「push して PR を作成して」と言われたとき。既存 PR の更新は update-pr を使う。
 disable-model-invocation: false
 argument-hint: "[base-branch]"
 allowed-tools: Bash(jj *), Bash(gh *), Bash(task *), Bash(bun *), Read, Glob

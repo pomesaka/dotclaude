@@ -1,6 +1,7 @@
 ---
 name: use-design
-description: プロジェクトルートにDESIGN.mdを配置する。awesome-design-mdコレクションから選択するか、カスタム指定も可能。「DESIGN.mdを適用して」「LinearのデザインでUIを作りたい」と言われたときに使う。
+description: プロジェクトルートにDESIGN.mdを配置する。awesome-design-mdコレクションから選択するか、カスタム指定も可能。
+when_to_use: 「DESIGN.mdを適用して」「LinearのデザインでUIを作りたい」と言われたとき。
 allowed-tools: Read, Write, Bash(ls *), Bash(cp *)
 model: haiku
 ---

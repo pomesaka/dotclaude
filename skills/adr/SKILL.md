@@ -1,6 +1,7 @@
 ---
 name: adr
-description: Architecture Decision Record（ADR）を作成・記録する。「ADR書こう」「設計決定を記録しよう」「このアーキテクチャの判断を残したい」「なぜこのアプローチにしたか記録して」と言われたときに使用する。
+description: Architecture Decision Record（ADR）を作成・記録する。
+when_to_use: 「ADR書こう」「設計決定を記録しよう」「このアーキテクチャの判断を残したい」「なぜこのアプローチにしたか記録して」と言われたとき。
 argument-hint: "[テーマ or ADRのタイトル]"
 allowed-tools: Read, Write, Glob, Grep, Bash(ls *)
 ---

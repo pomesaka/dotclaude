@@ -1,6 +1,7 @@
 ---
 name: review-domain
-description: ドメイン分析・アーキテクチャレビューを実施する。「ドメインレビューして」「設計を見て」「責務の分配を確認して」「DDD/RDD観点でレビュー」「型設計を見直したい」と言われたときに使用する。差分ベースの通常コードレビューは review-code を使う。
+description: ドメイン分析・アーキテクチャレビューを実施する。
+when_to_use: 「ドメインレビューして」「設計を見て」「責務の分配を確認して」「DDD/RDD観点でレビュー」「型設計を見直したい」と言われたとき。差分ベースの通常コードレビューは review-code を使う。
 allowed-tools: Read, Grep, Glob, Bash(jj diff *), Bash(jj log *), Bash(jj diffu *), Bash(git diff *), Bash(git log *), Bash(find *), Bash(fd *)
 context: fork
 agent: general-purpose

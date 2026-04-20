@@ -1,6 +1,7 @@
 ---
 name: check-pr
-description: PR の内容をキャッチアップする。「PR #123 を確認して」「このPRをレビューしたい」「別セッションの作業を引き継ぎたい」と言われたときに使用する。
+description: PR の内容をキャッチアップする。
+when_to_use: 「PR #123 を確認して」「このPRをレビューしたい」「別セッションの作業を引き継ぎたい」と言われたとき。
 argument-hint: "[PR番号 または owner/repo#PR番号]"
 allowed-tools: Bash(jj *), Bash(gh *)
 model: haiku

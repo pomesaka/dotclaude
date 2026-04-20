@@ -55,27 +55,27 @@ SKILL.mdはオーケストレーター（制御フロー）に徹する。ドメ
 
 ルールの羅列（「必ずXXXすること」）よりも理由を書く。理由が分かれば未知のケースにも対応できる。
 
-#### descriptionの書き方
+#### description と when_to_use の書き方
 
-`description` の役割はスキルの種類によって異なる:
+`description` と `when_to_use` の役割:
 
-| スキルの種類 | descriptionの目的 | 書き方 |
+| フィールド | 役割 | 書き方 |
 |---|---|---|
-| 通常スキル（model-invocable） | **モデルのトリガー条件** | 「〜と言われたときに使用する」形式でユーザーが発しそうな言葉を列挙 |
-| `disable-model-invocation: true` | ユーザー向けの説明 | 機能の概要を自然な文で書く（トリガー条件は不要） |
+| `description` | スキルが何をするかの短い説明 | 1文で機能を簡潔に書く |
+| `when_to_use` | いつ発火するかのトリガー条件 | ユーザーが発しそうな言葉・フレーズを列挙する |
 
-**通常スキルのdescription（悪い例）**:
-```
-description: スキルを新規作成するためのスキル
-```
-→ モデルはこれをトリガー条件として使えない
+`description` と `when_to_use` は合計1,536文字でモデルに渡される。スキルが多い環境では両方を短く保つことが重要。
 
-**通常スキルのdescription（良い例）**:
-```
-description: 変更差分に対してコードレビューを実施する。「レビューして」「差分を見て」「PR前に確認して」と言われたときに使用する。
+**推奨パターン（通常スキル）**:
+```yaml
+description: 変更差分に対してコードレビューを実施する。
+when_to_use: 「レビューして」「差分を見て」「PR前に確認して」「コードを見てほしい」と言われたとき。
 ```
 
-- 曖昧・広範な記述は誤発火の原因（例: 「コードを改善する」は何にでも該当）
+**`disable-model-invocation: true` スキルの場合**: モデルが自動発火しないため `when_to_use` は不要。`description` だけユーザー向けの説明を書く。
+
+- 曖昧・広範な `when_to_use` は誤発火の原因（例: 「コードを改善する」は何にでも該当）
+- `description` にトリガーフレーズを書いてもモデルは参照するが、`when_to_use` に分離した方が精度が上がる
 
 #### フロントマター設定の判断基準
 
@@ -130,8 +130,8 @@ model: opus     # 高品質・推論力が必要な場合
 作成したSKILL.mdが以下を満たすか確認する:
 
 - フロントマターに `name`, `description` があるか
-- 通常スキルの `description` がモデルのトリガー条件形式か（「〜と言われたときに使用する」）
-- `disable-model-invocation: true` スキルは上記チェックをスキップ
+- 通常スキルはトリガーフレーズを `when_to_use` に分離しているか（`description` は短い機能説明のみ）
+- `disable-model-invocation: true` スキルは `when_to_use` 不要
 - 500行以内か
 - 副作用がある操作に `disable-model-invocation: true` が設定されているか
 - `allowed-tools` が必要最小限か（`Bash(*)` は広すぎる。`Bash(コマンド名 *)` で限定する）

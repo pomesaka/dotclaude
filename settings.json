@@ -32,7 +32,9 @@
       "Bash(playwright-cli:*)",
       "Bash(gh project:*)",
       "Bash(bun run:*)",
-      "Bash(python3 *)"
+      "Bash(python3 *)",
+      "Bash(bash ~/.claude/skills/check-best-practices/fetch.sh)",
+      "Bash(bash ~/.claude/skills/check-best-practices/env.sh)"
     ],
     "deny": [
       "Read(**/.env)"
