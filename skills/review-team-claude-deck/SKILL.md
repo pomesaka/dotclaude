@@ -1,6 +1,7 @@
 ---
 name: review-team-claude-deck
 description: claude-deckのAgent Teamコードレビュー＆修正ループ。reviewer 1名がレビューし、Coordinator（自分）が直接修正する。Go TUIダッシュボードプロジェクト固有ルール適用済み。
+allowed-tools: Bash(bash ~/.claude/skills/review-team-common/setup.sh *)
 model: sonnet
 ---
 
@@ -21,7 +22,7 @@ model: sonnet
 
 ## Step 0: チーム作成
 
-!`ws=$(basename $(git rev-parse --show-toplevel 2>/dev/null || jj workspace root 2>/dev/null || pwd)); rm -rf ~/.claude/teams/review-claude-deck-$ws ~/.claude/tasks/review-claude-deck-$ws 2>/dev/null; echo "チーム名: review-claude-deck-$ws"`
+!`bash ~/.claude/skills/review-team-common/setup.sh claude-deck`
 
 上記のチーム名でチームを作成する:
 
@@ -92,4 +93,16 @@ GOEXPERIMENT=jsonv2 go build ./... && GOEXPERIMENT=jsonv2 go vet ./...
 - ラウンド数: N
 - 修正した指摘数: M件
 - 残存するNit: （一覧、なければ「なし」）
+```
+
+reviewer に shutdown_request を送る:
+
+```
+SendMessage({ to: "reviewer", message: { type: "shutdown_request" } })
+```
+
+reviewer の終了を確認したら TeamDelete でチームを解散する:
+
+```
+TeamDelete()
 ```

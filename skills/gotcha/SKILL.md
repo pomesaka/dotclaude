@@ -50,6 +50,13 @@ model: haiku
 - **新エントリ**: ...
 ```
 
+## Gotchas
+
+- **`!` precommand でのコマンド置換**: `!` precommand 内で `$(...)` を使うと "Contains command_substitution" エラーで弾かれる。複雑な処理はスクリプトに移して `!bash /path/to/script.sh` で呼ぶ。
+- **スクリプト呼び出しに `allowed-tools` が必要**: `settings.json` に権限を追加するだけでは不十分。スクリプトを `!` precommand や Bash ツールで呼ぶ SKILL.md 側にも `allowed-tools: Bash(bash /path/to/script.sh *)` が必要。
+
+---
+
 ### Step 4: 確認
 
 追記後にエントリが正しく挿入されたことを確認してユーザーに報告する。

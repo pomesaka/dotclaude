@@ -44,16 +44,13 @@
 
 - ユーザーへの質問は極力 `AskUserQuestion` ツールを使う
 
-## 設計時の原則（Plan モード）
+## Context Management
 
-実装詳細に入る前に RDD（責務駆動設計）レンズを当てること:
-
-- 新しい状態フィールドを追加するとき、「この責務は既存の型に属するか、新しい型に分離すべきか」を問う
-- 複数のフィールドが不変条件でつながっているなら、それは専用型を作るシグナル
-  - 例: `focusDetail bool` + `layoutMode` → 「リスト非表示なら必ずdetailフォーカス」という不変条件 → `Layout` 型に統合
-- 「複数フィールドをまとめて操作する処理」が出てきたら型分離を検討する
-
-参考: `~/.claude/docs/domain-design-practices.md`
+- context が 60% を超えたら新しいタスクを始めない
+- `/compact` は必ずヒント付きで実行する（例: `/compact focus on X, drop Y`）
+- autocompact に自動発火させない — 発火タイミングは intelligence が最低の状態
+- tool call の詳細ではなく結論だけ必要なら subagent に投げる（Agent ツール、`context: fork`）
+- `/rewind` 前に「summarize from here」を依頼して引き継ぎメモを生成する
 
 ## Working Rules
 

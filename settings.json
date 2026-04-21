@@ -34,7 +34,8 @@
       "Bash(bun run:*)",
       "Bash(python3 *)",
       "Bash(bash ~/.claude/skills/check-best-practices/fetch.sh)",
-      "Bash(bash ~/.claude/skills/check-best-practices/env.sh)"
+      "Bash(bash ~/.claude/skills/check-best-practices/env.sh)",
+      "Bash(bash ~/.claude/skills/review-team-common/setup.sh *)"
     ],
     "deny": [
       "Read(**/.env)"
@@ -44,7 +45,7 @@
       "/Users/pomesaka/github.com/pomesaka/dotclaude"
     ]
   },
-  "model": "opusplan",
+  "model": "sonnet",
   "statusLine": {
     "type": "command",
     "command": "/Users/pomesaka/.local/share/claude-deck/statusline.sh"
@@ -63,9 +64,9 @@
     }
   },
   "effortLevel": "high",
+  "skipAutoPermissionPrompt": true,
   "teammateMode": "in-process",
   "feedbackSurveyState": {
     "lastShownTime": 1754021250248
-  },
-  "skipAutoPermissionPrompt": true
+  }
 }

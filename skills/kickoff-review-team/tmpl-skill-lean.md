@@ -12,6 +12,7 @@
 ---
 name: review-team-{project}
 description: {project}のAgent Teamコードレビュー＆修正ループ。reviewer 1名がレビューし、Coordinator（自分）が直接修正する。{stack_summary}固有ルール適用済み。
+allowed-tools: Bash(bash ~/.claude/skills/review-team-common/setup.sh *)
 ---
 
 # review-team-{project}: チームレビュー＆修正ループ（Coordinator用）
@@ -31,7 +32,7 @@ description: {project}のAgent Teamコードレビュー＆修正ループ。rev
 
 ## Step 0: チーム作成
 
-!`ws=$(basename $(git rev-parse --show-toplevel 2>/dev/null || jj workspace root 2>/dev/null || pwd)); rm -rf ~/.claude/teams/review-{project}-$ws ~/.claude/tasks/review-{project}-$ws 2>/dev/null; echo "チーム名: review-{project}-$ws"`
+!`bash ~/.claude/skills/review-team-common/setup.sh {project}`
 
 上記のチーム名でチームを作成する:
 
