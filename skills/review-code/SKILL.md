@@ -2,7 +2,7 @@
 name: review-code
 description: 変更差分に対してコードレビューを実施する。
 when_to_use: 「レビューして」「差分を見て」「PR前に確認して」「コードを見てほしい」と言われたとき。ドメイン設計・型設計の分析は review-domain を使う。
-allowed-tools: Read, Grep, Glob, Bash(jj diff *), Bash(jj log *), Bash(jj diffu *), Bash(git diff *), Bash(git log *)
+allowed-tools: Read, Grep, Glob, Bash(jj diff *), Bash(jj diffu *), Bash(git diff *)
 context: fork
 agent: general-purpose
 model: sonnet
@@ -56,11 +56,24 @@ model: sonnet
 
 ### Step 1: 差分の確認
 
+PR のレビューなら `gh pr diff`、ローカル変更のレビューなら `jj diffu -r 'main..@'` を使う。
+
 ```bash
-jj diffu -r 'main..@' 2>/dev/null || git diff main...HEAD
+# PR のレビュー
+gh pr diff 2>/dev/null
+
+# ローカル変更のレビュー
+jj diffu -r 'main..@' 2>/dev/null
 ```
 
-差分が空の場合は `jj diff -r @` または `git diff HEAD~1` で直近の変更を取得する。
+**unified diff の読み方（重要）**:
+- `-` で始まる行: 削除された行（変更前の値）
+- `+` で始まる行: 追加された行（変更後の値）
+- `-` 行と `+` 行が連続している場合は「変更」を意味する
+  - 例: `-  DB: false,` の次行 `+  DB: true,` → 「`false` → `true` に変更」
+  - **誤読禁止**: 削除行と追加行の内容を連結して読まない（`DB: falsetrue` は誤り）
+
+差分が空の場合は「差分がありません。レビュー対象がありません。」とユーザーに伝えて終了する。
 
 ### Step 2: レビュー
 

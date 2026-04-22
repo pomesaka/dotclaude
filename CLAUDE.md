@@ -11,8 +11,8 @@
 
 ## ~/.claude の管理
 
-`~/.claude/skills/` と `~/.claude/commands/` はシンボリックリンクで、実体は `~/github.com/pomesaka/dotclaude/` で管理されている。
-スキルやコマンドを追加・編集する際は dotclaude リポジトリ側に変更を入れることになる（symlink経由で自動反映）。
+`~/.claude/skills/`、`~/.claude/commands/`、`~/.claude/agents/` はシンボリックリンクで、実体は `~/github.com/pomesaka/dotclaude/` で管理されている。
+スキル・コマンド・エージェントを追加・編集する際は dotclaude リポジトリ側に変更を入れることになる（symlink経由で自動反映）。
 
 ## Tmp Directory
 

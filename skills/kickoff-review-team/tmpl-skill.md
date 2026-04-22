@@ -3,115 +3,71 @@
 # Read ツールで読み込み、プレースホルダーを置換して Write する。
 #
 # --- プレースホルダー一覧 ---
-# {project}       : プロジェクト名（例: adet）
-# {teammates}     : teammate の説明（例: design-reviewer・be-reviewer・fe-reviewer）
-# {team_table}    : チーム構成テーブルの行（下記フォーマット参照）
-# {N}             : teammate の数
-# {teammate_list} : teammate 名のカンマ区切り（例: design-reviewer, be-reviewer, fe-reviewer, fixer）
-# {init_sections} : 各 teammate の初期化セクション（下記フォーマット参照）
+# {project}              : プロジェクト名（例: adet）
+# {reviewers}            : reviewer の説明（例: go-reviewer-adet・design-reviewer-adet）
+# {reviewer_table}       : subagent 構成テーブルの行（下記フォーマット参照）
+# {reviewer_agent_calls} : 並列 Agent 起動コード（下記フォーマット参照）
+# {fixer_agent_name}     : fixer の subagent 名（例: fixer-adet）
 #
-# --- {team_table} の書き方 ---
-# | be-reviewer | Goポリシー・アーキテクチャ | `jj diffu -r 'main..@' backend/` |
-# | fe-reviewer | TypeScriptポリシー・import制約 | `jj diffu -r 'main..@' frontend/` |
-# | design-reviewer | 凝集度・可読性・設計品質 | `jj diffu -r 'main..@'` |
-# | fixer | 修正実装・lint実行 | `jj diffu -r 'main..@'`（参照用） |
+# --- {reviewer_table} の書き方 ---
+# | go-reviewer-adet | Goポリシー・アーキテクチャ |
+# | design-reviewer-adet | 凝集度・可読性・設計品質 |
+# | fixer-adet | 修正実装・lint実行 |
 #
-# --- {init_sections} の書き方 ---
-# 各 teammate ごとにセクションを書く。
-# SKILL.md（Coordinator）は !cat でreviewer ファイルを展開するだけ。
-# 読み込むべきドキュメントの列挙は reviewer ファイル側に書く（kickoffが生成）。
-#
-# ### design-reviewer に送るメッセージ:
-#
-# !`cat ~/.claude/skills/review-team-{project}/teammate-design.md 2>/dev/null`
-#
-# ### go-reviewer に送るメッセージ:
-#
-# !`cat ~/.claude/skills/review-team-{project}/teammate-go.md 2>/dev/null`
-#
-# ### nextjs-reviewer に送るメッセージ:
-#
-# !`cat ~/.claude/skills/review-team-{project}/teammate-nextjs.md 2>/dev/null`
-#
-# ### fixer に送るメッセージ:
-#
-# !`cat ~/.claude/skills/review-team-{project}/teammate-fix.md 2>/dev/null`
+# --- {reviewer_agent_calls} の書き方 ---
+# 以下を**同時に**起動する（並列 Agent 呼び出し）:
+# - `subagent_type`: `"go-reviewer-adet"`, `prompt`: `"ラウンドN のレビューをしてください。"`
+# - `subagent_type`: `"design-reviewer-adet"`, `prompt`: `"ラウンドN のレビューをしてください。"`
 #
 # --- ここから生成されるファイルの本文 ---
 ---
 name: review-team-{project}
-description: {project}のAgent Teamコードレビュー＆修正ループ。{teammates}が並列レビューし、fixerが修正する。
-allowed-tools: Bash(bash ~/.claude/skills/review-team-common/setup.sh *)
+description: {project}のコードレビュー＆修正ループ。{reviewers}が並列レビューし、fixerが修正する。
+model: sonnet
 ---
 
-# review-team-{project}: チームレビュー＆修正ループ（Coordinator用）
+# review-team-{project}: レビュー＆修正ループ（Coordinator用）
 
-あなたはCoordinator。teammateを調整してレビュー＆修正サイクルを回す。
+あなたはCoordinator。subagent を調整してレビュー＆修正サイクルを回す。
 
-**各teammateはドキュメントを初回一度だけ読み込む。差分取得・レビューも各自が行う。Coordinatorは結果の集約とループ制御に集中する。**
+## ループ構成
 
-## チーム構成
-
-| teammate | 担当 | 差分取得コマンド |
-|---|---|---|
-{team_table}
-
----
-
-## Step 0: チーム作成
-
-!`bash ~/.claude/skills/review-team-common/setup.sh {project}`
-
-上記のチーム名でチームを作成する:
-
-```
-Create an agent team named "<チーム名>" with {N} teammates: {teammate_list}
-```
+| subagent | 担当 |
+|---|---|
+{reviewer_table}
 
 ---
 
-## Step 1: 各teammateの初期化
+## Step 1: レビューラウンド（最大5ラウンド）
 
-全員に**並列で**初期化メッセージを送る。全員から「初期化完了」が返るまで待つ。
+### 1a. 並列レビュー
 
-{init_sections}
+{reviewer_agent_calls}
 
----
+全てのレビュアーの結果が返るまで待つ。
 
-## Step 2: レビューラウンド（最大5ラウンド）
+### 1b. 結果集約・分類
 
-### 2a. 並列レビュー依頼
-
-全レビュアーに**同時に**以下を送る:
-
-```
-【ラウンドN レビュー開始】
-
-担当の差分を取得してレビューしてください。
-```
-
-全員から結果が返るまで待つ。
-
-### 2b. 結果集約・分類
+全レビュアーの結果をまとめ、以下に分類する:
 
 - **非Nit**: ポリシー違反・整合性・凝集度・可読性・設計（「提案」も含む）
 - **Nit**: 明示的に「Nit:」と書かれているもの
 
-### 2c. 終了判定
+### 1c. 終了判定
 
 | 状態 | 次のアクション |
 |---|---|
-| 非Nit = 0 | Step 3（完了）へ |
-| 非Nit > 0 かつラウンド < 5 | 2d へ |
+| 非Nit = 0 | Step 2（完了）へ |
+| 非Nit > 0 かつラウンド < 5 | 1d へ |
 | ラウンド = 5 到達 | 残存指摘を表示して終了（人間に委ねる） |
 
-### 2d. 修正依頼
+### 1d. fixer に修正依頼
 
-fixer に以下を送る:
+Agent ツールで `{fixer_agent_name}` subagent を起動する:
+- `subagent_type`: `"{fixer_agent_name}"`
+- `prompt`:
 
 ```
-【ラウンドN 修正依頼】
-
 以下の指摘を全て修正してください。Nitも可能な範囲で一緒に直してください。
 
 ## 非Nit指摘
@@ -119,23 +75,23 @@ fixer に以下を送る:
 
 ## Nit指摘（任意）
 <一覧>
-
-修正後はlintを実行して結果を報告してください。
 ```
 
-### 2e. 次ラウンドへ
-
-fixerが「修正完了」を報告したらStep 2aへ戻る。
+fixer が「修正完了」を報告したら Step 1a へ戻る。
 
 ---
 
-## Step 3: 完了
+## Step 2: 完了
 
 ```
 ## レビュー＆修正ループ完了
 
-- チーム構成: {teammate_list}
 - ラウンド数: N
 - 修正した指摘数: M件
 - 残存するNit: （一覧、なければ「なし」）
 ```
+
+## Gotchas
+
+- **subagent は毎回ゼロから起動**: 前ラウンドの文脈は持ち越さない。これは意図的（ゼロベースレビューのため）
+- **並列起動**: Agent ツールを複数同時に呼ぶことでレビュアーが並列実行される

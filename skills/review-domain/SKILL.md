@@ -2,7 +2,7 @@
 name: review-domain
 description: ドメイン分析・アーキテクチャレビューを実施する。
 when_to_use: 「ドメインレビューして」「設計を見て」「責務の分配を確認して」「DDD/RDD観点でレビュー」「型設計を見直したい」と言われたとき。差分ベースの通常コードレビューは review-code を使う。
-allowed-tools: Read, Grep, Glob, Bash(jj diff *), Bash(jj log *), Bash(jj diffu *), Bash(git diff *), Bash(git log *), Bash(find *), Bash(fd *)
+allowed-tools: Read, Grep, Glob, Bash(jj diff *), Bash(jj log *), Bash(jj diffu *), Bash(find *), Bash(fd *)
 context: fork
 agent: general-purpose
 model: sonnet
@@ -13,6 +13,18 @@ model: sonnet
 ## 参考資料
 
 !`cat ~/.claude/docs/domain-design-practices.md 2>/dev/null`
+
+---
+
+## レビュー対象の決定
+
+引数 (`$ARGUMENTS`) が指定されている場合はそれを対象にする。**指定がない場合は `jj diffu` で現在の差分を取得し、変更されたファイルのみを対象にする。**
+
+```bash
+jj diffu   # 変更されたファイルと差分を確認
+```
+
+差分の内容からドメイン層に関係するファイル（`domain/`, `usecase/`, `repository/`, `server/` など）を特定し、そのファイルに絞ってレビューを実施する。
 
 ---
 
@@ -73,4 +85,4 @@ $ARGUMENTS
 
 - **差分レビューと混同する**: このスキルはドメイン設計の分析が目的。変更差分のコードレビュー（バグ・スタイル・ロジックの確認）は `review-code` を使う。
 - **パターン適用を目的にする**: DDD/RDD の概念を押し付けない。「このパターンを適用すべき」ではなく「このドメイン概念を正確に表現するには」を軸に考える。提案にはドメインの理解がどう深まるかを必ず添える。
-- **$ARGUMENTSを空にする**: 引数なしだと全コードが対象になり分析が浅くなる。分析したいパス（例: `internal/session/`）や観点を渡すと精度が上がる。
+- **無関係なファイルまで広げる**: 引数なし時は `jj diffu` の差分に絞る。全コードベースを対象にすると分析が浅くなる。特定のパス（例: `internal/session/`）や観点を渡すと精度が上がる。

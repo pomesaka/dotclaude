@@ -1,7 +1,19 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+    "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
+    "OTEL_METRICS_EXPORTER": "otlp",
+    "OTEL_LOGS_EXPORTER": "otlp",
+    "OTEL_EXPORTER_OTLP_METRICS_PROTOCOL": "http/protobuf",
+    "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT": "http://127.0.0.1:9090/api/v1/otlp/v1/metrics",
+    "OTEL_EXPORTER_OTLP_LOGS_PROTOCOL": "http/protobuf",
+    "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT": "http://127.0.0.1:3100/otlp/v1/logs",
+    "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE": "cumulative",
+    "OTEL_LOG_TOOL_DETAILS": "1",
+    "OTEL_METRICS_INCLUDE_SESSION_ID": "true",
+    "OTEL_METRIC_EXPORT_INTERVAL": "10000",
+    "OTEL_LOGS_EXPORT_INTERVAL": "5000"
   },
   "permissions": {
     "allow": [
@@ -45,7 +57,7 @@
       "/Users/pomesaka/github.com/pomesaka/dotclaude"
     ]
   },
-  "model": "sonnet",
+  "model": "opusplan",
   "statusLine": {
     "type": "command",
     "command": "/Users/pomesaka/.local/share/claude-deck/statusline.sh"
@@ -64,7 +76,6 @@
     }
   },
   "effortLevel": "high",
-  "skipAutoPermissionPrompt": true,
   "teammateMode": "in-process",
   "feedbackSurveyState": {
     "lastShownTime": 1754021250248
