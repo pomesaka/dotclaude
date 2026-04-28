@@ -3,58 +3,37 @@ name: check-pr
 description: PR の内容をキャッチアップする。
 when_to_use: 「PR #123 を確認して」「このPRをレビューしたい」「別セッションの作業を引き継ぎたい」と言われたとき。
 argument-hint: "[PR番号 または owner/repo#PR番号]"
-allowed-tools: Bash(jj *), Bash(gh *)
+allowed-tools: Bash(jj *), Bash(gh *), Bash(bash ~/.claude/skills/check-pr/fetch-pr.sh *), Bash(bash ~/.claude/skills/check-pr/checkout.sh *)
 model: haiku
 ---
 
 # Check PR — キャッチアップ
 
-引数 `$ARGUMENTS` にはPR番号（例: `123`）または `owner/repo#123` 形式を指定する。
-リポジトリ未指定時は `gh pr view` がカレントリポジトリを自動判定する。
-
 ## 手順
 
-### 1. PR基本情報の取得
+### 0. PR メタデータの取得
 
 ```bash
-gh pr view $ARGUMENTS --json number,title,body,state,author,baseRefName,headRefName,reviewDecision,reviews,labels,assignees,url
+bash ~/.claude/skills/check-pr/fetch-pr.sh $ARGUMENTS
 ```
 
-`headRefName`（= PRのブランチ名）を控える。以降 `<branch>` と呼ぶ。
+出力された `<pr_meta>` から `<branch>` と `<base>` を読み取る。以降それぞれ `<branch>` `<base>` と呼ぶ。
 
-### 2. ローカルにブランチを展開
+### 1. ローカルにブランチを展開
 
 ```bash
-jj git fetch
-jj bookmark track <branch> --remote=origin
-jj new <branch>
+bash ~/.claude/skills/check-pr/checkout.sh <branch>
 ```
 
-`bookmark track` がすでにトラッキング済みのエラーを出す場合は無視してよい。
-
-### 3. レビューコメントの取得
-
-PR番号とリポジトリを特定したうえで:
+### 3. 差分の確認
 
 ```bash
-# インラインレビューコメント（ファイルパス・行番号付き）
-gh api repos/<owner>/<repo>/pulls/<PR番号>/comments \
-  | jq -r '.[] | "[\(.user.login)] \(.path):\(.line // "?")\n\(.body)\n---"'
-
-# 一般コメント（会話スレッド）
-gh api repos/<owner>/<repo>/issues/<PR番号>/comments \
-  | jq -r '.[] | "[\(.user.login)] \(.body)\n---"'
+jj diffu --from <base> --to <branch>
 ```
 
-### 4. 差分の確認
+差分が大きい場合は `--stat` 付きでファイル一覧を先に確認し、重要なファイルを絞って `jj diffu --from <base> --to <branch> <path>` で個別に見る。
 
-```bash
-jj diffu
-```
-
-ファイル一覧を把握し、変更規模・影響範囲を確認する。
-
-### 5. キャッチアップサマリーの出力
+### 4. キャッチアップサマリーの出力
 
 以下の形式でまとめて出力する:
 
