@@ -50,7 +50,7 @@ lint エラーが報告されていれば、Coordinator が自分で追加修正
 
 lint 確認:
 ```bash
-cd apps/pomebook && bun biome check --write ./src && bun tsc --noEmit
+bun run lint
 ```
 
 ## Step 4: コードレビュー＆修正ループ
@@ -59,13 +59,59 @@ cd apps/pomebook && bun biome check --write ./src && bun tsc --noEmit
 
 内部で reviewer subagent によるレビュー → Coordinator による修正のサイクルが実行される。重要な指摘がなくなるまで繰り返す。
 
-## Step 5: jjcommit
+## Step 5: Issue ステータス更新
 
-`jjcommit` スキルを呼び出す（Skill ツール使用）。
+`issues/<番号>-*.md` の `status: open` を `status: done` に書き換える。
 
-issue 番号と内容を会話ヒストリーとして渡し、WHY を含むコミットメッセージを生成する。
+```bash
+# 対象ファイルを特定して更新
+ls issues/<番号>-*.md
+```
 
-## Step 6: Deploy
+Edit ツールで frontmatter の `status: open` → `status: done` に変更する。
+
+## Step 6: コミット
+
+### 6a. 変更内容を確認
+
+```bash
+jj diffu
+```
+
+### 6b. WHY をこの会話から収集する
+
+**最重要。** diff からは WHAT しか読み取れない。WHY はこの会話ヒストリーにしかない。以下を特定する:
+
+- **課題・動機**: issue が解決しようとしていた問題（issue 本文の Context / Scope）
+- **設計判断の理由**: ドメインレビュー・コードレビューで修正した内容とその理由
+- **却下した代替案**: レビューで「こうしなかった理由」として出てきたもの
+
+### 6c. コミットメッセージを作成・実行
+
+WHY（6b）と WHAT（6a）からメッセージを作成し、`jj commit` で実行する:
+
+```bash
+jj commit -m "$(cat <<'EOF'
+feat(<scope>): <タイトル 50文字以内>
+
+<WHY — なぜこの変更が必要だったか、選んだアプローチの理由>
+
+<WHAT — 主要な変更内容（diff から自明でない点のみ）>
+
+🤖 Generated with [Claude Code](https://claude.ai/code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+EOF
+)"
+```
+
+### 6d. 確認
+
+```bash
+jj log --limit 2
+```
+
+## Step 7: Deploy
 
 ```bash
 bun run deploy

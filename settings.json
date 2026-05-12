@@ -53,8 +53,7 @@
       "Bash(jj show *)",
       "Bash(biome ci *)",
       "Bash(npx difit:*)",
-      "Bash(jq:*)",
-      "Bash(cd:*)"
+      "Bash(jq:*)"
     ],
     "deny": [
       "Read(**/.env)"

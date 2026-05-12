@@ -52,6 +52,17 @@
 - tool call の詳細ではなく結論だけ必要なら subagent に投げる（Agent ツール、`context: fork`）
 - `/rewind` 前に「summarize from here」を依頼して引き継ぎメモを生成する
 
+## Bash Commands
+
+Shell operator（`&&`、`||`、`;`、`|`）を含む複合コマンドは**パーミッションプロンプトが発生するため極力禁止**。
+
+- `cmd1 && cmd2`、`cmd1 || cmd2`、`cmd1 ; cmd2` は使わない
+- フォールバック（`cmd1 || cmd2 || cmd3`）も使わない — 正しいコマンドを1つ決めて実行する
+- `cd /path && cmd` の代替:
+  - `cmd -C /path` や `cmd --cwd /path` などのフラグ（ツールが対応している場合）
+  - `jj diff -R /path` のようにリポジトリ指定フラグを使う
+- パイプ（`|`）は `rg`、`jq` などの read-only フィルタに限り許容（ただし書き込みを伴う場合は禁止）
+
 ## Working Rules
 
 - コミット粒度: 適切な粒度で作業内容をコミット
