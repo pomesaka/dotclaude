@@ -36,6 +36,7 @@
       "Bash(cat ~/.claude/:*)",
       "Bash(cat:*)",
       "Bash(sed:*)",
+      "Bash(rg:*)",
       "Bash(grep:*)",
       "Bash(wc:*)",
       "Bash(head:*)",
@@ -52,7 +53,9 @@
       "Bash(jj file list *)",
       "Bash(bunx tsc *)",
       "Bash(jj show *)",
-      "Bash(biome ci *)"
+      "Bash(biome ci *)",
+      "Bash(npx difit:*)",
+      "Bash(jq:*)"
     ],
     "deny": [
       "Read(**/.env)"
