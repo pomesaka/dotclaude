@@ -46,16 +46,15 @@
       "Bash(gh project:*)",
       "Bash(bun run:*)",
       "Bash(python3 *)",
-      "Bash(bash ~/.claude/skills/check-best-practices/fetch.sh)",
-      "Bash(bash ~/.claude/skills/check-best-practices/env.sh)",
-      "Bash(bash ~/.claude/skills/review-team-common/setup.sh *)",
+      "Bash(bash ~/.claude/skills/*)",
       "Bash(jj file show *)",
       "Bash(jj file list *)",
       "Bash(bunx tsc *)",
       "Bash(jj show *)",
       "Bash(biome ci *)",
       "Bash(npx difit:*)",
-      "Bash(jq:*)"
+      "Bash(jq:*)",
+      "Bash(cd:*)"
     ],
     "deny": [
       "Read(**/.env)"
