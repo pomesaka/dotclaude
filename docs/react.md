@@ -60,6 +60,33 @@ Client Component でも同様に `useQuery` の `isLoading` で内部ローデ�
 - `any` 型の Props
 - インラインでの複雑なロジック（カスタムフックに抽出する）
 
+## Biome lint ルール（よく引っかかるパターン）
+
+### `noArrayIndexKey` — リスト要素に index key を使わない
+
+```tsx
+// NG: Biome が noArrayIndexKey で弾く
+items.map((item, i) => <div key={i} />)
+
+// OK: stable key を使う（id や複合フィールド）
+items.map((item) => <div key={item.id} />)
+items.map((item) => <div key={`${item.timestamp}-${item.speaker}`} />)
+```
+
+静的ダミーデータでも `key={index}` は lint エラーになる。実装時から stable key を使うこと。
+
+### `useSemanticElements` — `role` で代替できる要素は semantic 要素を使う
+
+```tsx
+// NG: Biome が useSemanticElements で弾く
+<div role="button" tabIndex={0} onKeyDown={...} onClick={...}>
+
+// OK: <button> を使う（Enter/Space は native で処理される）
+<button type="button" onClick={...}>
+```
+
+`<button>` に変更した場合、drag event ハンドラの型を `React.DragEvent<HTMLDivElement>` → `React.DragEvent<HTMLElement>` に変更が必要になることがある。
+
 ## ObjectURL のライフサイクル管理
 
 `URL.createObjectURL` で作った URL を React state で管理するとき、`useMemo` + `useEffect` の組み合わせは submit 後に URL を早期 revoke してしまう落とし穴がある。
@@ -177,3 +204,57 @@ const d = new Date(Number(yearStr), Number(monthStr) - 1, Number(dayStr));
 ```
 
 `aria-label` だけ付けたい場合も `role` は省略してよい。
+
+## a11y（アクセシビリティ）詳細
+
+### `aria-labelledby` は参照先 ID の存在を確認する
+
+`aria-labelledby="some-id"` を書く際は、`id="some-id"` を持つ要素が DOM 上に実在することを確認する。
+`SectionLabel` 等のコンポーネントが内部で `id` を付与しない場合は `aria-label` に変更する。
+
+```tsx
+// NG: SectionLabel が id="section-summary" を持たなければ labelledby が機能しない
+<section aria-labelledby="section-summary">
+  <SectionLabel title="サマリー" />
+
+// OK: aria-label で直接テキストを指定する
+<section aria-label="サマリー">
+  <SectionLabel title="サマリー" />
+```
+
+### `role="status"` には読み上げ可能テキストが必要
+
+`role="status"` は live region として機能するが、**テキストコンテンツがない**と支援技術が読み上げない。
+`aria-label` を `div` に付けるだけでは不十分なため、`<span className="sr-only">` でテキストを内包する。
+
+```tsx
+// NG: aria-label だけでは live region として読み上げられないことがある
+<div role="status" aria-label="処理中">
+  <Loader2 aria-hidden="true" />
+</div>
+
+// OK: sr-only テキストを内包して読み上げを保証する
+<div role="status">
+  <span className="sr-only">処理中</span>
+  <Loader2 aria-hidden="true" />
+</div>
+```
+
+### 視覚的に隠した `<input>` は支援技術からも隠す
+
+`sr-only` で視覚的に隠した `<input type="file">` が別の操作手段（ボタン）経由でのみ使われる場合、
+支援技術が重複要素を読み上げないよう `aria-hidden="true"` + `tabIndex={-1}` を付与する。
+
+```tsx
+// ボタン経由でのみ input をトリガーする設計の場合
+<button onClick={() => fileInputRef.current?.click()}>
+  ファイルを選択
+</button>
+<input
+  ref={fileInputRef}
+  type="file"
+  className="sr-only"
+  aria-hidden="true"
+  tabIndex={-1}
+/>
+```

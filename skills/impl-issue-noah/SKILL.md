@@ -85,6 +85,15 @@ issue ファイルの `status` を `done` に更新する。Devlog は Step 6 �
 
 空欄のまま残すセクションがあれば `（なし）` と書く。
 
+知見の書き先（`re` がドキュメントへ反映する際の判断基準）:
+
+| 知見の性質 | 反映先 |
+|---|---|
+| noah 固有の規約・禁止事項 | `CLAUDE.md` または `docs/apps/conventions.md` |
+| reviewer が複数 issue で同じ観点を指摘 | `docs/apps/conventions.md` に規約として明文化 |
+| TypeScript / React / Next.js の一般的なプラクティス | `~/.claude/docs/typescript.md` 等の言語ドキュメント |
+| reviewer スキルが見落としている観点 | `dotclaude/skills/review-team-noah/teammate-reviewer.md` |
+
 ## Gotchas
 
 - **Issue番号なしで起動**: `$ARGUMENTS` が空なら AskUserQuestion でユーザーに確認する
@@ -92,3 +101,4 @@ issue ファイルの `status` を `done` に更新する。Devlog は Step 6 �
 - **create-prの前にreview-team-noahを呼ぶ**: review-team-noahはupdate-prを呼ぶためPRが存在しないと失敗する。Step 3（create-pr）→ Step 4（review-team-noah）の順を守ること
 - **lint/typecheckコマンド**: `mise exec -- bun run lint` と `mise exec -- bun run typecheck`。直接 `bun` はPATHに入っていない場合があるため必ず `mise exec --` を前置する
 - **変更フィルタ**: `bun run lint` / `bun run typecheck` はモノレポルートで実行すれば全パッケージをチェックする。変更したパッケージのみ絞る場合は `mise exec -- bun --filter='@noah/xxx' lint` を使う
+- **bun install 未実施**: 実装前に `bun install` 済みかを確認する。`node_modules` がなければ lint/typecheck が依存解決エラーで全滅する。`ls node_modules 2>/dev/null | head -1` で確認し、空なら `mise exec -- bun install` を先に実行すること

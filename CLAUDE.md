@@ -2,6 +2,20 @@
 - Jujutsu (jj): Gitの代わりにjujutsuを使用
 - fd: findの代わりにfdコマンドを使用
 - rg (ripgrep): grepの代わりにrgを使用
+- portless: ローカル開発サーバーを `https://<appname>.localhost` で起動する（mise 管理: `npm:portless`）
+
+## ローカル開発サーバー
+
+フロントエンドの動作確認には `portless` を使う。`localhost:PORT` ではなく `https://<appname>.localhost` でアクセスできる。
+
+```bash
+# アプリディレクトリで実行（package.json の "dev" スクリプトを自動起動）
+cd apps/<appname>
+mise exec -- portless
+```
+
+- 初回実行時にローカル CA を生成・HTTPS 化（sudo で自動昇格）
+- jj ワークスペース（worktree）ではブランチ名がサブドメインに自動付与される
 
 ## Version Control (Jujutsu)
 

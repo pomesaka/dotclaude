@@ -14,6 +14,22 @@
   export function MyComponent() { ... }
   ```
 
+## import スタイル
+
+同じパッケージから value と type を両方 import する場合は、**inline type** でまとめる。
+
+```typescript
+// NG: 別行に分けると Biome の organizeImports で type import を先に並べ替えられ、
+//     その後 lint が「2行に分けるな」と弾くことがある
+import { Clock } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+
+// OK: inline type でまとめる
+import { Clock, type LucideIcon } from "lucide-react";
+```
+
+Biome は同パッケージの import をまとめることを要求する。`type` キーワードはインラインで付与できる。
+
 ## 禁止パターン
 
 - `as` キャスト: **原則禁止**。やむを得ず使う場合は必ず WHY コメントで妥当性を説明すること
@@ -130,3 +146,35 @@ const placeholderPattern = () => /\{\{([^}]+)\}\}/g;
 ```
 
 `replace()` は `lastIndex` をリセットするので定数でも問題ないが、`exec()` / `matchAll()` を使う場合は必ずファクトリ関数にする。
+
+## よくあるハマりパターン
+
+### `new Date("YYYY-MM-DD")` のタイムゾーン問題
+
+ISO 8601 日付文字列（時刻なし）を `new Date()` に渡すと **UTC 0時** として解釈される。
+JST（UTC+9）環境では前日になるため、ローカル時刻として扱いたい場合は時刻部分を付加する。
+
+```typescript
+// NG: "2026-05-15" → UTC 0時 → JST では 5月14日 15時 → 日付表示が1日ずれる
+const d = new Date("2026-05-15");
+
+// OK: "T00:00:00" を付与するとローカルタイムゾーン起点で解釈される
+const d = new Date("2026-05-15T00:00:00");
+```
+
+### `as const` 配列と Biome `useIndexOf` の競合
+
+`as const` で定義した配列を `indexOf` の引数に渡すと、literal union と上位型のミスマッチで型エラーが起きることがある。
+`findIndex` に変えると今度は Biome の `lint/complexity/useIndexOf` が警告する（単純な等値比較は `indexOf` を使えというルール）。型の制約から `findIndex` が必要な場合は `biome-ignore` で理由を明示する。
+
+```typescript
+// as const の配列
+const STEPS = ["a", "b", "c"] as const;
+
+// state の型は "a" | "b" | "c" | "other" など上位型の場合がある
+// → STEPS.indexOf(state) は型エラー（STEPS の要素型は "a"|"b"|"c" のみ）
+// → findIndex に変えると Biome が「indexOf を使え」と言う
+
+// biome-ignore lint/complexity/useIndexOf: indexOf が上位型との型不整合でコンパイルエラーになるため
+const idx = STEPS.findIndex((s) => s === state);
+```
