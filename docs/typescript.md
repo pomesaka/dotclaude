@@ -14,22 +14,6 @@
   export function MyComponent() { ... }
   ```
 
-## import スタイル
-
-同じパッケージから value と type を両方 import する場合は、**inline type** でまとめる。
-
-```typescript
-// NG: 別行に分けると Biome の organizeImports で type import を先に並べ替えられ、
-//     その後 lint が「2行に分けるな」と弾くことがある
-import { Clock } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
-
-// OK: inline type でまとめる
-import { Clock, type LucideIcon } from "lucide-react";
-```
-
-Biome は同パッケージの import をまとめることを要求する。`type` キーワードはインラインで付与できる。
-
 ## 禁止パターン
 
 - `as` キャスト: **原則禁止**。やむを得ず使う場合は必ず WHY コメントで妥当性を説明すること
@@ -58,6 +42,31 @@ Biome は同パッケージの import をまとめることを要求する。`ty
 - 判別可能ユニオンで boolean フラグを置き換える
 - `readonly` を積極的に使う（意図しない mutation を防ぐ）
 - 公開関数の戻り値型を明示する（型推論に頼らない）
+
+### `mode` フィールドがある型は discriminated union にする
+
+`inputMode`・`type`・`status` などのモードフィールドがある型で、モードによって持つフィールドが変わるなら optional ではなく discriminated union で表現する。
+
+```typescript
+// ❌ Bad: inputMode によって inputText が有効かどうか型で分からない
+type SummarizeHistoryItem = {
+  inputMode: "text" | "file";
+  inputText?: string;      // text のときのみ有効
+  fileType?: SummarizeFileType; // file のときのみ有効
+};
+
+// ✅ Good: inputMode でブランチし、各フィールドの有無を型で強制
+type SummarizeHistoryItem = {
+  id: string;
+  summary: string;
+} & (
+  | { inputMode: "text"; inputText: string }
+  | { inputMode: "file"; fileType?: SummarizeFileType }
+);
+
+// 利用側: 型の絞り込みが必要
+item.inputMode === "file" ? item.fileType : undefined
+```
 
 ## 依存性注入: カリー化ファクトリパターン
 
@@ -133,6 +142,22 @@ await mailer.send(input);
 - ファイル名: ケバブケース（`user-service.ts`）。Reactコンポーネントのみ PascalCase
 - boolean には `is` / `has` / `can` / `should` prefix
 
+## `Object.keys()` と union 型のキャスト
+
+`Object.keys(x)` は常に `string[]` を返す。`keyof typeof x` の union に絞るために `as` キャストを使いたくなるが、`as` は禁止。
+
+**代替: 静的なキー列挙が分かっている場合はリテラル配列で管理する**
+
+```ts
+// NG: as キャスト
+const keys = Object.keys(CATEGORY_LABELS) as TemplateCategory[];
+
+// OK: 型付きリテラル配列（TypeScript がリテラル値を検証する）
+const keys: TemplateCategory[] = ["運送", "請求", "社内連絡"];
+```
+
+**トレードオフ**: 新しいキーを追加した際にリテラル配列も更新する必要がある（WHY コメントで注記推奨）。表示順の明示制御も兼ねるため、カテゴリ表示順が重要な UI では積極的に採用してよい。
+
 ## `g` フラグ付き RegExp をモジュール定数にしない
 
 `/pattern/g` を `const` でモジュールスコープに置くと、`exec()` や `match()` が `lastIndex` を書き換えるため、2回目以降の呼び出しで結果がずれる。
@@ -147,34 +172,81 @@ const placeholderPattern = () => /\{\{([^}]+)\}\}/g;
 
 `replace()` は `lastIndex` をリセットするので定数でも問題ないが、`exec()` / `matchAll()` を使う場合は必ずファクトリ関数にする。
 
-## よくあるハマりパターン
+## Biome `organizeImports`: `type` は値の前に置く
 
-### `new Date("YYYY-MM-DD")` のタイムゾーン問題
+Biome の `organizeImports` ルールは、同一モジュールからの `type` インポート/エクスポートを値インポート/エクスポートの**前**に並べることを要求する。
 
-ISO 8601 日付文字列（時刻なし）を `new Date()` に渡すと **UTC 0時** として解釈される。
-JST（UTC+9）環境では前日になるため、ローカル時刻として扱いたい場合は時刻部分を付加する。
+```ts
+// ❌ Biome エラー
+export { Foo } from "./foo";
+export type { FooProps } from "./foo";
 
-```typescript
-// NG: "2026-05-15" → UTC 0時 → JST では 5月14日 15時 → 日付表示が1日ずれる
-const d = new Date("2026-05-15");
+import { bar } from "./bar";
+import type { BarType } from "./bar";
 
-// OK: "T00:00:00" を付与するとローカルタイムゾーン起点で解釈される
-const d = new Date("2026-05-15T00:00:00");
+// ✅ OK
+export type { FooProps } from "./foo";
+export { Foo } from "./foo";
+
+import type { BarType } from "./bar";
+import { bar } from "./bar";
 ```
 
-### `as const` 配列と Biome `useIndexOf` の競合
+`biome check --write` で自動修正できる。手動修正する場合は `type` を先頭に移動する。
 
-`as const` で定義した配列を `indexOf` の引数に渡すと、literal union と上位型のミスマッチで型エラーが起きることがある。
-`findIndex` に変えると今度は Biome の `lint/complexity/useIndexOf` が警告する（単純な等値比較は `indexOf` を使えというルール）。型の制約から `findIndex` が必要な場合は `biome-ignore` で理由を明示する。
+### 相対 import はパッケージ import の後に置く
 
-```typescript
-// as const の配列
-const STEPS = ["a", "b", "c"] as const;
+Biome の `organizeImports` はパッケージ import（`@xxx/`, `npm` パッケージ）を相対 import（`../`, `./`）の**前**に並べることを要求する。
 
-// state の型は "a" | "b" | "c" | "other" など上位型の場合がある
-// → STEPS.indexOf(state) は型エラー（STEPS の要素型は "a"|"b"|"c" のみ）
-// → findIndex に変えると Biome が「indexOf を使え」と言う
+```ts
+// ❌ Biome エラー（相対が先）
+import type { Foo } from "../types";
+import { bar } from "@pkg/bar";
 
-// biome-ignore lint/complexity/useIndexOf: indexOf が上位型との型不整合でコンパイルエラーになるため
-const idx = STEPS.findIndex((s) => s === state);
+// ✅ OK（パッケージ → 相対の順）
+import { bar } from "@pkg/bar";
+import type { Foo } from "../types";
+```
+
+`biome check --write` で自動修正できる。
+
+## discriminated union の dead code は型エラーにならない
+
+discriminated union のブランチ内で保証されるフィールドに `??` フォールバックを書いても、TypeScript は何も言わない。
+
+```ts
+type Item =
+  | { inputMode: "text"; inputText: string }
+  | { inputMode: "file" };
+
+function handle(item: Item) {
+  if (item.inputMode === "text") {
+    // inputText は string が保証されている
+    // NG: フォールバックは dead code だが型エラーにならない
+    setInput(item.inputText ?? item.sourceName);
+    // OK
+    setInput(item.inputText);
+  }
+}
+```
+
+discriminated union ブランチ内に `??` や `||` フォールバックがあったら、それが意図的かを確認する。多くの場合は型を絞り込む前の名残（または型変更後の修正漏れ）。
+
+## `satisfies T[]` は `.reduce()` コールバックの型を絞り込まない
+
+`satisfies T[]` はリテラル型を保持するが、`Array.prototype.reduce()` のコールバックパラメータ `t` の型は配列要素型として推論される。ベース型 `T.field: string` が広い場合、コールバック内で `t.field` が `string` のまま残り、`Partial<Record<LiteralUnion, V>>` へのインデックスアクセスで TS7053 エラーになる。
+
+```ts
+// NG: satisfies では絞り込まれない
+const ITEMS = [{ category: "A" }, { category: "B" }] satisfies Base[];
+ITEMS.reduce<Partial<Record<"A" | "B", Base[]>>>((acc, t) => {
+  acc[t.category] = []; // TS7053: 'string' can't index Partial<Record<"A"|"B",…>>
+}, {});
+
+// OK: 交差型で明示アノテーション
+type NarrowItem = Base & { category: "A" | "B" };
+const ITEMS: NarrowItem[] = [{ category: "A" }, { category: "B" }];
+ITEMS.reduce<Partial<Record<"A" | "B", NarrowItem[]>>>((acc, t) => {
+  acc[t.category] = []; // OK: t.category は "A" | "B"
+}, {});
 ```

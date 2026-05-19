@@ -111,3 +111,7 @@ EOF
 )")
 echo "$PR_URL"
 ```
+
+## Gotchas
+
+- **push を飛ばして `gh pr edit` を先に実行するミス**: ステップ6の `jj git push` をスキップしてステップ7の PR 更新を先に実行してしまうことがある。PR の URL が返ってきた時点でコードが push されておらず、ユーザーが気づくまで分からない。対処: PR 更新コマンドを実行する前に必ず `jj bookmark list` で `@origin` との差分（`ahead by N commits`）がないことを確認すること。

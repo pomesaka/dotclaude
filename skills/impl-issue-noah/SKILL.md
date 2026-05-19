@@ -102,3 +102,4 @@ issue ファイルの `status` を `done` に更新する。Devlog は Step 6 �
 - **lint/typecheckコマンド**: `mise exec -- bun run lint` と `mise exec -- bun run typecheck`。直接 `bun` はPATHに入っていない場合があるため必ず `mise exec --` を前置する
 - **変更フィルタ**: `bun run lint` / `bun run typecheck` はモノレポルートで実行すれば全パッケージをチェックする。変更したパッケージのみ絞る場合は `mise exec -- bun --filter='@noah/xxx' lint` を使う
 - **bun install 未実施**: 実装前に `bun install` 済みかを確認する。`node_modules` がなければ lint/typecheck が依存解決エラーで全滅する。`ls node_modules 2>/dev/null | head -1` で確認し、空なら `mise exec -- bun install` を先に実行すること
+- **deps 削除は既存コードへの影響を確認**: サブエージェントが「新機能では使っていない」と判断して deps を削除することがある。削除前に `rg 'package-name'` で他ファイルへの import がないかを確認させること。CI でしか気づけず PR を汚す

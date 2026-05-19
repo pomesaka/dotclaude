@@ -342,7 +342,9 @@ const svc = new AppService("api", { vpcId, subnetIds, image, port: 8080 }, { pro
 export const vpcId = vpc.vpcId;
 
 // app スタックから参照
-const infraStack = new pulumi.StackReference("myorg/infra/production");
+// S3 バックエンド: organization/<project>/<stack>（org は常にリテラル "organization"）
+// Pulumi Cloud:   <your-org>/<project>/<stack>
+const infraStack = new pulumi.StackReference("organization/infra/production");
 const vpcId = infraStack.requireOutput("vpcId");
 ```
 
@@ -423,67 +425,97 @@ noah/
 
 ## 10. GitHub Actions CI/CD
 
-```yaml
-# .github/workflows/preview.yml
-name: Pulumi Preview
-on:
-  pull_request:
-    paths: ["infra/**"]
+### S3 バックエンド + IAM ユーザーキー方式
 
-jobs:
-  preview:
-    runs-on: ubuntu-latest
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}
-      cancel-in-progress: true
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
-      - run: npm ci
-        working-directory: infra/shared
-      - uses: pulumi/actions@v6
-        with:
-          command: preview
-          stack-name: accel-hack/noah-infra/dev
-          work-dir: infra/shared
-          comment-on-pr: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          refresh: true   # 実行前に state を同期
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          AWS_ACCESS_KEY_ID:   ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-```
+`cloud-url` で S3 バックエンドを指定する場合、`PULUMI_ACCESS_TOKEN` は不要。ただし未設定だと対話プロンプトが出るため空文字で明示する。
 
 ```yaml
-# .github/workflows/deploy.yml
-name: Pulumi Deploy
+# .github/workflows/infra-deploy.yml
+name: Infra Deploy
 on:
   push:
     branches: [main]
     paths: ["infra/**"]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false  # deploy は途中キャンセル禁止
+
+env:
+  AWS_REGION: ap-northeast-1
+  PULUMI_CONFIG_PASSPHRASE: ""   # S3 backend では不要（未設定で対話プロンプトが出るため空文字）
+  PULUMI_ACCESS_TOKEN: ""        # S3 backend + cloud-url では不要（同上）
+
 jobs:
+  # StackReference 依存順: registry → shared → ms-holdings
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
-      - run: npm ci
-        working-directory: infra/shared
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          # configure 後は AWS_REGION 環境変数が自動セットされるため Pulumi env: に再渡しは不要
       - uses: pulumi/actions@v6
         with:
           command: up
-          stack-name: accel-hack/noah-infra/prod
+          stack-name: organization/noah-infra/dev
           work-dir: infra/shared
-          upsert: false   # 本番は自動作成しない
-        env:
-          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-          AWS_ACCESS_KEY_ID:   ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          upsert: false
+          refresh: true         # deploy でも ドリフト検知のため refresh: true を推奨
+          cloud-url: ${{ secrets.PULUMI_BACKEND_URL }}
 ```
+
+```yaml
+# .github/workflows/infra-preview.yml
+name: Infra Preview
+on:
+  pull_request:
+    paths: ["infra/**"]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true  # preview は古いものをキャンセルしてよい
+
+env:
+  AWS_REGION: ap-northeast-1
+  PULUMI_CONFIG_PASSPHRASE: ""
+  PULUMI_ACCESS_TOKEN: ""
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write   # comment-on-pr: true に必要
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: pulumi/actions@v6
+        with:
+          command: preview
+          stack-name: organization/noah-infra/dev
+          work-dir: infra/shared
+          comment-on-pr: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          refresh: true
+          cloud-url: ${{ secrets.PULUMI_BACKEND_URL }}
+```
+
+### 複数スタック構成での注意点
+
+- **preview job の順序は deploy と揃える**: StackReference 依存がある場合、preview も deploy と同じ `needs` チェーンで直列化する。並列にすると参照先スタックの state が古い状態でプレビューされる
+- **`comment-on-pr: true` は `pull-requests: write` 権限が必要**: job の `permissions:` に明示しないと GITHUB_TOKEN が PR コメントを書けずにエラーになる
 
 ---
 
@@ -564,3 +596,19 @@ pulumi config get key
 - **Pulumi.prod.yaml は必須**: `pulumi stack init prod` 後に設定ファイルを忘れがち。`Pulumi.dev.yaml` を作ったら `Pulumi.prod.yaml` も同時に作る
 - **ECR lifecycle policy を忘れるとコスト増**: untagged イメージが蓄積してコストが増える。`aws.ecr.LifecyclePolicy` で `sinceImagePushed: 7 days` のルールを必ずセットで定義する
 - **`pulumi up` 実行前は必ず NatGateway 数を確認**: `pulumi preview` の出力で `aws:ec2:NatGateway` が出たら意図した構成かチェックする（dev で Single にしていないか）
+- **`requireOutput()` の `as` キャストは Pulumi infra コードでは避けられない**: `requireOutput()` は `Output<any>` を返すため、型アノテーション方式（`const x: pulumi.Output<string> = requireOutput(...)`）はコンパイルエラーになる。`as pulumi.Output<string>` のキャストが唯一の実用的な型付け方法。CLAUDE.md の「as 禁止」ルールは TypeScript app コードのルールであり、Pulumi infra コードには適用しない
+- **LifecyclePolicy への `protect: true` は変更不能リスクがある**: `protect: true` を付けると `pulumi up` でポリシー内容の変更が拒否される。変更が必要な場合は `pulumi state unprotect <urn>` で保護を解除してから実施する
+- **env 非依存スタックは `Pulumi.main.yaml` を忘れない**: スタック名が `main`（env なし）の場合、`Pulumi.main.yaml` がないと別環境での `pulumi up` 再現ができない。`Pulumi.dev.yaml` / `Pulumi.prod.yaml` を作るのと同様に `Pulumi.main.yaml` も必ず commit する
+- **ECR の暗号化設定は `encryptionConfigurations`（配列）**: `aws.ecr.Repository` のプロパティ名は `encryptionConfiguration`（単数）ではなく `encryptionConfigurations: [{ encryptionType: "AES256" }]`（配列）が正しい。単数形だとコンパイルエラーになる
+- **env 非依存スタック（registry）の defaultTags `Environment` は `"shared"` で統一**: dev/prod の env を持たないスタックの defaultTags では `Environment: "shared"` を使う（全リソースに Environment タグが必要というルールとの整合のため）
+- **`ecs:DescribeServices` は IAM リソースレベル権限非対応**: IAM ポリシーで `"Resource": "arn:aws:ecs:*:*:service/..."` を指定すると `DescribeServices` が拒否される。この API は account-level にしか適用できないため `"Resource": "*"` 必須。`UpdateService` は ARN 絞り込み可能なので別 Statement に分離する
+- **ECR の `GetAuthorizationToken` も `Resource: "*"` 必須**: ECR 認証トークン取得は account-level API のため ARN 指定不可。リポジトリ操作（`PutImage` 等）は `arn:aws:ecr:*:*:repository/<name>` で絞れるので別 Statement に分離する
+- **ECR レジストリ URL のハードコード禁止**: `docker build-push-action` の `tags` に AWS アカウント ID を直接書かない。`amazon-ecr-login@v2` の outputs を使う: `${{ steps.login-ecr.outputs.registry }}/<repo>:<tag>`
+- **reusable workflow で `comment-on-pr` を使う場合は caller 側にも `pull-requests: write` が必要**: `_pulumi-preview.yml` 内で `permissions: pull-requests: write` を宣言しても、呼び出し側 workflow（`infra-preview.yml`）にワークフローレベルの `permissions:` ブロックがないとリポジトリのデフォルト権限に依存してしまい、PR コメントが書けない場合がある。caller 側にも `permissions: pull-requests: write` を明示すること
+- **Pulumi が IAM ロールを作成する場合は `PassRole` だけでは不十分**: ECS タスクロール・実行ロールを Pulumi が定義すると、`iam:CreateRole`・`iam:DeleteRole`・`iam:GetRole`・`iam:AttachRolePolicy`・`iam:DetachRolePolicy`・`iam:TagRole` 等が必要。`IAMPassRole` ステートメントと同じ `arn:aws:iam::<ACCOUNT_ID>:role/<prefix>-*` スコープで `IAMRoleManagement` ステートメントを別途追加する
+- **StackReference 依存のない Pulumi スタックは並列実行できる**: Pulumi の state lock はスタックごとに独立している（S3 state の場合はキーが別）。`registry` と `shared` のように互いに依存しないスタックは GitHub Actions の `needs:` を付けずに並列実行可能。`StackReference` で依存するスタックだけを `needs: [registry, shared]` で直列化する
+- **IAM ポリシーの冗長性修正は「広い方を残す」**: `PulumiInfraAccess` に `ecs:*` がある場合、`ECSUpdate`（`ecs:UpdateService`）は冗長。修正の方向は「`ecs:*` を削除して Pulumi が壊れる」ではなく「`ECSUpdate`/`ECSDescribe` の個別ステートメントを削除する」が正しい。ただし `ecr:*` を `PulumiInfraAccess` に入れると `ECRRepoAccess`（リポジトリ ARN スコープ）と重複してセキュリティ上不要に権限が広がるため、ECR は `PulumiInfraAccess` から除外し `ECRAuth`・`ECRRepoAccess` の専用ステートメントに委ねる
+- **マルチクライアント monorepo の app deploy は `apps/<client>/**` でクライアントごとに分ける**: `apps/**` のグローバルトリガー 1 本にすると、クライアントが増えたとき全クライアントのデプロイが混在する。クライアント固有 `app-deploy-<client>.yml`（`apps/<client>/**` トリガー）+ `_app-deploy.yml`（reusable: `ecr-repository`・`dockerfile`・`stack-name`・`work-dir` を入力）の構成が scalable。infra の `_pulumi-deploy.yml` + `infra-deploy.yml` と同じ設計パターン
+- **ECS Fargate は AMD64（x86_64）がデフォルト。QEMU は ARM64 専用**: `docker/build-push-action` で `platforms: linux/arm64` を指定するときだけ `docker/setup-qemu-action` が必要。ECS Fargate の `cpuArchitecture` デフォルトは `X86_64` なので、明示的に ARM64 コンテナを使う設計でない限り `platforms: linux/amd64` と QEMU なしが正しい。Pulumi 側の `AlbEcsService` で `cpuArchitecture: "ARM64"` を指定した場合のみワークフロー側も ARM64 に合わせる
+- **paths-filter でスタックごとに実行を絞る場合は `always()` + 明示的 result チェックが必要**: `dorny/paths-filter` で変化スタックを検出し `if: needs.detect.outputs.X == 'true'` でジョブをスキップすると、`needs: [detect, A, B]` を持つ後続ジョブが A/B のスキップに引きずられてデフォルトスキップされる。対処: `if: always() && needs.detect.result == 'success' && (needs.A.result == 'success' || needs.A.result == 'skipped') && (needs.B.result == 'success' || needs.B.result == 'skipped') && <実行条件>` で依存ジョブのスキップを明示的に許容する。StackReference 依存スタックをパスフィルタで選択的実行するときに頻出するパターン
+- **ECS イメージ更新は `aws ecs update-service` ではなく `pulumi up + config-map: imageTag` で統一する**: `aws ecs update-service --force-new-deployment` はECSクラスター・サービス名のハードコードが必要で、インフラ（Pulumi）とアプリ（aws CLI）で2つのデプロイ機構が分裂する。Pulumi の TypeScript コードで `config.get("imageTag") ?? "latest"` としておき、CI では `pulumi/actions@v6` の `config-map: imageTag: value: ${{ github.sha }}` でインライン渡しすれば、ECS タスク定義更新・ローリングアップデート・安定待機をすべて Pulumi が担う。ECS リソース名のハードコード不要・初回と以降が同一メカニズムになる利点がある
