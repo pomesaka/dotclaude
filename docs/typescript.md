@@ -116,3 +116,17 @@ await mailer.send(input);
 - 関数・変数・カスタムフック: camelCase（フックは `use` prefix）
 - ファイル名: ケバブケース（`user-service.ts`）。Reactコンポーネントのみ PascalCase
 - boolean には `is` / `has` / `can` / `should` prefix
+
+## `g` フラグ付き RegExp をモジュール定数にしない
+
+`/pattern/g` を `const` でモジュールスコープに置くと、`exec()` や `match()` が `lastIndex` を書き換えるため、2回目以降の呼び出しで結果がずれる。
+
+```ts
+// NG: lastIndex が呼び出し間で汚染される
+const PLACEHOLDER_RE = /\{\{([^}]+)\}\}/g;
+
+// OK: 毎回新しい RegExp インスタンスを返すファクトリ
+const placeholderPattern = () => /\{\{([^}]+)\}\}/g;
+```
+
+`replace()` は `lastIndex` をリセットするので定数でも問題ないが、`exec()` / `matchAll()` を使う場合は必ずファクトリ関数にする。

@@ -3,7 +3,7 @@ name: impl-issue-noah
 description: GitHub IssueをNoah実装フローで実装してPRを作成する。
 when_to_use: 「issueを実装して」「#123を実装して」「このissueをやって」と言われたとき。
 argument-hint: "<issue-number>"
-allowed-tools: Bash(gh *), Read, Grep, Glob
+allowed-tools: Bash(gh *), Bash(jj *), Bash(mise *), Read, Edit, Write, Grep, Glob
 model: sonnet
 ---
 
@@ -64,7 +64,26 @@ PRのタイトル・本文に `closes #<issue番号>` を含めるよう指示�
 
 ## Step 5: issue を done にする
 
-レビューループ完了後、issue ファイルの `status` を `done` に更新する。
+issue ファイルの `status` を `done` に更新する。Devlog は Step 6 の `re` が書く。
+
+## Step 6: 振り返り（Devlog 込み）
+
+`re` スキルを呼び出す（Skill ツール使用）。
+
+**このプロジェクトでは `re` が Devlog も書く**。`re` 実行時に以下を伝える:
+- 対象 issue ファイルのパス（`issues/NNN-*.md`）
+- Devlog の各セクションを会話ヒストリーから埋めること
+
+`re` が Devlog を書く際の各セクション:
+
+| セクション | 書く内容 |
+|---|---|
+| `### 実装内容` | 何を実装したか（変更ファイル・追加した型・関数の概要） |
+| `### 設計判断` | なぜそのアプローチを選んだか。却下した代替案があれば理由も |
+| `### レビューで指摘・修正した点` | レビューループで修正した非 Nit 指摘の一覧 |
+| `### 困ったこと・ハマったこと` | 詰まった箇所と解決のきっかけ |
+
+空欄のまま残すセクションがあれば `（なし）` と書く。
 
 ## Gotchas
 

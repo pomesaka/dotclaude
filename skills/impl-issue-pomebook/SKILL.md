@@ -3,6 +3,7 @@ name: impl-issue-pomebook
 description: pomebook の issue を実装フローで実装して jjcommit + deploy まで行う。
 when_to_use: 「issueを実装して」「#123を実装して」「このissueをやって」と言われたとき。
 argument-hint: "<issue-number>"
+allowed-tools: Bash(jj *), Bash(bun *), Read, Edit, Write, Grep, Glob
 model: sonnet
 ---
 
@@ -15,10 +16,10 @@ model: sonnet
 ## Step 0: Issue 確認
 
 ```bash
-cat issues/<番号>.md
+ls issues/<番号>-*.md
 ```
 
-内容を把握する。特に以下を確認:
+該当ファイルを Read で読んで内容を把握する。特に以下を確認:
 - 実装すべき機能・修正内容の詳細
 - UI への変更が含まれるか
 - 依存する issue（`depends:` フィールド）が未完了でないか
@@ -117,7 +118,11 @@ jj log --limit 2
 bun run deploy
 ```
 
-デプロイ完了を確認して終了。
+デプロイ完了を確認する。
+
+## Step 8: 振り返り
+
+`re` スキルを呼び出す（Skill ツール使用）。
 
 ## Gotchas
 
@@ -125,3 +130,5 @@ bun run deploy
 - **depends が未完了**: 依存 issue が open/in-progress なら実装前にユーザーに確認する
 - **worker-pomebook が jj を使う**: jj コマンドを使わないよう明示すること（ファイル編集のみ）
 - **lint が通らない実装**: サブエージェントが lint を確認せずに終了することがある。返答に lint 結果が明示されていない場合は Coordinator が自分で lint を実行して確認する
+- **docs ファイルに触るとき隣接する stale 参照も直す**: 今回の変更で触らなかった行でも、同一ファイル内に旧パス・削除済みファイル名・古い閾値が残っているとレビューで指摘される。docs ファイルを編集するときは周辺も目視確認し、stale な記述を一緒に修正する。放置すると review ラウンドが積み重なる
+- **package.json exports を追加したら docs 全体でパスを確認**: `CLAUDE.md`（サブパス一覧）、`docs/00-glossary.md`（型の参照パス）、`docs/architecture.md` を合わせて確認する（CLAUDE.md の変更→ドキュメント更新マッピングにも追記済み）

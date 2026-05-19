@@ -2,9 +2,8 @@
 name: update-pr
 description: 既存 PR にコードを push してタイトル・ボディを更新する。
 when_to_use: 「PR を更新して」「PRの説明を直して」「変更を push して PR を更新して」と言われたとき。新規 PR 作成は create-pr を使う。
-disable-model-invocation: false
 argument-hint: "[PR番号]"
-allowed-tools: Bash(jj *), Bash(gh *), Bash(bun *), Read, Glob
+allowed-tools: Bash(jj *), Bash(gh *), Bash(mise *), Read, Glob
 model: haiku
 ---
 
@@ -44,7 +43,21 @@ jj log -r '<bookmark名>@origin..@'
 - **設計判断の理由**: なぜこのアプローチか、却下した代替案とその理由
 - **今回の更新で変わった点**: 前回PRからの追加・修正内容
 
-### 4. プッシュ
+### 4. 振り返り
+
+`re` スキルを呼び出す（Skill ツール使用）。
+push 前に呼ぶことで、まだ記憶が新鮮な状態で学びを記録できる。
+
+### 5. 動作検証
+
+PR更新前に変更の正しさを確認する。検証コマンドはプロジェクトの `CLAUDE.md` や `package.json` を参照して判断する。
+失敗した場合はプッシュ前に修正すること。
+
+- ビルド・型チェック
+- Linter/Formatter
+- 必要に応じてテスト
+
+### 6. プッシュ
 
 既存ブックマークの更新なので `--bookmark` で明示的に指定する。
 
@@ -52,18 +65,7 @@ jj log -r '<bookmark名>@origin..@'
 jj git push --bookmark <bookmark名>
 ```
 
-### 5. 動作検証
-
-PR更新前に変更の正しさを確認する:
-
-- ビルド・型チェック
-- Linter/Formatter
-- 必要に応じてテスト
-
-検証コマンドはプロジェクトの `CLAUDE.md` や `package.json` を参照して判断する。
-失敗した場合はPR更新前に修正すること。
-
-### 6. PR更新
+### 7. PR更新
 
 既存のPRタイトル・ボディを最新の変更内容に合わせて更新する。
 ボディは create-pr と同じフォーマットで全体を書き直す。
@@ -78,7 +80,6 @@ PRボディの「動作検証」セクションには、レビュアーが**手�
 - **動作確認**: ステップバイステップで「何をしたら何が起きるか」
 - **確認ポイント**: 正常系・エラー系で何を確認すべきか
 
-```bash
 **`gh pr edit` は更新後のPR URLを stdout に出力する。これをユーザーに提示する。**
 
 ```bash

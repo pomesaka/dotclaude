@@ -53,3 +53,6 @@ PRが存在しない場合はここで完了。
 ## Gotchas
 
 - **コンフリクト後の squash**: `jj squash` で resolution commit をコンフリクト commit に統合する。その後 `jj log` で確認。
+- **`@` で直接コンフリクトを解消した場合は squash 不要**: コンフリクトファイルを `@` で直接編集した場合、`jj squash` は「into parent = immutable main」に向かってしまい失敗する。正しくは `jj new <conflict-rev>` → 編集 → `jj squash` の順。ただし `@` 直接編集でも working copy commit として反映されるため、そのまま `jj git push` で問題ない。
+- **rebase 後は `bun install` を実行する**: main に新しい依存が追加されていると `typecheck` が `Cannot find module` で失敗する。rebase の直後に `mise exec -- bun install` を実行してから lint/typecheck に進む。
+- **`.next/` が biome の対象に入ると lint が大量エラーになる**: Next.js dev server 起動後に生成される `.next/` ディレクトリが biome に拾われて数万件のエラーになる場合がある。lint 前に `rm -rf apps/*/.next` で削除してから実行すること。
