@@ -124,3 +124,7 @@ ECS タスク定義更新・ローリングアップデート・安定待機を 
 - **`comment-on-pr: true` + reusable workflow**: callee 内の `permissions: pull-requests: write` だけでは不十分。caller 側 workflow にも同じ permission を明示する
 - **ECS Fargate のアーキテクチャ**: デフォルトは `X86_64`。`docker/setup-qemu-action` は ARM64 ビルド専用。明示的に ARM64 を使う場合のみ Pulumi の `cpuArchitecture: "ARM64"` とワークフローの `platforms: linux/arm64` を合わせる
 - **ECR レジストリ URL**: `amazon-ecr-login@v2` の `${{ steps.login-ecr.outputs.registry }}/<repo>:<tag>` を使う。AWS アカウント ID のハードコード禁止
+- **bootstrap の `upsert: false` + `|| true` はデッドロック**: `pulumi stack init ... || true` でエラーを隠蔽した後に `upsert: false` で `pulumi up` を実行すると、init が実際に失敗していた場合「スタックが存在しない」エラーで up も失敗する。bootstrap ワークフロー専用に `upsert: true` を使うことで、init が失敗しても up 時にスタックを作成できる
+  <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
+- **GitOps: prod スタックは必ず `infra-deploy.yml` の matrix に含める**: prod を matrix から外すと、ユーザーが `Pulumi.prod.yaml` の imageTag を PR で更新してマージしても `infra-deploy.yml` が prod に対して何もしない。「prod へのデプロイをユーザーが制御する」とは「Pulumi.prod.yaml の変更を PR で承認する」ことであり、CI 側の matrix には prod を含めておく
+  <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->

@@ -1,11 +1,15 @@
 # Next.js レビュー観点
 
+> **TL;DR**: `<Suspense>` の直接の子が CC なら fallback は永遠に発火しない（dead Suspense）。async SC を子に置く SC Fetcher パターンで解決する。`useQuery(initialData)` は即 success だが、SC Fetcher の await 中に Suspense が発火するので dead にならない。Skeleton は動的コンテンツだけが対象（タイトル・機能コード・説明文は実テキスト表示）。SC から CC へ関数 props を渡すには `"use client"` ClientWrapper を挟む。
+
 React の観点に加え、以下の観点でレビューする。
 
 ## App Router
 
 - `page.tsx` はサーバーコンポーネントを基本とする。クライアント側の処理は子コンポーネントに分離する
 - `"use client"` の適用範囲を最小限にする（ツリーの末端に近いコンポーネントのみ）
+- **`useState` 等の React hooks を使うファイルは必ず `"use client"` を明示する**: CC のインポートチェーン内にあっても省略できない。CC ツリー内で動作するため実害が出ないケースがあるが、Biome や React の lint ルールが検知できず、後から `import` 順が変わった際に壊れる。hooks を使うコンポーネントファイルは常に先頭に `"use client";` を書く。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
 - URLパラメータ・クエリパラメータの処理は `page.tsx` で行い、コンテンツコンポーネントに props で渡す
 
 ## データフェッチ
@@ -17,6 +21,27 @@ React の観点に加え、以下の観点でレビューする。
 
 - フォームの mutation は Server Actions を使う
 - Server Actions のバリデーションは conform で行う
+- **`useFormStatus()` は form の子コンポーネントに置く**: 同じコンポーネント内の `<form>` の pending を `useFormStatus()` で読もうとしても、常に `{ pending: false }` が返る。送信ボタンを別コンポーネントに切り出すことで正しく動作する。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
+  ```tsx
+  // ❌ form と同一コンポーネントで使う → pending が取れない
+  function MyForm() {
+    const { pending } = useFormStatus(); // 常に false
+    return <form action={...}><button disabled={pending}>送信</button></form>;
+  }
+  // ✅ 子コンポーネントに切り出す
+  function SubmitButton() {
+    const { pending } = useFormStatus(); // 正しく動く
+    return <button type="submit" disabled={pending}>送信</button>;
+  }
+  function MyForm() {
+    return <form action={...}><SubmitButton /></form>;
+  }
+  ```
+- **Server Action を `action` prop として受け取る features View のラッパーは SC のままで良い**: Client Component に関数を渡すと通常 ClientWrapper が必要になるが、Server Action（`"use server"` 関数）はシリアライズ可能なため SC から CC へ直接渡せる。`"use client"` は features の View 自体に付けるだけで足りる。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+- **コンポーネントライブラリの境界にはドメイン型を使う（transport 型を露出しない）**: `packages/features` の View が Server Action を props として受け取る場合、`(formData: FormData) => void` ではなく `(templateId: string, values: Record<string, string>) => void` のように **ドメイン型のシグネチャ** にする。FormData のパースは View 内部で完結させ、呼び出し側が `_templateId` のような内部キー名を知る必要をなくす。Server Action は JS から呼ぶ場合に任意の引数型を使えるため、FormData に縛られる必要はない。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
 
 ## ルーティング規約
 
@@ -95,6 +120,8 @@ export default function Page() {
 - **loading.tsx で部分ローディングを実現しようとする**: ルート全体がブロックされる
 - **Skeleton を省略する**: データが来るまで空白のままになり、ユーザーが壊れていると思う
 - **`isFetching` で Skeleton を表示する**: キャッシュのあるデータを消してちらつきが起きる
+- **Suspense 境界が CC 全体を包みすぎる**: CC 内部にタブバー・ページヘッダー等の静的要素がある場合、その CC ごと `<Suspense>` で包むと静的要素までスケルトン化される。Suspense はデータ依存部分だけを内側で囲み、静的要素は Suspense 外に置く。Skeleton は形状が正しくても境界が高すぎると別物が skeleton 化される。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
 
 ## SC → ClientWrapper → FeatureView パターン
 
@@ -125,6 +152,13 @@ export function SomeClientWrapper({ data }) {
 ```
 
 **なぜ直接渡せないか**: SC はサーバーサイドで実行されるため、関数（クロージャ）をシリアライズして CC のツリーに渡すことができない。関数プロップを必要とする CC 境界は必ず app 層の "use client" Wrapper に持たせる。
+
+## Gotchas
+
+- **`useQuery + initialData` を渡すと Suspense が永遠に発火しない（ただし SC Fetcher パターンは例外）**: `initialData` を渡すとクエリは即 `success` 状態になる。CC を直接 `<Suspense>` で包んでいる場合、CC は絶対に suspend しないため fallback は表示されない（"dead Suspense"）。**例外**: async SC Fetcher が Suspense の内側にある場合、SC の await 中は Suspense が発火する。CC が `useSuspenseQuery(initialData)` を持っていても、SC の await 完了後に CC は即 success になるだけで dead Suspense にはならない。判断基準: Suspense の直接の子が SC か CC か。SC なら有効、CC なら dead。
+  <!-- importance: high | mentions: 3 | first-seen: 2026-05 -->
+- **`router.refresh()` は CC の state（useState 等）を保持する**: SC データを再取得するがクライアントツリーはアンマウントされない。「refresh したら state がリセットされる」という誤解が生じやすい。Next.js 公式: "The client will merge the updated RSC payload without losing unaffected client-side React state."
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
 
 ## 禁止パターン
 

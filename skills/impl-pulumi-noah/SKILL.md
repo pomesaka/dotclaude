@@ -11,7 +11,9 @@ model: sonnet
 noah の `infra/` ディレクトリに Pulumi TypeScript プロジェクトを作成・実装する。
 
 **必読ドキュメント（実装前に確認)**:
-- `@~/.claude/docs/pulumi.md` — Pulumi 基本概念・TypeScript パターン・ベストプラクティス
+- `~/.claude/docs/pulumi.md` — Pulumi 基本概念・TypeScript パターン・ベストプラクティス
+- `~/.claude/docs/pulumi-aws.md` — AWS リソース定義パターン（VPC/ECS/ECR/Lambda/Aurora）
+- `~/.claude/docs/pulumi-cicd.md` — GitHub Actions CI/CD ワークフローパターン
 - `docs/apps/architecture.md` — noah のデプロイ構成決定事項（ECS/Fargate + Lambda + Pulumi）
 - `docs/adr/0001-database.md` — Aurora PostgreSQL の選定理由
 

@@ -14,6 +14,10 @@ model: sonnet
 
 !`cat ~/.claude/docs/llm-memory-management.md`
 
+プロンプト品質の基準（NG/OK ペア・強度ラダー・テスタビリティ）は以下を参照:
+
+!`cat ~/.claude/docs/prompt-engineering.md`
+
 ---
 
 ## フロー

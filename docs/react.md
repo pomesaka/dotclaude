@@ -24,7 +24,16 @@ TypeScript の観点に加え、以下の観点でレビューする。
 - カスタムフックは `use` prefix、1ファイル1フック export
 - フック内にビジネスロジックを集約し、コンポーネントを薄く保つ
 - **フックの言語は「ドメイン」、View の言語は「UI イベント」**: フックが返す関数はドメインアクション動詞で命名する（`selectFile`, `generate`）。`on` prefix は View props の言語。Container がドメイン → UI イベントへのマッピングを担う（`onSubmit={generate}`）
+- **TanStack Query のローディング状態**: `isLoading` と data 存在をセットで確認する。単に `!data` チェックだけでは初回フェッチと再フェッチを区別できない
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+  ```ts
+  const { data, isLoading } = useQuery(...)
+  if (isLoading) return <Skeleton />  // 明示的な初回ローディング
+  if (!data) return <Error />          // データ取得失敗
+  ```
 - **View が "smart" だと感じたら状態を吸い上げる**: `useState`・`useMutation`・非同期ロジックを View が持っていたらカスタムフックに移す
+- **フックは early return より前に**: `useCallback`・`useState` 等を条件分岐の early return より後に置くと `useHookAtTopLevel` lint エラーになる。early return が必要な場合でも全フックをコンポーネントトップに集約してから分岐する
+  <!-- importance: high | mentions: 2 | first-seen: 2026-05 -->
 - **stale closure**: conditional な `setState` は functional update で書く（`setJobName(prev => prev || file.name)`）
 - **stale async result — generationRef パターン**: 非同期コールバック実行中に別操作が割り込んだ場合、古い Promise の結果を反映しないよう世代管理する
   ```ts
@@ -42,6 +51,47 @@ TypeScript の観点に加え、以下の観点でレビューする。
 - `useEffect` でのデータフェッチ（React Query 等を使う）
 - `any` 型の Props
 - インラインでの複雑なロジック（カスタムフックに抽出する）
+
+## useEffect の適切な使い方
+
+`useEffect` が妥当なのは「副作用」「外部システム同期」「ブラウザ API 呼び出し」など限定的なケースのみ。**必ず WHY コメントを添える**。コメントがないと不要な副作用に見える。
+
+```tsx
+// WHY: router.replace はブラウザナビゲーション（副作用）のためレンダー中に呼べない。
+// ローディング完了後に両方 null = 無効 ID → リダイレクト。
+useEffect(() => {
+  if (isLoading) return;
+  if (!pending && !historyEntry) router.replace("/");
+}, [isLoading, pending, historyEntry, router]);
+```
+<!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+
+## setState updater 内に副作用を書かない（StrictMode 二重実行）
+
+`setState(prev => { sideEffect(); return next; })` の形はアンチパターン。React StrictMode では updater が二重実行されるため、`localStorage.setItem` などの副作用が2回走る。
+
+```tsx
+// ❌ StrictMode で localStorage に2回書き込まれる
+const toggle = useCallback(() => {
+  setIsOpen((prev) => {
+    const next = !prev;
+    localStorage.setItem(KEY, String(next)); // ← ここが2回実行される
+    return next;
+  });
+}, []);
+
+// ✅ 副作用は useEffect に分離する
+const toggle = useCallback(() => {
+  setIsOpen((prev) => !prev);
+}, []);
+
+useEffect(() => {
+  if (isLoaded) localStorage.setItem(KEY, String(isOpen));
+}, [isOpen, isLoaded]);
+```
+
+**判断基準**: updater は「次の状態を計算するだけ」に限定する。ネットワーク・localStorage・DOM 操作などの副作用は必ず `useEffect` へ。
+<!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
 
 ## ObjectURL のライフサイクル管理
 
@@ -77,15 +127,57 @@ function submit() { setPreviews([]); /* revoke しない */ }
 ## AsyncGenerator + ref cleanup は try/finally で
 
 `for await` 後に `generatorRef.current = null` を書くだけでは例外時にクリーンアップが漏れる。
+さらに、ジェネレータが throw した場合に UI がローディング状態のまま固まるため `catch` でフォールバック遷移も入れる。
+上流の `Promise`（例: 計画生成）も同様に `.catch()` を付けないと中間フェーズで固まる。
 
 ```tsx
 generatorRef.current = gen;
 try {
   for await (const event of gen) { ... }
+} catch {
+  // ジェネレータ例外 → UIを安全な状態（idle 等）に戻す
+  setState((prev) => (prev.phase === "running" ? { ...prev, phase: "idle" } : prev));
 } finally {
   generatorRef.current = null;
 }
+
+// 上流の Promise も同様
+void generatePlan(theme, depth)
+  .then((plan) => { setState(... "planning" ...); })
+  .catch(() => { setState((s) => s.phase === "loading" ? { ...s, phase: "idle" } : s); });
 ```
+
+## AsyncGenerator ストリームフックから完了データを返す
+
+`startStream(gen)` は `Promise<Result>` を返すようにし、ループ内でローカル変数に最終値を蓄積して `return` する。React state を読み返すと stale closure になる。
+
+```ts
+const startStream = useCallback(
+  async (gen: AsyncGenerator<Event>): Promise<Result> => {
+    let finalData = defaultResult;
+    generatorRef.current = gen;
+    try {
+      for await (const event of gen) {
+        if (event.type === "done") {
+          finalData = { report: event.report, sources: event.sources };
+          setReport(event.report);   // レンダリング用
+          setSources(event.sources); // レンダリング用
+        }
+      }
+    } finally {
+      generatorRef.current = undefined;
+    }
+    return finalData; // ← state ではなくローカル変数を返す（stale closure 回避）
+  },
+  [],
+);
+
+// 呼び出し側は .then(result => ...) で完了データを受け取る
+void stream.startStream(gen)
+  .then(result => { configRef.current.onComplete(result); })
+  .catch(() => { setState(prev => prev.phase === "running" ? {...prev, phase: "idle"} : prev); });
+```
+<!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
 
 ## React 19 の `useRef` 型変更
 
@@ -120,10 +212,48 @@ async Server Component か `use(promise)` を使う CC でのみ fallback が発
 3. フェッチを子 async SC に切り出す
 4. `<Suspense fallback={<Skeleton />}><DataFetcher /></Suspense>` で組み合わせる
 
+## Mutation と非同期 UI 状態
+
+- **`mutate` 後に即 Dialog を閉じると `isPending` フィードバックが消える**: `onDelete(id)` の直後に `setDialogOpen(false)` を呼ぶと、削除処理が進行中にダイアログが消えて `isPending` ボタン状態をユーザーが見られなくなる。`useMutation` の `onSuccess` コールバックで閉じる設計にする。props 側でも `onDelete: (id: string, onSuccess: () => void) => void` のシグネチャにして、呼び出し元が完了タイミングを制御できるようにする。
+  <!-- importance: medium | mentions: 2 | first-seen: 2026-05 -->
+
+## useMemo で同一入力から複数派生値を作る（single-pass pattern）
+
+同じ文字列（や配列）を2つの別フック・別関数でそれぞれパースすると、インデックス・位置・ID の結合が発生してどちらか一方が変わると壊れる。**1つの `useMemo` で全派生値をまとめて返す**のが正しい設計。
+
+```tsx
+// ❌ 2箇所でパースするとインデックス結合が生まれる
+const blocks = useMemo(() => parseBlocks(report), [report]);   // \n\n split
+const headings = useReportOutline(report);                      // line split — ズレうる
+
+// ✅ 1回のパスで blocks + headings をまとめて返す
+function useParsedReport(report: string) {
+  return useMemo(() => {
+    const blocks: ReportBlock[] = [];
+    const headings: HeadingEntry[] = [];
+    let counter = 0;
+    for (const [key, block] of report.split("\n\n").entries()) {
+      if (block.startsWith("## ")) {
+        const id = `heading-${counter++}`;
+        headings.push({ id, level: 2, text: block.slice(3).trim() });
+        blocks.push({ type: "h2", headingId: id, key, text: block.slice(3).trim() });
+      } else {
+        blocks.push({ type: "p", text: block, key });
+      }
+    }
+    return { blocks, headings };
+  }, [report]);
+}
+```
+<!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+
 ## Biome Gotchas
 
 - **`noArrayIndexKey`**: `key={i}` を JSX 内で使うとエラー。`.map()` 呼び出しを JSX 外の変数に切り出して `// biome-ignore` を置くか、content-based key を使う
+  <!-- importance: high | mentions: 2 | first-seen: 2026-05 -->
+  **静的配列で全要素が一意な場合は値そのものを key にする**（例: `[75, 60, 85, 55, 70].map((w) => <div key={w}>...`）。オブジェクト配列のプロパティアクセス `key={item.key}` も非フラグ（直接インデックス変数だけが対象）。
 - **`noAssignInExpressions`**: `(acc[k] ??= []).push(v)` は不可。if-else で明示的に分岐する
+- **`useSemanticElements` が `role="radio"` on `<button>` を拒否**: 詳細は `react-a11y.md` 参照
 - **formatter**: 複数属性を持つ JSX で長い属性値があれば多行フォーマットを強制される。初めから多行で書く
 - **`organize-imports`**: packages before relative、type before value。`biome check --write` で自動修正
 - a11y 関連 Biome ルール → `react-a11y.md`

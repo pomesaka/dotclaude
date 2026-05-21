@@ -9,6 +9,10 @@ allowed-tools: Read, Write, Edit, Bash(fd *), Bash(rg *)
 
 作業セッションの振り返りを行い、「次に活かせる発見」を適切な場所に書き出す。
 
+**参照ドキュメント（書き方の基準）**:
+- `~/.claude/docs/llm-memory-management.md` — 何を残すか・どの層に書くか（Tier 設計）
+- `~/.claude/docs/prompt-engineering.md` — docs に書くルールの品質基準（テスタビリティ・NG/OK ペア・強度ラダー）
+
 ## フロー
 
 ### Step 1: 発見の抽出

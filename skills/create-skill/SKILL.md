@@ -55,6 +55,8 @@ SKILL.mdはオーケストレーター（制御フロー）に徹する。ドメ
 
 ルールの羅列（「必ずXXXすること」）よりも理由を書く。理由が分かれば未知のケースにも対応できる。
 
+CLAUDE.md・SKILL.md の記述品質向上には `~/.claude/docs/prompt-engineering.md` を参照（強度ラダー・テスタブルな指示・Few-shot 例の書き方など）。
+
 #### description と when_to_use の書き方
 
 `description` と `when_to_use` の役割:

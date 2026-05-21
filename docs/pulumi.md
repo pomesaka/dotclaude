@@ -147,5 +147,7 @@ pulumi.runtime.registerStackTransform((args) => ({ props: args.props, opts: { ..
 
 - **`requireOutput()` の `as` キャスト**: `requireOutput()` は `Output<any>` を返すため型アノテーション方式はコンパイルエラー。`as pulumi.Output<string>` が唯一の実用的な型付け方法。CLAUDE.md の「as 禁止」は TypeScript app コードのルールであり Pulumi infra コードには適用しない
 - **state ロック**: CI で途中失敗した場合は `pulumi cancel` でロック解除する
+- **`pulumi.output(urlMap)` は inner Output を unwrap しない**: `urlMap` が `Record<string, Output<string>>` のとき `pulumi.output(urlMap)` は `Output<Record<string, Output<string>>>` になる（内側の Output が残る）。`pulumi.all(urlMap)` を使うと `Output<Record<string, string>>` に正しく解決される。`StackReference.requireOutput("ecrUrls")` 経由で参照する側の `.apply(urls => urls["key"])` が `Output<string>` ではなく `string` として扱われてしまい実行時エラーになる
+  <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
 - **LifecyclePolicy への `protect: true`**: 変更時は `pulumi state unprotect <urn>` で保護を解除してから実施
 - **`Pulumi.prod.yaml` は必須**: `pulumi stack init prod` 後に忘れがち。`Pulumi.dev.yaml` を作ったら `Pulumi.prod.yaml`（および `Pulumi.main.yaml` があれば）も同時に作る

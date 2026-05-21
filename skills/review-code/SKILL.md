@@ -40,6 +40,10 @@ model: sonnet
 
 !`cat ~/.claude/docs/react.md 2>/dev/null`
 
+### React a11y
+
+!`cat ~/.claude/docs/react-a11y.md 2>/dev/null`
+
 ### Next.js
 
 !`cat ~/.claude/docs/nextjs.md 2>/dev/null`

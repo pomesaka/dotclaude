@@ -28,6 +28,29 @@
   const value = data as SomeType;
   ```
 - `any` 型: 禁止。`unknown` + 型ガードで対応する
+- `!` (non-null assertion): Biome `noNonNullAssertion` 規則で禁止。避けられない場合は WHY コメント必須だが、通常はロジック再設計で回避可能
+  ```typescript
+  // ❌ Biome で禁止
+  const value = maybeNull!;
+
+  // ✅ 再設計: 条件分岐で early return
+  if (!value) return fallback;
+  // この時点で value は non-null
+  ```
+  例: `Map.get(key)!` パターン → Map iteration で直接値を取得、またはループ終了時点で値が保証される構造に変更
+- **`as const` 配列とユニオン型の二重管理を避ける**: `VariableType = "a" | "b" | "c"` と `VALID_VALUES: readonly VariableType[] = ["a","b","c"]` を別々に定義すると型と配列がずれるリスクがある。`as const` 配列を先に定義して型を導出する:
+  ```typescript
+  // ❌ 型と配列の二重管理（拡張時に片方を忘れがち）
+  export type VariableType = "text" | "number" | "date";
+  const VARIABLE_TYPES: readonly VariableType[] = ["text", "number", "date"];
+
+  // ✅ 配列から型を導出（単一の真実の源泉）
+  export const VARIABLE_TYPES = ["text", "number", "date"] as const;
+  export type VariableType = (typeof VARIABLE_TYPES)[number];
+  ```
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+- **`readonly` 配列のコンピューテッドインデックスは `T | undefined` を返す**: `const TABS = ["a","b"] as const; TABS[index]` は `"a" | "b" | undefined` に推論される。`setState(TABS[next])` は型エラー。`const tab = TABS[next]; if (tab) { setState(tab); }` でガードが必要。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
 - `class`: **原則使わない**。オブジェクトリテラル・関数・型で表現する
   ```typescript
   // ❌ 避ける
@@ -44,6 +67,8 @@
 - 判別可能ユニオンで boolean フラグを置き換える
 - `readonly` を積極的に使う（意図しない mutation を防ぐ）
 - 公開関数の戻り値型を明示する（型推論に頼らない）
+- **導出可能なフィールドを型に含めない**: 別フィールドから常に計算できる値（例: `url` から `new URL(url).hostname` で得られる `domain`）は型に含めず表示層で導出する。型に入れると、データを組み立てる呼び出し側が一貫性を維持する責務を持つことになり、不整合が生じやすい。同じ概念の型で `domain` あり・なしが混在するとレビューでも見落としやすい。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
 
 ### `mode` フィールドがある型は discriminated union にする
 

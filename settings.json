@@ -3,6 +3,7 @@
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
     "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
+    "CLAUDE_CODE_DISABLE_1M_CONTEXT": "1",
     "OTEL_METRICS_EXPORTER": "otlp",
     "OTEL_LOGS_EXPORTER": "otlp",
     "OTEL_EXPORTER_OTLP_METRICS_PROTOCOL": "http/protobuf",
@@ -64,7 +65,7 @@
       "/Users/pomesaka/github.com/pomesaka/dotclaude"
     ]
   },
-  "model": "opusplan",
+  "model": "claude-opus-4-7",
   "statusLine": {
     "type": "command",
     "command": "/Users/pomesaka/.local/share/claude-deck/statusline.sh"

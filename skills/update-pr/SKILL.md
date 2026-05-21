@@ -4,7 +4,7 @@ description: 既存 PR にコードを push してタイトル・ボディを更
 when_to_use: 「PR を更新して」「PRの説明を直して」「変更を push して PR を更新して」と言われたとき。新規 PR 作成は create-pr を使う。
 argument-hint: "[PR番号]"
 allowed-tools: Bash(jj *), Bash(gh *), Bash(mise *), Read, Glob
-model: haiku
+model: sonnet
 ---
 
 # Update Pull Request

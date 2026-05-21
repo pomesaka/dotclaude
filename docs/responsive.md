@@ -128,6 +128,26 @@ max-w-lg   ← グリッド不要
 
 ---
 
+## PDF 印刷対応（Tailwind `print:` バリアント）
+
+AppLayout が `overflow-hidden h-screen` を使っている場合、PDF 印刷時にコンテンツが切れる。`print:` バリアントで印刷レイアウトを別途定義する。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+
+```tsx
+// AppLayout コンテナ: print 時は高さ制限・overflow を解除
+<div className="h-screen overflow-hidden print:block print:h-auto print:overflow-visible">
+
+// サイドバー: 印刷不要なナビゲーション要素を非表示
+<aside className="lg:block print:hidden">
+
+// スクロール可能なコンテンツ領域: overflow を解除して全コンテンツを表示
+<div className="overflow-y-auto h-full print:overflow-visible print:h-auto">
+```
+
+**チェックポイント**: `overflow-hidden` / `overflow-y-auto` / `h-screen` / `h-full` を使っているコンテナが print 時にも同様の制約を持ち続けないか確認する。
+
+---
+
 ## レビューチェックリスト
 
 UI を含む変更差分を見るときは以下を確認する:
@@ -139,3 +159,4 @@ UI を含む変更差分を見るときは以下を確認する:
 - [ ] テーブルに `overflow-x-auto` があるか
 - [ ] タッチターゲットが `min-h-11` 以上か（インタラクティブ要素）
 - [ ] `lg:hidden` と `hidden lg:block` のペアが揃っているか
+- [ ] PDF 出力が必要なページで `print:` バリアントが必要か
