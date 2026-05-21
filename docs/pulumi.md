@@ -1,614 +1,151 @@
 # Pulumi 実践ガイド（TypeScript / AWS）
 
-Pulumi を使ったことがないエンジニア向けに、基本概念から AWS リソース定義パターン・CI/CD 統合まで体系的にまとめたリファレンス。
+> **TL;DR**: Stack=環境単位、State=現在状態のスナップショット、Config=スタック別設定値。バックエンドは Pulumi Cloud（ゼロ設定）か S3（DIY）を選択。`pulumi preview` で差分確認、`pulumi up` で適用。AWS リソース → `pulumi-aws.md`、GitHub Actions CI/CD → `pulumi-cicd.md`。
 
 ---
 
-## 1. コアコンセプト
+## コアコンセプト
 
-### Project
-ソースコードと実行メタデータを含むディレクトリ。`Pulumi.yaml` がルートに置かれる。
-
-### Stack
-プロジェクトの「隔離された、独立して設定可能なインスタンス」。同一プログラムから `dev` / `staging` / `prod` など複数環境を独立してデプロイするための単位。状態（State）はスタックごとに分離される。
-
-```bash
-pulumi stack init dev          # スタック作成
-pulumi stack select production # スタック切り替え
-pulumi stack ls                # 一覧表示
-```
-
-### Resource
-クラウドリソースを表すオブジェクト。宣言的に「望ましい状態」を定義し、Pulumi エンジンが差分を計算して適用する。
-
-### State
-スタックの現在状態を記録するスナップショット（checkpoint）。`pulumi up` 実行時にエンジンが「現在の state」と「コードで定義した望ましい状態」を比較し、必要な操作を計算する。
-
-### Config
-スタックごとに異なる設定値を管理する仕組み。`Pulumi.<stack-name>.yaml` ファイルに保存される。
+| 概念 | 説明 |
+|------|------|
+| **Project** | `Pulumi.yaml` を含むディレクトリ |
+| **Stack** | プロジェクトの環境別インスタンス（dev/staging/prod）。State はスタックごとに分離 |
+| **Resource** | 宣言的に定義するクラウドリソース。エンジンが diff を計算して適用 |
+| **State** | スタックの現在状態スナップショット。`pulumi up` 時に desired state と比較 |
+| **Config** | スタック別の設定値。`Pulumi.<stack>.yaml` に保存 |
 
 ---
 
-## 2. State バックエンド：Pulumi Cloud vs S3
+## State バックエンド
 
-| 項目 | Pulumi Cloud（マネージド） | S3（DIY） |
-|---|---|---|
-| セットアップ | ゼロ設定 | バケット作成・IAM 設定が必要 |
+| 項目 | Pulumi Cloud | S3 |
+|------|---|---|
+| セットアップ | ゼロ設定 | バケット + IAM 設定が必要 |
 | State ロック | 自動 | 自動（DynamoDB 不要） |
-| Drift Detection | 組み込み（定期 `refresh`） | 手動 |
-| 監査ログ | あり | なし |
+| Drift Detection | 組み込み | 手動 `refresh` |
 | コスト | 無料枠あり、チーム以上は有料 | S3 料金のみ |
-| 推奨用途 | チーム・本番 | 小規模・コスト重視 |
 
-**S3 バックエンドへのログイン:**
+S3 バックエンド: `pulumi login 's3://<bucket>?region=ap-northeast-1&awssdk=v2'`
+
+---
+
+## 基本コマンド
+
 ```bash
-pulumi login 's3://<bucket-name>?region=ap-northeast-1&awssdk=v2'
+pulumi new aws-typescript          # プロジェクト作成
+pulumi stack init dev              # スタック作成
+pulumi stack select prod           # スタック切り替え
+pulumi stack output vpcId          # 出力値の確認
+
+pulumi preview --diff              # 変更の詳細確認（適用しない）
+pulumi up --yes                    # 変更を適用（CI 用: --yes）
+pulumi refresh                     # 実際の状態を state に同期（drift 解消）
+pulumi cancel                      # 実行中操作のキャンセル（ロック解除）
+pulumi destroy --yes               # 全リソース削除（要注意）
+
+pulumi state unprotect <urn>       # 特定リソースの protect 解除
+pulumi stack export > backup.json  # state のバックアップ
+pulumi config set --secret key val # 暗号化して保存
 ```
 
 ---
 
-## 3. 基本フロー
-
-```bash
-pulumi preview    # 変更点の確認（適用しない）
-pulumi up         # 変更を適用
-pulumi refresh    # 実際のクラウド状態を state に同期（drift 解消）
-pulumi destroy    # 全リソース削除（危険）
-pulumi cancel     # 実行中の操作をキャンセル
-```
-
----
-
-## 4. TypeScript プロジェクトの初期化
+## TypeScript プロジェクト初期化
 
 ```bash
 mkdir infra && cd infra
 pulumi new aws-typescript
 ```
 
-生成されるファイル:
-```
-infra/
-├── Pulumi.yaml              # プロジェクト名・ランタイム定義
-├── Pulumi.dev.yaml          # dev スタックの設定値
-├── index.ts                 # エントリーポイント
-├── package.json
-└── tsconfig.json
-```
+生成物: `Pulumi.yaml`（プロジェクト定義）、`Pulumi.dev.yaml`（スタック設定）、`index.ts`（エントリーポイント）
 
 ---
 
-## 5. Input / Output 型システム
+## Input / Output 型システム
 
-Pulumi の最重要概念。クラウドリソースは作成後に初めて値が確定するため、`Output<T>` で非同期値を表現する。
+リソースのプロパティは作成後に確定するため `Output<T>` で非同期値を表現する。
 
-### Output<T> の性質
-- リソースのプロパティ（ARN、ID など）は常に `Output<T>` 型
-- `console.log(bucket.arn)` は「`[object Object]`」になるので直接使えない
-- 値を取り出すには `apply()` か `pulumi.interpolate` を使う
-
-### apply() — 値を変換・参照する
 ```typescript
-const bucketName = bucket.id.apply(id => `bucket-name: ${id}`);
+// 値の変換
+const name = bucket.id.apply(id => `prefix-${id}`);
 
-// 副作用にも使える（デバッグ目的のみ推奨）
-bucket.arn.apply(arn => console.log("ARN:", arn));
-```
-
-### pulumi.interpolate — 文字列補間
-`apply()` のシンタックスシュガー。URL などの文字列構築に使う。
-```typescript
+// 文字列補間（シンタックスシュガー）
 const url = pulumi.interpolate`https://${lb.dnsName}/api`;
+
+// 複数 Output をまとめて参照
+const info = pulumi.all([bucket.id, bucket.arn]).apply(([id, arn]) => `${id}:${arn}`);
 ```
 
-### pulumi.all() — 複数 Output をまとめて参照
-```typescript
-const combined = pulumi.all([bucket.id, bucket.arn]).apply(([id, arn]) => {
-    return `${id} -> ${arn}`;
-});
-```
+`Output<T>` は `string` ではない: `bucket.id + "-suffix"` は型エラー → `pulumi.interpolate` を使う。`apply` 内での外部 API 呼び出し（async/await）は避ける。動的データは Config か StackReference で渡す。
 
-### 注意: Output<T> を文字列として直接渡せない
-```typescript
-// NG: pulumi.Output<string> は string ではない
-const name = bucket.id + "-suffix";  // 型エラー
+---
 
-// OK
-const name = pulumi.interpolate`${bucket.id}-suffix`;
+## Config と Secret
+
+```typescript
+const config  = new pulumi.Config();
+const appName = config.require("appName");             // 必須文字列
+const port    = config.getNumber("port") ?? 3000;      // 任意・デフォルト付き
+const dbPass  = config.requireSecret("dbPassword");    // Output<string>（state に暗号化保存）
 ```
 
 ---
 
-## 6. Config と Secret の管理
+## ベストプラクティス
+
+### ComponentResource — 再利用可能なコンポーネント
 
 ```typescript
-const config = new pulumi.Config();
-
-// 文字列取得（必須）
-const appName = config.require("appName");
-
-// 型付き取得（任意、デフォルト値付き）
-const port = config.getNumber("port") ?? 3000;
-
-// Secret（Output<string> として返る、state に暗号化保存）
-const dbPassword = config.requireSecret("dbPassword");
-```
-
-**CLI でのセット:**
-```bash
-pulumi config set appName my-app
-pulumi config set --secret dbPassword s3cr3t  # 暗号化して保存
-```
-
-**スタック設定ファイル（`Pulumi.dev.yaml`）:**
-```yaml
-config:
-  aws:region: ap-northeast-1
-  myapp:appName: my-app
-  myapp:dbPassword:
-    secure: AAABxxxxxxxx  # 暗号化済み
-```
-
----
-
-## 7. AWS リソース定義パターン
-
-### VPC / Subnet / Security Group
-
-```typescript
-import * as awsx from "@pulumi/awsx";
-import * as aws from "@pulumi/aws";
-
-// Crosswalk（awsx）を使うと VPC + Subnet + IGW + NAT GW を一括作成
-const vpc = new awsx.ec2.Vpc("vpc", {
-    cidrBlock: "10.0.0.0/16",
-    subnetSpecs: [
-        { type: awsx.ec2.SubnetType.Public,  cidrMask: 24 },
-        { type: awsx.ec2.SubnetType.Private, cidrMask: 20 },
-    ],
-});
-export const vpcId = vpc.vpcId;
-
-// Security Group
-const appSg = new aws.ec2.SecurityGroup("app-sg", {
-    vpcId: vpc.vpcId,
-    ingress: [
-        { fromPort: 443, toPort: 443, protocol: "tcp", cidrBlocks: ["0.0.0.0/0"] },
-    ],
-    egress: [
-        { fromPort: 0, toPort: 0, protocol: "-1", cidrBlocks: ["0.0.0.0/0"] },
-    ],
-});
-```
-
-### ECR リポジトリ
-
-```typescript
-const repo = new aws.ecr.Repository("app-repo", {
-    name: "my-app",
-    imageTagMutability: "IMMUTABLE",
-    imageScanningConfiguration: { scanOnPush: true },
-});
-export const repoUrl = repo.repositoryUrl;
-```
-
-### ECS Fargate + ALB（awsx を使った簡潔パターン）
-
-```typescript
-const lb = new awsx.lb.ApplicationLoadBalancer("lb", { subnetIds: vpc.publicSubnetIds });
-const cluster = new aws.ecs.Cluster("cluster");
-
-const service = new awsx.ecs.FargateService("app", {
-    cluster: cluster.arn,
-    desiredCount: 2,
-    taskDefinitionArgs: {
-        container: {
-            name: "app",
-            image: pulumi.interpolate`${repo.repositoryUrl}:latest`,
-            cpu: 256,
-            memory: 512,
-            essential: true,
-            portMappings: [{ containerPort: 8080, targetGroup: lb.defaultTargetGroup }],
-            environment: [{ name: "ENV", value: "production" }],
-            secrets: [
-                { name: "DB_PASSWORD", valueFrom: dbSecret.arn },
-            ],
-        },
-    },
-    networkConfiguration: {
-        subnets: vpc.privateSubnetIds,
-        securityGroups: [appSg.id],
-    },
-});
-
-export const serviceUrl = pulumi.interpolate`http://${lb.loadBalancer.dnsName}`;
-```
-
-### Lambda 関数 + IAM ロール
-
-```typescript
-const lambdaRole = new aws.iam.Role("lambda-role", {
-    assumeRolePolicy: JSON.stringify({
-        Version: "2012-10-17",
-        Statement: [{
-            Action: "sts:AssumeRole",
-            Principal: { Service: "lambda.amazonaws.com" },
-            Effect: "Allow",
-        }],
-    }),
-});
-
-new aws.iam.RolePolicyAttachment("lambda-basic", {
-    role: lambdaRole,
-    policyArn: aws.iam.ManagedPolicy.AWSLambdaBasicExecutionRole,
-});
-
-const fn = new aws.lambda.Function("my-func", {
-    runtime: aws.lambda.Runtime.NodeJS22dX,
-    role: lambdaRole.arn,
-    handler: "index.handler",
-    code: new pulumi.asset.AssetArchive({
-        ".": new pulumi.asset.FileArchive("./dist"),
-    }),
-    environment: { variables: { TABLE_NAME: table.name } },
-});
-```
-
-### Secrets Manager
-
-```typescript
-const dbSecret = new aws.secretsmanager.Secret("db-secret", {
-    name: pulumi.interpolate`/${appName}/db/password`,
-});
-
-const dbSecretValue = new aws.secretsmanager.SecretVersion("db-secret-value", {
-    secretId: dbSecret.id,
-    secretString: config.requireSecret("dbPassword"),
-});
-```
-
-### Aurora PostgreSQL Serverless v2
-
-```typescript
-const dbSubnetGroup = new aws.rds.SubnetGroup("db-subnet-group", {
-    subnetIds: vpc.privateSubnetIds,
-});
-
-const cluster = new aws.rds.Cluster("aurora-cluster", {
-    engine: aws.rds.EngineType.AuroraPostgresql,
-    engineVersion: "16.1",
-    serverlessv2ScalingConfiguration: { minCapacity: 0.5, maxCapacity: 4 },
-    databaseName: "appdb",
-    masterUsername: "admin",
-    masterPassword: config.requireSecret("dbPassword"),
-    dbSubnetGroupName: dbSubnetGroup.name,
-    vpcSecurityGroupIds: [dbSg.id],
-    skipFinalSnapshot: false,
-});
-
-new aws.rds.ClusterInstance("aurora-instance", {
-    clusterIdentifier: cluster.id,
-    instanceClass: "db.serverless",
-    engine: aws.rds.EngineType.AuroraPostgresql,
-    engineVersion: cluster.engineVersion,
-});
-```
-
----
-
-## 8. ベストプラクティス
-
-### ComponentResource によるモジュール化
-
-関連リソースをまとめて再利用可能なコンポーネントにする。
-
-```typescript
-import * as pulumi from "@pulumi/pulumi";
-import * as aws from "@pulumi/aws";
-
-interface AppServiceArgs {
-    vpcId: pulumi.Input<string>;
-    subnetIds: pulumi.Input<pulumi.Input<string>[]>;
-    image: pulumi.Input<string>;
-    port: number;
-}
-
 class AppService extends pulumi.ComponentResource {
     public readonly url: pulumi.Output<string>;
-
     constructor(name: string, args: AppServiceArgs, opts?: pulumi.ComponentResourceOptions) {
         super("mycompany:index:AppService", name, {}, opts);
-
-        const sg = new aws.ec2.SecurityGroup(`${name}-sg`, {
-            vpcId: args.vpcId,
-            ingress: [{ fromPort: args.port, toPort: args.port, protocol: "tcp", cidrBlocks: ["0.0.0.0/0"] }],
-        }, { parent: this });  // parent を指定することでリソースが階層表示される
-
-        // ... ALB, ECS など
-
-        this.url = pulumi.interpolate`http://...`;
+        const sg = new aws.ec2.SecurityGroup(`${name}-sg`, { ... }, { parent: this });
+        // ...
         this.registerOutputs({ url: this.url });
     }
 }
-
-// 使い方
-const svc = new AppService("api", { vpcId, subnetIds, image, port: 8080 }, { protect: true });
 ```
 
-### Stack Reference（スタック間の出力参照）
+`parent: this` を子リソースに指定するとリソースが階層表示される。
+
+### Stack Reference — スタック間の出力参照
 
 ```typescript
-// infra スタックで VPC ID を export
-export const vpcId = vpc.vpcId;
-
-// app スタックから参照
 // S3 バックエンド: organization/<project>/<stack>（org は常にリテラル "organization"）
 // Pulumi Cloud:   <your-org>/<project>/<stack>
-const infraStack = new pulumi.StackReference("organization/infra/production");
-const vpcId = infraStack.requireOutput("vpcId");
+const infra = new pulumi.StackReference("organization/infra/production");
+const vpcId = infra.requireOutput("vpcId");
 ```
 
-### AWS Provider の Default Tags
-
-全リソースに一括でタグを付ける。
+### Default Tags — 全リソースに一括タグ
 
 ```typescript
 const provider = new aws.Provider("aws", {
     region: "ap-northeast-1",
-    defaultTags: {
-        tags: {
-            Environment: stack,     // "dev" / "staging" / "prod"
-            Project:     "noah",
-            ManagedBy:   "pulumi",
-            Owner:       "infra-team",
-        },
-    },
+    defaultTags: { tags: { Environment: stack, Project: "my-app", ManagedBy: "pulumi" } },
 });
-
-// リソース作成時に provider を指定
-const vpc = new awsx.ec2.Vpc("vpc", {}, { provider });
+// リソース作成時に { provider } を渡す
 ```
 
-### 命名規則
+### 命名規則・protect
 
 ```typescript
-const config = new pulumi.Config();
-const stack  = pulumi.getStack();   // "dev" / "staging" / "prod"
-const prefix = `noah-${stack}`;     // "noah-dev", "noah-prod" など
+const stack  = pulumi.getStack();    // "dev" / "staging" / "prod"
+const prefix = `my-app-${stack}`;
 
-const bucket = new aws.s3.Bucket(`${prefix}-assets`);
-```
-
-### protect オプション（誤削除防止）
-
-```typescript
-// 本番リソースには protect: true を付ける
+// 本番リソースは protect: true。削除前に protect: false で pulumi up してから
 const db = new aws.rds.Cluster("prod-db", { ... }, { protect: true });
 
-// 削除する場合は先に protect を外してから
-// 1. protect: false に変更して pulumi up
-// 2. pulumi destroy または リソース削除
-```
-
-スタック全体を保護する場合は stack transforms を使う:
-```typescript
-pulumi.runtime.registerStackTransform((args) => {
-    return { props: args.props, opts: { ...args.opts, protect: true } };
-});
+// スタック全体を保護
+pulumi.runtime.registerStackTransform((args) => ({ props: args.props, opts: { ...args.opts, protect: true } }));
 ```
 
 ---
 
-## 9. Monorepo での構成パターン（noah 向け）
+## Gotchas
 
-```
-noah/
-├── apps/
-│   └── customer-a/           # アプリケーションコード
-└── infra/
-    ├── shared/               # 共通インフラ（VPC, ECR など）
-    │   ├── Pulumi.yaml
-    │   ├── Pulumi.dev.yaml
-    │   ├── Pulumi.prod.yaml
-    │   └── index.ts
-    └── customer-a/           # 顧客固有のインフラ
-        ├── Pulumi.yaml
-        ├── Pulumi.dev.yaml
-        ├── Pulumi.prod.yaml
-        └── index.ts          # shared スタックを StackReference で参照
-```
-
-**スタック命名規則:** `<org>/<project>/<env>-<customer>`
-例: `accel-hack/noah-infra/prod-ms-holdings`
-
----
-
-## 10. GitHub Actions CI/CD
-
-### S3 バックエンド + IAM ユーザーキー方式
-
-`cloud-url` で S3 バックエンドを指定する場合、`PULUMI_ACCESS_TOKEN` は不要。ただし未設定だと対話プロンプトが出るため空文字で明示する。
-
-```yaml
-# .github/workflows/infra-deploy.yml
-name: Infra Deploy
-on:
-  push:
-    branches: [main]
-    paths: ["infra/**"]
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false  # deploy は途中キャンセル禁止
-
-env:
-  AWS_REGION: ap-northeast-1
-  PULUMI_CONFIG_PASSPHRASE: ""   # S3 backend では不要（未設定で対話プロンプトが出るため空文字）
-  PULUMI_ACCESS_TOKEN: ""        # S3 backend + cloud-url では不要（同上）
-
-jobs:
-  # StackReference 依存順: registry → shared → ms-holdings
-  deploy:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-          # configure 後は AWS_REGION 環境変数が自動セットされるため Pulumi env: に再渡しは不要
-      - uses: pulumi/actions@v6
-        with:
-          command: up
-          stack-name: organization/noah-infra/dev
-          work-dir: infra/shared
-          upsert: false
-          refresh: true         # deploy でも ドリフト検知のため refresh: true を推奨
-          cloud-url: ${{ secrets.PULUMI_BACKEND_URL }}
-```
-
-```yaml
-# .github/workflows/infra-preview.yml
-name: Infra Preview
-on:
-  pull_request:
-    paths: ["infra/**"]
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true  # preview は古いものをキャンセルしてよい
-
-env:
-  AWS_REGION: ap-northeast-1
-  PULUMI_CONFIG_PASSPHRASE: ""
-  PULUMI_ACCESS_TOKEN: ""
-
-jobs:
-  preview:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    permissions:
-      contents: read
-      pull-requests: write   # comment-on-pr: true に必要
-    steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-      - uses: pulumi/actions@v6
-        with:
-          command: preview
-          stack-name: organization/noah-infra/dev
-          work-dir: infra/shared
-          comment-on-pr: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          refresh: true
-          cloud-url: ${{ secrets.PULUMI_BACKEND_URL }}
-```
-
-### 複数スタック構成での注意点
-
-- **preview job の順序は deploy と揃える**: StackReference 依存がある場合、preview も deploy と同じ `needs` チェーンで直列化する。並列にすると参照先スタックの state が古い状態でプレビューされる
-- **`comment-on-pr: true` は `pull-requests: write` 権限が必要**: job の `permissions:` に明示しないと GITHUB_TOKEN が PR コメントを書けずにエラーになる
-
----
-
-## 11. 落とし穴・注意点
-
-### Output<T> の非同期性
-```typescript
-// NG: Output<string> は string ではない
-const url = "https://" + lb.dnsName;  // 型エラー
-
-// OK
-const url = pulumi.interpolate`https://${lb.dnsName}`;
-```
-
-### state のロック
-- Pulumi は並列実行を防ぐため state をロックする
-- CI で途中失敗した場合は `pulumi cancel` でロック解除
-
-### pulumi destroy の保護
-- 重要リソースには `protect: true` を必ず設定
-- CI/CD パイプラインから `destroy` を実行できないようにする（専用 workflow のみ許可）
-- `pulumi preview --diff` で変更内容を必ず確認してから `up` を実行
-
-### Output<T> の中で async/await は使えない
-```typescript
-// NG
-const size = await bucket.id.apply(async id => {
-    const res = await fetch(`https://api.example.com/${id}`);
-    return res.json();
-});
-
-// OK: apply の中は同期的に扱えるが、外部 API 呼び出しは避ける
-// 動的データは Config か StackReference で渡す
-```
-
-### AWS provider のリージョン設定
-Pulumi.yaml や環境変数 `AWS_REGION` だけでなく、Provider リソースで明示的に指定することを推奨:
-```typescript
-const aws = require("@pulumi/aws");
-// pulumi config set aws:region ap-northeast-1 が確実
-```
-
----
-
-## 12. よく使うコマンドリファレンス
-
-```bash
-# プロジェクト・スタック管理
-pulumi new aws-typescript          # 新規プロジェクト作成
-pulumi stack init dev              # スタック作成
-pulumi stack select prod           # スタック切り替え
-pulumi stack output vpcId          # 出力値の確認
-
-# デプロイ
-pulumi preview --diff              # 変更の詳細確認
-pulumi up --yes                    # 確認なしで適用（CI 用）
-pulumi refresh                     # 実際の状態を state に同期
-pulumi destroy --yes               # 全リソース削除（要注意）
-
-# 状態管理
-pulumi state unprotect <urn>       # 特定リソースの protect 解除
-pulumi cancel                      # 実行中操作のキャンセル（ロック解除）
-pulumi stack export > backup.json  # state のバックアップ
-
-# 設定
-pulumi config set key value
-pulumi config set --secret key secret-value
-pulumi config get key
-```
-
----
-
-## 13. Gotchas（よくあるミスと対処）
-
-- **NatGatewayStrategy は環境で分岐する**: `NatGatewayStrategy.Single` を全環境に適用すると dev でも NAT Gateway が課金される。`stack === "prod" ? NatGatewayStrategy.Single : NatGatewayStrategy.None` のように条件分岐する
-- **DB Security Group の egress を開けない**: Aurora/RDS は外部接続を開始しないので egress は `[]`（空配列）にする。デフォルトの `0.0.0.0/0` を残すとレビューで指摘される
-- **ECR の protect は prod だけで有効**: `protect: stack === "prod"` にする。全環境に `protect: true` を付けると dev のリソース削除時に詰まる
-- **Pulumi.prod.yaml は必須**: `pulumi stack init prod` 後に設定ファイルを忘れがち。`Pulumi.dev.yaml` を作ったら `Pulumi.prod.yaml` も同時に作る
-- **ECR lifecycle policy を忘れるとコスト増**: untagged イメージが蓄積してコストが増える。`aws.ecr.LifecyclePolicy` で `sinceImagePushed: 7 days` のルールを必ずセットで定義する
-- **`pulumi up` 実行前は必ず NatGateway 数を確認**: `pulumi preview` の出力で `aws:ec2:NatGateway` が出たら意図した構成かチェックする（dev で Single にしていないか）
-- **`requireOutput()` の `as` キャストは Pulumi infra コードでは避けられない**: `requireOutput()` は `Output<any>` を返すため、型アノテーション方式（`const x: pulumi.Output<string> = requireOutput(...)`）はコンパイルエラーになる。`as pulumi.Output<string>` のキャストが唯一の実用的な型付け方法。CLAUDE.md の「as 禁止」ルールは TypeScript app コードのルールであり、Pulumi infra コードには適用しない
-- **LifecyclePolicy への `protect: true` は変更不能リスクがある**: `protect: true` を付けると `pulumi up` でポリシー内容の変更が拒否される。変更が必要な場合は `pulumi state unprotect <urn>` で保護を解除してから実施する
-- **env 非依存スタックは `Pulumi.main.yaml` を忘れない**: スタック名が `main`（env なし）の場合、`Pulumi.main.yaml` がないと別環境での `pulumi up` 再現ができない。`Pulumi.dev.yaml` / `Pulumi.prod.yaml` を作るのと同様に `Pulumi.main.yaml` も必ず commit する
-- **ECR の暗号化設定は `encryptionConfigurations`（配列）**: `aws.ecr.Repository` のプロパティ名は `encryptionConfiguration`（単数）ではなく `encryptionConfigurations: [{ encryptionType: "AES256" }]`（配列）が正しい。単数形だとコンパイルエラーになる
-- **env 非依存スタック（registry）の defaultTags `Environment` は `"shared"` で統一**: dev/prod の env を持たないスタックの defaultTags では `Environment: "shared"` を使う（全リソースに Environment タグが必要というルールとの整合のため）
-- **`ecs:DescribeServices` は IAM リソースレベル権限非対応**: IAM ポリシーで `"Resource": "arn:aws:ecs:*:*:service/..."` を指定すると `DescribeServices` が拒否される。この API は account-level にしか適用できないため `"Resource": "*"` 必須。`UpdateService` は ARN 絞り込み可能なので別 Statement に分離する
-- **ECR の `GetAuthorizationToken` も `Resource: "*"` 必須**: ECR 認証トークン取得は account-level API のため ARN 指定不可。リポジトリ操作（`PutImage` 等）は `arn:aws:ecr:*:*:repository/<name>` で絞れるので別 Statement に分離する
-- **ECR レジストリ URL のハードコード禁止**: `docker build-push-action` の `tags` に AWS アカウント ID を直接書かない。`amazon-ecr-login@v2` の outputs を使う: `${{ steps.login-ecr.outputs.registry }}/<repo>:<tag>`
-- **reusable workflow で `comment-on-pr` を使う場合は caller 側にも `pull-requests: write` が必要**: `_pulumi-preview.yml` 内で `permissions: pull-requests: write` を宣言しても、呼び出し側 workflow（`infra-preview.yml`）にワークフローレベルの `permissions:` ブロックがないとリポジトリのデフォルト権限に依存してしまい、PR コメントが書けない場合がある。caller 側にも `permissions: pull-requests: write` を明示すること
-- **Pulumi が IAM ロールを作成する場合は `PassRole` だけでは不十分**: ECS タスクロール・実行ロールを Pulumi が定義すると、`iam:CreateRole`・`iam:DeleteRole`・`iam:GetRole`・`iam:AttachRolePolicy`・`iam:DetachRolePolicy`・`iam:TagRole` 等が必要。`IAMPassRole` ステートメントと同じ `arn:aws:iam::<ACCOUNT_ID>:role/<prefix>-*` スコープで `IAMRoleManagement` ステートメントを別途追加する
-- **StackReference 依存のない Pulumi スタックは並列実行できる**: Pulumi の state lock はスタックごとに独立している（S3 state の場合はキーが別）。`registry` と `shared` のように互いに依存しないスタックは GitHub Actions の `needs:` を付けずに並列実行可能。`StackReference` で依存するスタックだけを `needs: [registry, shared]` で直列化する
-- **IAM ポリシーの冗長性修正は「広い方を残す」**: `PulumiInfraAccess` に `ecs:*` がある場合、`ECSUpdate`（`ecs:UpdateService`）は冗長。修正の方向は「`ecs:*` を削除して Pulumi が壊れる」ではなく「`ECSUpdate`/`ECSDescribe` の個別ステートメントを削除する」が正しい。ただし `ecr:*` を `PulumiInfraAccess` に入れると `ECRRepoAccess`（リポジトリ ARN スコープ）と重複してセキュリティ上不要に権限が広がるため、ECR は `PulumiInfraAccess` から除外し `ECRAuth`・`ECRRepoAccess` の専用ステートメントに委ねる
-- **マルチクライアント monorepo の app deploy は `apps/<client>/**` でクライアントごとに分ける**: `apps/**` のグローバルトリガー 1 本にすると、クライアントが増えたとき全クライアントのデプロイが混在する。クライアント固有 `app-deploy-<client>.yml`（`apps/<client>/**` トリガー）+ `_app-deploy.yml`（reusable: `ecr-repository`・`dockerfile`・`stack-name`・`work-dir` を入力）の構成が scalable。infra の `_pulumi-deploy.yml` + `infra-deploy.yml` と同じ設計パターン
-- **ECS Fargate は AMD64（x86_64）がデフォルト。QEMU は ARM64 専用**: `docker/build-push-action` で `platforms: linux/arm64` を指定するときだけ `docker/setup-qemu-action` が必要。ECS Fargate の `cpuArchitecture` デフォルトは `X86_64` なので、明示的に ARM64 コンテナを使う設計でない限り `platforms: linux/amd64` と QEMU なしが正しい。Pulumi 側の `AlbEcsService` で `cpuArchitecture: "ARM64"` を指定した場合のみワークフロー側も ARM64 に合わせる
-- **paths-filter でスタックごとに実行を絞る場合は `always()` + 明示的 result チェックが必要**: `dorny/paths-filter` で変化スタックを検出し `if: needs.detect.outputs.X == 'true'` でジョブをスキップすると、`needs: [detect, A, B]` を持つ後続ジョブが A/B のスキップに引きずられてデフォルトスキップされる。対処: `if: always() && needs.detect.result == 'success' && (needs.A.result == 'success' || needs.A.result == 'skipped') && (needs.B.result == 'success' || needs.B.result == 'skipped') && <実行条件>` で依存ジョブのスキップを明示的に許容する。StackReference 依存スタックをパスフィルタで選択的実行するときに頻出するパターン
-- **ECS イメージ更新は `aws ecs update-service` ではなく `pulumi up + config-map: imageTag` で統一する**: `aws ecs update-service --force-new-deployment` はECSクラスター・サービス名のハードコードが必要で、インフラ（Pulumi）とアプリ（aws CLI）で2つのデプロイ機構が分裂する。Pulumi の TypeScript コードで `config.get("imageTag") ?? "latest"` としておき、CI では `pulumi/actions@v6` の `config-map: imageTag: value: ${{ github.sha }}` でインライン渡しすれば、ECS タスク定義更新・ローリングアップデート・安定待機をすべて Pulumi が担う。ECS リソース名のハードコード不要・初回と以降が同一メカニズムになる利点がある
+- **`requireOutput()` の `as` キャスト**: `requireOutput()` は `Output<any>` を返すため型アノテーション方式はコンパイルエラー。`as pulumi.Output<string>` が唯一の実用的な型付け方法。CLAUDE.md の「as 禁止」は TypeScript app コードのルールであり Pulumi infra コードには適用しない
+- **state ロック**: CI で途中失敗した場合は `pulumi cancel` でロック解除する
+- **LifecyclePolicy への `protect: true`**: 変更時は `pulumi state unprotect <urn>` で保護を解除してから実施
+- **`Pulumi.prod.yaml` は必須**: `pulumi stack init prod` 後に忘れがち。`Pulumi.dev.yaml` を作ったら `Pulumi.prod.yaml`（および `Pulumi.main.yaml` があれば）も同時に作る

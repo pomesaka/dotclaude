@@ -21,7 +21,7 @@ mise exec -- portless
 
 コミット操作（`jj commit`, `jj new` 等）は、ユーザーから明示的に指示があるか `/jjcommit` などのスキルが呼ばれるまで自律的に実行しない。ファイルの編集のみ行い、コミットはユーザーに任せる。
 
-コマンドリファレンス: `@~/.claude/docs/jj.md`
+コマンドリファレンス: `~/.claude/docs/jj.md`
 
 ## ~/.claude の管理
 
@@ -41,7 +41,7 @@ mise exec -- portless
 - ない場合は `~/.claude/docs/design-md/` のコレクション（linear / vercel / notion / stripe / claude）から `/use-design` で適用できる
 - AIが生成しがちな「Inter フォント・紫グラデーション・cookie-cutter レイアウト」は避け、意図的な美学を持つUIを目指す
 
-@~/.claude/skills/frontend-design/SKILL.md
+デザイン原則の詳細: `~/.claude/skills/frontend-design/SKILL.md`
 
 ## ユビキタス言語・用語集
 
