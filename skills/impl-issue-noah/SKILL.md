@@ -103,3 +103,5 @@ issue ファイルの `status` を `done` に更新する。Devlog は Step 6 �
 - **変更フィルタ**: `bun run lint` / `bun run typecheck` はモノレポルートで実行すれば全パッケージをチェックする。変更したパッケージのみ絞る場合は `mise exec -- bun --filter='@noah/xxx' lint` を使う
 - **bun install 未実施**: 実装前に `bun install` 済みかを確認する。`node_modules` がなければ lint/typecheck が依存解決エラーで全滅する。`ls node_modules 2>/dev/null | head -1` で確認し、空なら `mise exec -- bun install` を先に実行すること
 - **deps 削除は既存コードへの影響を確認**: サブエージェントが「新機能では使っていない」と判断して deps を削除することがある。削除前に `rg 'package-name'` で他ファイルへの import がないかを確認させること。CI でしか気づけず PR を汚す
+- **`.claude/scheduled_tasks.lock` がコミットに混入する**: Claude Code は `.claude/scheduled_tasks.lock` をワークスペース内に生成する。`.gitignore` に追加しないと jj の working copy に入り push されてしまう。対処: プロジェクトの `.gitignore` に `.claude/scheduled_tasks.lock` と `.claude/settings.local.json` を追加する（`.claude/skills/` は意図的に追跡するため `.claude/` ディレクトリごと除外しない）。既に tracking 中なら `jj file untrack .claude/scheduled_tasks.lock` で外す。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->

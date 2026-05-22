@@ -97,3 +97,14 @@ jj squash                # WCの変更を親コミットにまとめる
 jj には `git mv` 相当のコマンドがない。  
 `Write` ツールで新パスにファイルを作成 → `Bash(rm <旧パス>)` で削除する2ステップで対応する。  
 import パスの更新も忘れずに行う。
+
+## `.gitignore` 追加後の既存追跡ファイルの除外
+
+`.gitignore` にパスを追加しても、既に jj の working copy で追跡中のファイルは自動的には除外されない。  
+`jj status` で `A <path>` として表示されたままになる。
+
+```bash
+jj file untrack <path>
+```
+
+で追跡から外す。`jj status` で消えたことを確認してから push すること。

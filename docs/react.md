@@ -11,6 +11,8 @@ TypeScript の観点に加え、以下の観点でレビューする。
   - Container: データ取得・イベントハンドラ・状態管理
   - Presenter: props を受け取るだけの純粋な表示
 - **class コンポーネント禁止**: 関数コンポーネントのみ使う
+- **pending → done 遷移でコンポーネントを切り替えるとレイアウトジャンプが起きる**: 状態ごとに別コンポーネントを使うと `status` 変化時に React がアンマウント→マウントしてセクション配置が丸ごと入れ替わる。対処: 全状態を1コンポーネントで表現してセクション順序を固定し、done でのみ現れるセクションは末尾に追加するだけにする。pending 中でもヘッダーを常駐させ、データ未着のセクションはプレースホルダーテキスト（例: "Web 検索後に表示されます"）で表示しておく。判断基準: "この状態変化でコンポーネントを差し替えたとき、既存セクションが動くか？" → 動くなら unified コンポーネントに移行する。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
 
 ## Props 設計
 
@@ -32,6 +34,8 @@ TypeScript の観点に加え、以下の観点でレビューする。
   if (!data) return <Error />          // データ取得失敗
   ```
 - **View が "smart" だと感じたら状態を吸い上げる**: `useState`・`useMutation`・非同期ロジックを View が持っていたらカスタムフックに移す
+- **discriminated union の片方にしか必要ないフックはコンポーネントを分割する**: `useCopyFeedback("")` のように "wrong" なブランチでも空値でフックを呼んでしまうのは設計臭。hooks-at-top-level 制約でインラインの条件付き呼び出しはできないため、コンポーネントを `PendingXxx` / `DoneXxx` 等に分割し、フックを必要なコンポーネントにのみ閉じ込める。判断基準: "このフックはあるブランチでは実際に使われているか？" → 使われないなら分割せよ。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
 - **フックは early return より前に**: `useCallback`・`useState` 等を条件分岐の early return より後に置くと `useHookAtTopLevel` lint エラーになる。early return が必要な場合でも全フックをコンポーネントトップに集約してから分岐する
   <!-- importance: high | mentions: 2 | first-seen: 2026-05 -->
 - **stale closure**: conditional な `setState` は functional update で書く（`setJobName(prev => prev || file.name)`）
@@ -51,6 +55,14 @@ TypeScript の観点に加え、以下の観点でレビューする。
 - `useEffect` でのデータフェッチ（React Query 等を使う）
 - `any` 型の Props
 - インラインでの複雑なロジック（カスタムフックに抽出する）
+- **JSX の boolean guard で `??` を "OR" の代わりに使う**: `{condition && (a ?? b)}` の形で `??` を使うと、`a` が truthy のとき `a`（文字列・オブジェクト等）が返り JSX がそれを render しようとする。"どちらか一方が存在すれば表示" の意図なら `||` か `!= null` の OR を使う。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+  ```tsx
+  // ❌ detail が "" (falsy) のとき collected != null の boolean が返る — 意図が曖昧
+  {step.detail ?? step.collected != null}
+  // ✅ 「どちらかが存在すれば表示」の意図を明示
+  {step.detail != null || step.collected != null}
+  ```
 
 ## useEffect の適切な使い方
 
@@ -191,6 +203,27 @@ const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
 ミュータブル ref の初期値は `null` より `undefined` を優先する（cleanup 条件のチェックが一貫する）。
 
+## React 19 の `FormEvent` deprecated と onSubmit ハンドラーの型付け
+
+React 19 で `FormEvent` が deprecated [6385] になった。代替を探すと落とし穴が多い。
+
+```ts
+// NG: SubmitEvent (DOM型) は React 合成イベント型と互換なし → 型エラー 2322
+const handleSubmit = (e: SubmitEvent) => { e.preventDefault(); };
+
+// NG: 型精度後退。型システムから「フォーム送信イベント」の意図が消える
+const handleSubmit = (e: { preventDefault(): void }) => { e.preventDefault(); };
+
+// OK: FormEvent<HTMLFormElement> のまま（typecheck エラーではなく IDE 警告のみ）
+const handleSubmit = (e: FormEvent<HTMLFormElement>) => { e.preventDefault(); };
+
+// OK: 型推論に任せる（JSX の onSubmit ハンドラーとして型が推論される）
+const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => { e.preventDefault(); };
+```
+
+**判断基準**: `bun run typecheck` が通るなら deprecated 警告 [6385] は受け入れてよい。型精度を落とすより正確な型を維持する方が重要。React 19 対応の完全な解決（`FormEvent` 削除）は別 issue で対処する。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+
 ## SSR-safe な ISO 日付パース
 
 `new Date("YYYY-MM-DD")` は UTC 解釈され JST で1日ずれる。サーバー・ブラウザ共通で安全なパターン:
@@ -250,8 +283,9 @@ function useParsedReport(report: string) {
 ## Biome Gotchas
 
 - **`noArrayIndexKey`**: `key={i}` を JSX 内で使うとエラー。`.map()` 呼び出しを JSX 外の変数に切り出して `// biome-ignore` を置くか、content-based key を使う
-  <!-- importance: high | mentions: 2 | first-seen: 2026-05 -->
+  <!-- importance: high | mentions: 3 | first-seen: 2026-05 -->
   **静的配列で全要素が一意な場合は値そのものを key にする**（例: `[75, 60, 85, 55, 70].map((w) => <div key={w}>...`）。オブジェクト配列のプロパティアクセス `key={item.key}` も非フラグ（直接インデックス変数だけが対象）。
+  **`// biome-ignore` は多行 JSX 要素では機能しない**: コメントを要素開始タグ `<div` の直前行に置いても、`key={i}` が属性として別の行にある場合は suppression が効かない。回避策: content-based key に変更するか、`.map()` を JSX の外の変数（`const items = arr.map(...)` ）に切り出してコメントを付ける。
 - **`noAssignInExpressions`**: `(acc[k] ??= []).push(v)` は不可。if-else で明示的に分岐する
 - **`useSemanticElements` が `role="radio"` on `<button>` を拒否**: 詳細は `react-a11y.md` 参照
 - **formatter**: 複数属性を持つ JSX で長い属性値があれば多行フォーマットを強制される。初めから多行で書く

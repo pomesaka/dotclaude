@@ -148,6 +148,15 @@ AppLayout が `overflow-hidden h-screen` を使っている場合、PDF 印刷�
 
 ---
 
+## Tailwind spacing Gotchas
+
+- **`space-y-*` の隣接値変更は視覚的に判別しにくい**: `space-y-6 → space-y-8`（24px → 32px）は差分が 8px しかなく画面上で気づきにくい。特定 sibling 間だけ余白を増やしたい場合は、対象要素に直接 `mb-*` や `mt-*` を付ける方が意図が明確で視覚的にも判別しやすい。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+- **`p-0 m-0` の fieldset と親の `space-y-*` は競合しない**: `m-0` は fieldset 自身のマージンをゼロにするだけで、親の `space-y-*` が次 sibling に付ける `margin-top` には影響しない。ただし `p-0` と同じ要素に `pb-*` を追加する場合、Tailwind の CSS 出力順によっては `p-0` が上書きする可能性がある。安全策: `p-0` を `pt-0` に分解してから `pb-*` を追加する。
+  <!-- importance: low | mentions: 1 | first-seen: 2026-05 -->
+
+---
+
 ## レビューチェックリスト
 
 UI を含む変更差分を見るときは以下を確認する:

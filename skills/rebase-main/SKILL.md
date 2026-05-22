@@ -52,7 +52,7 @@ PRが存在しない場合はここで完了。
 
 ## Gotchas
 
-- **コンフリクト後の squash**: `jj squash` で resolution commit をコンフリクト commit に統合する。その後 `jj log` で確認。
+- **コンフリクト後の squash**: `jj squash -m "..."` で resolution commit をコンフリクト commit に統合する（`-m` を省くと vim が開く）。その後 `jj log` で × が消えたことを確認。複数コミットのチェーンが全部 conflict になるケースは下のGotchaを参照。
 - **`@` で直接コンフリクトを解消した場合は squash 不要**: コンフリクトファイルを `@` で直接編集した場合、`jj squash` は「into parent = immutable main」に向かってしまい失敗する。正しくは `jj new <conflict-rev>` → 編集 → `jj squash` の順。ただし `@` 直接編集でも working copy commit として反映されるため、そのまま `jj git push` で問題ない。
 - **rebase 後は `bun install` を実行する**: main に新しい依存が追加されていると `typecheck` が `Cannot find module` で失敗する。rebase の直後に `mise exec -- bun install` を実行してから lint/typecheck に進む。
 - **`.next/` が biome の対象に入ると lint が大量エラーになる**: Next.js dev server 起動後に生成される `.next/` ディレクトリが biome に拾われて数万件のエラーになる場合がある。lint 前に `rm -rf apps/*/.next` で削除してから実行すること。
@@ -60,3 +60,5 @@ PRが存在しない場合はここで完了。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
 - **`docs/apps/conventions.md` の規約セクション文字（W、X…）も 2-sided conflict になりやすい**: 複数のフィーチャーブランチが同じ文字のセクションを追加することがある（例: 両方が「### W.」を追加）。解決方法は「両方残す + リナンバリング」。main 側の W を優先し、自ブランチの W→X、X→Y のように後続にずらす。どちらか一方を捨てると規約の欠落が発生する。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+- **複数コミットのチェーンをリベースすると全中間コミットが conflict になる**: `jj rebase -s <root> -d main` で A→B→C のチェーンをリベースして A が conflict すると、その conflict が伝播して B・C も × 状態になる。working copy `@` でファイルを解消しても、中間コミット自体の × は残るため `jj git push` が拒否される（"Won't push commit since it has conflicts"）。対処: ①`jj squash -m "..."` で working copy 変更をコミット（`-m` で vim を回避）、②`EDITOR=true jj squash --from <top> --into <bottom>` を繰り返して1コミットに集約する。注意: `jj squash -r X --into Y` は無効（`-r` と `--into` は共存不可）、`--from X --into Y` を使う。commit message が両方非空のとき jj は editor を開こうとするため `EDITOR=true` で抑止する。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->

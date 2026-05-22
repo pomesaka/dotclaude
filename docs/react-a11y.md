@@ -70,6 +70,46 @@ const PHASE_MESSAGES: Partial<Record<Phase, string>> = {
 ```
 
 **`aria-busy` は role を持つ要素に**: `<div>`（暗黙 role: generic）の `aria-busy` はサポート外の AT がある。`<section>`・`<main>`・`<article>` 等のランドマーク要素に付ける。`aria-busy={isLoading || undefined}` とすると false 時に属性が DOM から消える。
+<!-- importance: medium | mentions: 2 | first-seen: 2026-05 -->
+
+**スケルトン内のインタラクティブ要素に `inert` を使う**: `pointer-events-none` + `aria-hidden` だけではキーボードフォーカスが通り抜けてしまう。React 19 では `inert` を boolean prop として使える:
+```tsx
+<div className="pointer-events-none" aria-hidden="true" inert>
+  {/* フォーム・ボタン等のスケルトン */}
+</div>
+```
+`inert` はポインタ・キーボード・AT の全アクセスを遮断する。`pointer-events-none` と `aria-hidden` は冗長になるが意図を明示するため残してよい。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+
+**`aria-live` をインタラクティブ要素（`<button>` 等）の内部に置いてはいけない**: AT がインタラクティブ要素内の live region を正しく処理しないことがある。コピー完了通知やフォーム送信結果などは、ボタンの**外側**に `sr-only` span を置き、そちらでアナウンスする。
+```tsx
+// ❌ ボタン内の aria-live は AT が無視することがある
+<button onClick={handleCopy}>
+  <span aria-live="polite">{copied ? "コピーしました" : ""}</span>
+  コピー
+</button>
+
+// ✅ ボタン外の sr-only span でアナウンス
+<span role="status" aria-live="polite" className="sr-only">
+  {copied ? "クリップボードにコピーしました" : ""}
+</span>
+<button onClick={handleCopy}>コピー</button>
+```
+<!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
+
+**動的ステップリスト全体を live region に入れない**: `role="status"` をリストコンテナに付けると AT がリスト変化のたびに全ステップを読み上げようとする。現在実行中のステップのみを `sr-only` span でアナウンスする:
+```tsx
+{/* sr-only span だけが live region — リストコンテナには付けない */}
+<span role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+  {steps.find((s) => s.status === "running")?.label
+    ? `${steps.find((s) => s.status === "running")?.label} を処理中`
+    : ""}
+</span>
+<div className="border border-border">{/* ← role="status" は付けない */}
+  {steps.map(step => <StepRow key={step.id} step={step} />)}
+</div>
+```
+<!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
 
 ## その他の ARIA パターン
 

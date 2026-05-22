@@ -51,6 +51,8 @@
   <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
 - **`readonly` 配列のコンピューテッドインデックスは `T | undefined` を返す**: `const TABS = ["a","b"] as const; TABS[index]` は `"a" | "b" | undefined` に推論される。`setState(TABS[next])` は型エラー。`const tab = TABS[next]; if (tab) { setState(tab); }` でガードが必要。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+- **バックエンドが常に初期化するフィールドは required にする**: バックエンドがジョブ作成時に `steps: []`・`sources: []` で初期化することが確定しているなら、TypeScript の型も `optional?` ではなく required にする。Optional にすると全参照箇所で `?? []` フォールバックが必要になり防衛的コードが増殖する。判断基準: "API が返す JSON にこのフィールドは必ず存在するか？" → Yes なら required。"クライアントがいつ設定するか決まっていない" → optional。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
 - `class`: **原則使わない**。オブジェクトリテラル・関数・型で表現する
   ```typescript
   // ❌ 避ける
@@ -146,6 +148,23 @@ const keys: TemplateCategory[] = ["運送", "請求", "社内連絡"];
 
 **トレードオフ**: 新しいキーを追加した際にリテラル配列も更新する必要がある（WHY コメントで注記推奨）。表示順の明示制御も兼ねるため、カテゴリ表示順が重要な UI では積極的に採用してよい。
 
+## Bun 固有 API は TypeScript 型定義に含まれない
+
+`import.meta.dir`（カレントファイルのディレクトリ絶対パスを返す Bun 拡張）は TypeScript の `ImportMeta` 型に定義されていないため、`tsc --noEmit` や `bun run typecheck` で型エラーになる。
+
+```ts
+// NG: Bun 固有。TypeScript 型定義外のため型エラー
+const casesDir = import.meta.dir;
+
+// OK: Node.js / Bun 両対応の標準 API
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+const casesDir = dirname(fileURLToPath(import.meta.url));
+```
+
+`import.meta.url` は ECMAScript Module 仕様に含まれており TypeScript も認識する。Bun スクリプトでも動作する。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+
 ## `g` フラグ付き RegExp をモジュール定数にしない
 
 `/pattern/g` を `const` でモジュールスコープに置くと、`exec()` や `match()` が `lastIndex` を書き換えるため、2回目以降の呼び出しで結果がずれる。
@@ -189,6 +208,61 @@ function handle(item: Item) {
 
 discriminated union ブランチ内に `??` や `||` フォールバックがあったら、それが意図的かを確認する。多くの場合は型を絞り込む前の名残（または型変更後の修正漏れ）。
 
+## `as` キャスト禁止下での型精度向上: `useRef` パターン
+
+`useState<A[]>` が特定のライフサイクル時点で実際には `B[]`（`B extends A`）を保持している場合、`as B[]` キャストは禁止。代わりに Promise/Generator の解決時に `useRef<B[]>` に格納する:
+
+```ts
+// NG: as キャスト
+const state = { phase: "done", steps: stream.steps as B[] };
+
+// OK: ref に格納して型精度を維持
+const doneResultRef = useRef<B[]>([]);
+// ...Promise 解決時:
+doneResultRef.current = result.steps; // result.steps: B[] なので型安全
+// state 構築時:
+const state = phase === "done"
+  ? { phase: "done", steps: doneResultRef.current }  // B[] として型付け
+  : { phase: "running", steps: state.steps };         // A[] のまま
+```
+
+判断基準: "この値は特定の状態変化の後にしか意味を持たない" → `useState` に入れず `useRef` に格納して discriminated union の型精度を保つ。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+
+## switch の exhaustive check: 全 case 明示 + `never` アサーション
+
+`default` だけに fallback を置くと、新しい union member を追加したときに修正漏れをコンパイラが検知できない。
+
+```ts
+// NG: "text" が default に落ちるため、新型追加時に switch の更新漏れが気づかない
+function getProps(type: VariableType) {
+  switch (type) {
+    case "integer": return { type: "number", step: "1" };
+    case "date": return { type: "date" };
+    default: return { type: "text" };  // "text" も "time" も全部ここに落ちる
+  }
+}
+
+// OK: 全 case を明示 + default に never アサーション
+function getProps(type: VariableType) {
+  switch (type) {
+    case "text":    return { type: "text" };
+    case "integer": return { type: "number", step: "1" };
+    case "decimal": return { type: "number", step: "any" };
+    case "date":    return { type: "date" };
+    case "time":    return { type: "time" };
+    default: {
+      // WHY: VariableType に新値を追加したとき、コンパイル時に修正漏れを検知する
+      const _exhaustive: never = type;
+      return { type: "text" };  // 実行時のフォールバック（到達不能のはず）
+    }
+  }
+}
+```
+
+**使い分け**: 戻り値が必要なら上記。`throw new Error(\`Unknown: \${type}\`)` のみでもよいが、型推論で戻り値型が `never` になり呼び出し側の型が壊れることがある。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+
 ## `satisfies T[]` は `.reduce()` コールバックの型を絞り込まない
 
 `satisfies T[]` はリテラル型を保持するが、`Array.prototype.reduce()` のコールバックパラメータ `t` の型は配列要素型として推論される。ベース型 `T.field: string` が広い場合、コールバック内で `t.field` が `string` のまま残り、`Partial<Record<LiteralUnion, V>>` へのインデックスアクセスで TS7053 エラーになる。
@@ -206,4 +280,24 @@ const ITEMS: NarrowItem[] = [{ category: "A" }, { category: "B" }];
 ITEMS.reduce<Partial<Record<"A" | "B", NarrowItem[]>>>((acc, t) => {
   acc[t.category] = []; // OK: t.category は "A" | "B"
 }, {});
+```
+
+## AbortError 判定は `signal.aborted` で
+
+`catch` ブロックで `err.name === "AbortError"` を使うと、同名の独自 Error クラスによる false positive が起きる。`AbortController` の signal が手元にある場合は `controller.signal.aborted` を参照する方が確実。
+
+```typescript
+// NG: 独自エラーが同名を持つと誤判定する
+} catch (err: unknown) {
+  if (err instanceof Error && err.name === "AbortError") { ... }
+}
+
+// OK: signal.aborted で確実に判定
+} catch (err: unknown) {
+  if (controller.signal.aborted) {
+    // cancelled
+  } else {
+    // failed
+  }
+}
 ```
