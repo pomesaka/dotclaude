@@ -15,9 +15,5 @@ for skill_file in ~/.claude/skills/*/SKILL.md; do
 done
 
 echo ""
-echo "### commands/ 一覧"
-ls "$DOTCLAUDE/commands/" 2>/dev/null
-
-echo ""
 echo "### docs/ 一覧"
 ls "$DOTCLAUDE/docs/" 2>/dev/null

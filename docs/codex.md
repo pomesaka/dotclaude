@@ -35,7 +35,7 @@ When using existing Claude Code skills in Codex, translate these patterns mental
 
 Codex CLI slash commands are built-in controls such as `/model`, `/permissions`, `/compact`, and `/diff`.
 
-As of Codex CLI 0.133.0, repository skills do not become `/skill-name` commands automatically. Invoke skills with natural language, or use Codex's skill picker when available.
+As of Codex CLI 0.133.0, repository skills do not become `/skill-name` commands automatically. Invoke skills with `$skill-name`, natural language, or Codex's skill picker when available.
 
 ## AGENTS.md Best Practices
 

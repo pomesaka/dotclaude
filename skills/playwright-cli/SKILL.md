@@ -5,6 +5,11 @@ allowed-tools: Bash(playwright-cli:*)
 model: haiku
 ---
 
+> **Codex app priority:** When the Codex app browser is available, use it before
+> `playwright-cli` for browser interaction, local-app verification, and screenshots.
+> Use `playwright-cli` only when the Codex app browser is unavailable or cannot
+> perform the required operation.
+
 # Browser Automation with playwright-cli
 
 ## Quick start

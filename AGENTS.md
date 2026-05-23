@@ -9,6 +9,7 @@
 - rg (ripgrep): grep の代わりに rg を使用
 - コミット操作（`jj commit`, `jj new` 等）は、ユーザーから明示的に指示があるか `jjcommit` などのスキルが呼ばれるまで自律的に実行しない
 - フロントエンド実装では、プロジェクトルートに `DESIGN.md` があれば最優先のデザイン基準として読み込む
+- プロジェクトルートに `CLAUDE.md` があれば、作業前に読み込んでプロジェクト固有の指示として扱う
 - AI が生成しがちな「Inter フォント・紫グラデーション・cookie-cutter レイアウト」は避け、意図的な美学を持つ UI を目指す
 - 外部から使用される可能性があるものには必ずドキュメントを記載
 - 複雑なロジックには WHY（なぜそうしたか）を重視したコメントを記載
@@ -31,7 +32,6 @@ Claude Code では以下を同じリポジトリからシンボリックリン�
 
 - `~/.claude/CLAUDE.md`
 - `~/.claude/skills/`
-- `~/.claude/commands/`
 - `~/.claude/agents/`
 - `~/.claude/docs/`
 
@@ -39,13 +39,13 @@ Codex では以下を同じリポジトリからシンボリックリンクし�
 
 - `~/.codex/AGENTS.md`
 - `~/.agents/skills/<skill-name>/`
-- `~/.codex/commands/`
 - `~/.codex/agents/`
 - `~/.codex/docs/`
 
-スキル・コマンド・エージェントを追加・編集する際は dotclaude リポジトリ側に変更を入れることになる（symlink 経由で自動反映）。
+スキル・エージェントを追加・編集する際は dotclaude リポジトリ側に変更を入れることになる（symlink 経由で自動反映）。
 
 Claude Code 由来のスキルには `allowed-tools`、`AskUserQuestion`、`Agent`、`$ARGUMENTS`、`!` コマンド展開など Codex がそのまま解釈しない記法が含まれる場合がある。その場合は Codex の利用可能なツールに読み替えて実行する。
+特に `Agent(...)` でサブエージェント起動が指示されている場合は、Codex の multi-agent tool に読み替え、調査・レビューなど read-only な役割は `explorer`、実装・修正など編集を伴う役割は `worker` のサブエージェントで代用する。
 
 Codex スキルを書く・直すときは `~/.codex/docs/codex.md` を参照する。
 
@@ -58,3 +58,7 @@ Codex スキルを書く・直すときは `~/.codex/docs/codex.md` を参照す
 
 - プロジェクトルートに `DESIGN.md` がなければ `~/.codex/docs/design-md/` のコレクション（linear / vercel / notion / stripe / claude）から `use-design` スキルで適用できる
 - 必要に応じて `~/.agents/skills/frontend-design/SKILL.md` を読む
+
+## スキルの発見
+
+ユーザーがスキルを指定した場合、一覧に出ていなくても `~/.agents/skills/<skill-name>/SKILL.md` を確認する。別名や古いパスは `~/.claude/skills/` と共有リポジトリの `skills/` を探す。競合記号・壊れたfrontmatter・リンク切れがあれば、その原因を報告し、スキルが使えたとは扱わない。

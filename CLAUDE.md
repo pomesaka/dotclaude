@@ -6,6 +6,8 @@
 >
 > 各原則の実例・亜種チェーンは `archive/CLAUDE.md-2026-07-29.md`（および `-2026-07-02.md`）に退避済み。live doc は原則と判断基準のみを持つ。
 
+共通方針: @~/.claude/docs/shared-agent-policy.md
+
 ## 応答スタイル
 
 - **書きすぎない。1 行足す前に「これが無いと読み手は何を間違えるか」を問う**: 説明・背景・言い換え・強調は足すほど親切に見えるが、実際は本体（表・結論・コード）が散文に埋もれて読まれなくなる。ドキュメント・PR 本文・コミットメッセージ・ユーザーへの応答すべてが対象。削る目印: ①見出しと導入文と本文で同じことを 3 回言っている ②読み手が既に知っていること（自社のビジネス説明・自明な前提）を書いている ③「なぜこう書いたか」の弁明が本文に混ざっている（PR 本文へ出すか捨てる）。迷ったら削る。足りなければ聞かれる。実例: ある案件の業務フロー文書が、20 行の表に凡例・読み方・補足の散文が付いて 80 行になっていた。表中心に削って「だいぶすっきりした」（2026-09-16）
@@ -49,6 +51,10 @@ Shell operator（`&&`/`||`/`;`/`|`）を含む複合コマンドはパーミッ�
 ### ブランチ命名（PR 作成時）
 
 - **`release/` prefix のブランチを自律的に作成しない**: `release/<customer>` のような「main への promote 対象になる trunk ブランチ」専用の prefix。feature / fix の PR で使うと trunk と混同され、branch protection ruleset や dev CI trigger に予期せず干渉する。明示指示された場合のみ作成可。通常の PR は `feat/<app>-...` / `fix/` / `docs/` / `chore/` / `hotfix/` から選ぶ。changelog + version bump は `docs/` か `chore/`、base は `release/<customer>`。詳細は各プロジェクトの branch-strategy.md 参照
+
+## 共有設定の管理
+
+Codexの入口は同じリポジトリのAGENTS.md。スキルは~/.agents/skills/<skill-name>/、共有資料は~/.codex/docs/へリンクする。Codex固有の記法対応はdocs/codex.mdを参照する。
 
 ## ~/.claude の管理
 

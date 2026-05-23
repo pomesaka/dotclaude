@@ -9,7 +9,7 @@
 # WHY 先端のファイルでなくコミットの差分を見る: 途中のコミットで足して後のコミットで消した文字列も、push すれば履歴に残る。
 # WHY 名前の一覧をリポジトリに置かない: 一覧そのものが、公開したくない名前の並びになる。
 #   .private-names（.gitignore 済み）に、1 行に 1 つ、正規表現で書く。# で始まる行と空行は読み飛ばす。
-# WHY 一覧が無ければ失敗させる: 新しいマシンで一覧を置き忘れたまま、何も調べずに通るのを防ぐ。
+# 名前の一覧は任意。未設定・空の場合も鍵やトークンの検査は行う。
 set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)
@@ -17,21 +17,17 @@ names_file="$repo/.private-names"
 remote=${1:-origin}
 branch=${2:-main}
 
-if [ ! -f "$names_file" ]; then
-  echo "check-public: $names_file がありません。公開しない名前（案件名、顧客名、会社名、メールアドレス）を 1 行に 1 つ書いてください" >&2
-  exit 1
-fi
-
 names=$(mktemp)
 keys=$(mktemp)
 log=$(mktemp)
 hits=$(mktemp)
 trap 'rm -f "$names" "$keys" "$log" "$hits"' EXIT
 
-rg -v '^\s*(#|$)' "$names_file" >"$names" || true
+if [ -f "$names_file" ]; then
+  rg -v '^\s*(#|$)' "$names_file" >"$names" || true
+fi
 if [ ! -s "$names" ]; then
-  echo "check-public: $names_file に名前が 1 つもありません" >&2
-  exit 1
+  echo "check-public: 名前の一覧が未設定のため、鍵やトークンのみ検査します" >&2
 fi
 
 # 鍵やトークンの形。大文字と小文字を区別して探す

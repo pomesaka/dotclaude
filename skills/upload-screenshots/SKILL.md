@@ -1,53 +1,39 @@
 ---
 name: upload-screenshots
-description: ローカルのスクリーンショット（PNG/JPEG/GIF/WebP/SVG）や動画（MP4/MOV/WebM）をGitHubのIssueまたはPRコメントに添付する。
-when_to_use: 「スクショをPRにあげて」「動画をコメントに投稿して」と言われたとき。
-argument-hint: "[pr-number or issue-number]"
-allowed-tools: Bash(jj bookmark *), Bash(gh *)
-model: haiku
+description: スクショをPRに貼る、画像・動画をIssueやPRに添付する依頼で使う。ghの--attachで正式なGitHub添付URLへアップロードする。
+metadata:
+  short-description: GitHubへスクショ・動画を正式添付
 ---
 
-# upload-screenshots: スクリーンショットをGitHub Issue/PRに投稿する
+# upload-screenshots
 
-## 概要
+Claude CodeとCodexで共通の手順。GitHub CLIの `--attach` を使い、release assetやリポジトリ内画像を経由せず、画像・動画を添付する。
 
-`gh` CLI 2.99.0 以降の `--attach` フラグで、ローカルの画像・動画をそのまま Issue/PR コメントに添付する。
-アップロードは GitHub 側でホストされ、動画も変換なしでプレーヤーとして埋め込み表示される。
+## 対象を確認
 
-- 対応形式: PNG / JPEG / GIF / WebP / SVG（画像）、MP4 / MOV / WebM（動画）
-- サイズ上限: 画像・GIF 10MB、動画 10MB（Free）/ 100MB（有料プラン）
-- 1コマンドあたり最大50ファイル
-- 要 `gh` 2.99.0+（`gh --version` で確認。満たさなければ先にアップデートする）
+ユーザー指定のIssue/PRを使う。未指定なら `jj bookmark list` と `gh pr list --head <bookmark-name>` で確認する。
+「PRにスクショ」は通常、既存本文を更新する。コメント投稿を指定された場合は、そのコメントへ添付する。
 
-## 手順
+## 添付
 
-### Step 1: 対象の特定
+`gh` 2.99.0以降が対応する。その環境の対象コマンドの `--help` に `--attach` があることを確認する。
 
-ARGUMENTSからIssue/PR番号を取得する。未指定の場合は現在のブックマークからPRを探す。
+    gh pr edit <NUMBER> --attach './home.jpg#Homeの画面'
+    gh pr comment <NUMBER> --attach './home.jpg#Homeの画面'
+    gh issue comment <NUMBER> --attach './demo.mp4'
 
-```bash
-jj bookmark list
-gh pr list --head <bookmark名> --json number,title
-```
+- 本文を整理するならMarkdownをファイルへ保存し、`--body-file` を使う。本文の `![説明](./home.jpg)` と同じパスを `--attach` に渡すと、CLIが正式な添付URLへ置き換える。
+- 画像のalt textはファイルパスの `#` 以降に指定できる。動画にはalt textを付けない。
+- 対応形式はPNG/JPEG/GIF/WebP/SVG、MP4/MOV/WebM。実際のファイル形式と拡張子を一致させる。
+- 現在は1コマンド50ファイルまで。画像/GIFは10MB、動画はFreeで10MB、有料プランで100MBまで。
+- 一部が成功した場合、現状の本文を確認し、未成功の添付だけを再実行する。失敗した追記を新規コメント投稿へ黙って切り替えない。
 
-### Step 2: 添付コメントを投稿
+## 確認と後片付け
 
-`--attach '<ファイルパス>#<画像の説明>'` で1ファイルずつ指定する（`#` 以降は alt text。動画には付けられない）。
+`gh pr view <NUMBER> --json body`（Issueは `gh issue view`）で、ローカル参照がGitHub添付URLへ置き換わり、必要な枚数があることを確認する。ブラウザ確認が可能なら画像が表示されることも確認する。
 
-```bash
-gh pr comment <NUMBER> --attach './screenshot1.png#ログイン後の画面' --attach './demo.mp4#操作の様子'
-# Issueの場合は gh issue comment
-```
+正式添付後は自分が作成した一時ファイル・重複画像を整理する。ユーザーの成果物や他の作業のファイル、既存releaseを自動削除しない。
 
-- `--body`（`-b`）を省略すると、添付ファイルだけの新規コメントになる（各添付はファイル名 or alt text 付きで末尾に並ぶ）
-- 配置や説明文をコントロールしたい場合は、本文に `![説明](./screenshot1.png)` のようにローカルパスを直接書いて `--body` に渡す。`--attach` で同じパスを渡すと、その参照がアップロード後の URL に書き換わる（alt text は本文側の記述が優先される）
+共有の正本はdotclaude。Codexは `~/.agents/skills/upload-screenshots/SKILL.md`、Claude Codeは `~/.claude/skills/upload-screenshots/SKILL.md` から同じ定義を読む。
 
-### Step 3: 既存コメントへの追記（必要な場合）
-
-`--edit-last --attach ...` で自分の最後のコメントに追記できる（`gh pr comment --help` に両フラグの記載あり。組み合わせの実地動作はこのスキルでは未検証。失敗したら新規コメント投稿にフォールバックする）。
-
-## Gotchas
-
-- **`--attach` は `gh issue/pr create/edit/comment` にのみ存在する**: `gh api` 経由の生 REST 呼び出しにはない。添付を伴わずコメント本文だけ書き換えたい場合は従来通り `gh api --method PATCH repos/{repo}/issues/comments/{id}` を使う
-- **動画はそのままプレーヤーとして埋め込まれ、alt text は付けられない**（`gh pr comment --help` に明記）
-- 詳細: https://docs.github.com/en/github-cli/github-cli/attaching-files-with-github-cli
+GitHubの手順: https://docs.github.com/en/github-cli/github-cli/attaching-files-with-github-cli
