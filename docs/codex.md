@@ -31,6 +31,12 @@ When using existing Claude Code skills in Codex, translate these patterns mental
 - Use user-scoped skills in `~/.agents/skills/` for personal workflows that apply across repositories.
 - Restart Codex if a new or edited skill does not appear.
 
+## Slash Commands
+
+Codex CLI slash commands are built-in controls such as `/model`, `/permissions`, `/compact`, and `/diff`.
+
+As of Codex CLI 0.133.0, repository skills do not become `/skill-name` commands automatically. Invoke skills with natural language, or use Codex's skill picker when available.
+
 ## AGENTS.md Best Practices
 
 - Put reusable personal defaults in `~/.codex/AGENTS.md`.
