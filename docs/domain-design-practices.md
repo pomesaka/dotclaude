@@ -15,9 +15,11 @@
 5. [ドメイン中心アーキテクチャ](#5-ドメイン中心アーキテクチャ)
 6. [関数型ドメインモデリング](#6-関数型ドメインモデリング)
 7. [アンチパターン](#7-アンチパターン)
-8. [現代の実践的アプローチ](#8-現代の実践的アプローチ2024-2026)
-9. [スキルを磨くには](#9-スキルを磨くには)
-10. [参考文献・リソース](#10-参考文献リソース)
+8. [横断モジュールへの入力境界パターン](#8-横断モジュールへの入力境界パターン)
+9. [現代の実践的アプローチ](#9-現代の実践的アプローチ2024-2026)
+10. [スキルを磨くには](#10-スキルを磨くには)
+11. [AI Agent の設計原則](#11-ai-agent-の設計原則llm-backed-関数の責務分離)
+11. [参考文献・リソース](#11-参考文献リソース)
 
 ---
 
@@ -231,7 +233,73 @@ Go の場合、直和型は interface + 型スイッチ、あるいは sealed in
 
 ---
 
-## 8. 現代の実践的アプローチ（2024-2026）
+## 8. 横断モジュールへの入力境界パターン
+
+複数のソース（API・GraphQL・Screen など）が異なる形式で同一 aggregator に渡している場合、
+**修正箇所は aggregator 側ではなく各ソースの境界**にある。
+
+### 問題: 非対称入力 aggregator
+
+```
+API → { endpointCode → ClientCall[] }   # 生の呼び出し
+GraphQL → { typeId → model名[] }        # 伝播済みモデル名
+           ↓
+aggregator がそれぞれを別扱いして処理
+```
+
+症状: 「なぜ source X は対応していないのか？」という非存在への問いが出る。Screen 追加のたびに aggregator に分岐が増える。
+
+### 解: 各ソースが共通型に変換して渡す
+
+```
+API → RelationBinding[] { source: ItemRef, target: TargetDescriptor }
+GraphQL → RelationBinding[] { source: ItemRef, target: TargetDescriptor }
+Screen → RelationBinding[] { source: ItemRef, target: TargetDescriptor }
+           ↓
+aggregator は一律に target を解決してエッジ化（source 種別不問）
+```
+
+`TargetDescriptor` の設計ポイント:
+- 生 ClientCall から「Spec 解決に必要なフィールドだけ」を抜く（target 解決に不要な `stack`・`operationType` 等は含めない）
+- 伝播由来で生 ClientCall を持たないソースも同じ記述子を直接構築できる
+- 「対応しないケース（sdk）」は変換関数が `null` を返す形で表現し、aggregator に持ち込まない
+
+### 見分け方
+
+aggregator の docstring や型定義に「source A のための Map」と「source B のためのフィールド」が並んでいたら境界での正規化が不足している可能性が高い。
+
+### 発展: target 記述子に「解決可能性クラス」を持たせる
+
+境界で正規化した `TargetDescriptor` を設計するとき、kind の選択肢は「どう解決するか」の宣言にもなる。
+解決可能性は呼び出し種別ごとに根本的に異なるため、これを第一級にすると aggregator の実装が明確になる。
+
+軸は **「ターゲットのドメイン固有の識別子を、consumer が（正規化して）名指せるか」**。
+
+| クラス | 典型例 | 解決手段 |
+|--------|--------|---------|
+| **Schema-key** | DB（ORM / 生 SQL） | ターゲットの**ドメイン固有識別子**（RDB なら (schema, table name)）で照合。ORM model はその view で、consumer が正規化して名指す |
+| **Name** | GraphQL operation | 操作名 ↔ field 名で照合 |
+| **Pattern** | HTTP endpoint | URL 文字列 ↔ ルートパターンで近似照合（**不可避**） |
+| **External** | SDK 呼び出し | コードベース外 → ローカル spec item に解決しない |
+
+**落とし穴1: 単一ツール/ORM の表現をドメイン概念と取り違える。** 「Prisma の model 宣言を consumer と
+provider が共有しているから DB は Identity（共有コード宣言）だ」と分類したくなるが、それは Prisma codegen
+固有の事情。RDB の本質は (schema, table name, columns) であり、model はその view にすぎない。SQL DDL
+管理なら共有宣言など無く、結局 (schema, table name) 照合になる。**ターゲットの識別子は「いちばん下の
+ドメイン層」で定義せよ** — ORM やフレームワークの表現に引きずられない。
+
+**落とし穴2: 「全種別を共有宣言（go-to-definition で到達する Identity）で解ける」という誘惑。** これが
+成立するのは単一スタック（Prisma codegen / tRPC など型を共有する仕組み）だけ。HTTP は
+`fetch('/api/users/123')` から `/api/users/[id]` ルート定義への go-to-definition が存在しないため
+Pattern 照合が本質的に不可避。「全部統一して美しく」と進めると前提が破綻する。
+
+**判断手順**: ①ターゲットのドメイン固有識別子は何か（RDB なら schema+table、API なら route、GraphQL なら
+field 名）を**ツール非依存で**定義する → ② consumer がその識別子を正規化して名指せるか／近似しかできないか
+／コードベース外か、で Schema-key / Name / Pattern / External に振り分ける。
+
+---
+
+## 9. 現代の実践的アプローチ（2024-2026）
 
 ### 協調的モデリングの組み合わせ
 
@@ -322,6 +390,31 @@ Bounded Context はマイクロサービスのサービス境界を定義する�
 - [F# for Fun and Profit](https://fsharpforfunandprofit.com/books/)
 - DDD Europe カンファレンス（年次開催）
 - DDD-CQRS-ES Discord Server
+
+---
+
+## 11. AI Agent の設計原則（LLM-backed 関数の責務分離）
+
+AI を内部実装に持つ agent を設計する際も、ドメイン責務の分離原則は同様に適用される。
+
+### Agent = 型付き関数
+
+`Agent<I, O>` は外から見れば普通の型付き関数 `(I) => Promise<O>` であるべき。
+
+- **agent の責務**: ①構造化入力からプロンプトを内部生成 ②ツールのデフォルト設定 ③構造化出力
+- **プロンプト文字列を外部注入しない**: `config.system: string` のような生プロンプト注入は NG。ドメイン知識が注入文字列に散乱し、agent が空洞になる
+- **ドメイン固有部分は構造化データで渡す**: `serviceKind`, `stack` 等。agent 実装がこれらからプロンプトを内部生成する
+- **抽出ルールは出力スキーマが担う**: Valibot スキーマの `v.description` / `picklist` / `tool.description` に書くと `toJsonSchema` 経由で LLM に自動伝播する。プロンプトに書かない
+
+### AI（非決定的）と決定的処理の分離
+
+- **決定的 I/O（ファイル読み込み等）を agent に入れない**: LLM contribution が null になる。ファイル読み込みは service の orchestration 側に置く
+- **batch 分割・並列・合成などの orchestration ロジック**も agent ではなく呼び出し側 service が持つ（テスト可能に保つ）
+- agent はできるだけ単機能の primitive にする。enumerate も extract も「content → 出力スキーマに沿った構造化出力」という同じ primitive を出力 tool 違いで使う
+
+### 設計判断の WHY を必ず残す
+
+なぜ 2 パス（enumerate → batch extract）にするか等の非自明な設計判断は型定義のそばにコメントで残す。技術的制約（トークン上限等）が設計に影響する場合は因果の chain を省略しない。
 
 ---
 

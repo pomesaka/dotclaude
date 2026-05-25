@@ -13,16 +13,7 @@
 
 ## ローカル開発サーバー
 
-フロントエンドの動作確認には `portless` を使う。`localhost:PORT` ではなく `https://<appname>.localhost` でアクセスできる。
-
-```bash
-# アプリディレクトリで実行（package.json の "dev" スクリプトを自動起動）
-cd apps/<appname>
-mise exec -- portless
-```
-
-- 初回実行時にローカル CA を生成・HTTPS 化（sudo で自動昇格）
-- jj ワークスペース（worktree）ではブランチ名がサブドメインに自動付与される
+フロントの動作確認は `portless` を使う（`localhost:PORT` でなく `https://<appname>.localhost`）。アプリディレクトリで `mise exec -- portless`。初回はローカル CA を生成して HTTPS 化（sudo 昇格）、jj ワークスペースではブランチ名がサブドメインに付く。詳細は `/portless`。
 
 ## Version Control (Jujutsu)
 
@@ -32,7 +23,7 @@ mise exec -- portless
 
 ## ~/.claude の管理
 
-`~/.claude/skills/`、`~/.claude/commands/`、`~/.claude/agents/` はシンボリックリンクで、実体は `~/github.com/pomesaka/dotclaude/` で管理されている。
+`~/.claude/skills/`、`~/.claude/commands/`、`~/.claude/agents/`、`~/.claude/rules/` はシンボリックリンクで、実体は `~/github.com/pomesaka/dotclaude/` で管理されている。
 スキル・コマンド・エージェントを追加・編集する際は dotclaude リポジトリ側に変更を入れることになる（symlink経由で自動反映）。
 
 ## Tmp Directory
@@ -83,14 +74,12 @@ mise exec -- portless
 
 ## Bash Commands
 
-Shell operator（`&&`、`||`、`;`、`|`）を含む複合コマンドは**パーミッションプロンプトが発生するため極力禁止**。
+Shell operator（`&&`/`||`/`;`/`|`）を含む複合コマンドは**パーミッションプロンプトを誘発するため避ける**。フォールバック（`cmd1 || cmd2`）も使わず、正しいコマンドを1つ決めて実行する。パイプ（`|`）は `rg`/`jq` など read-only フィルタのみ可（書き込みを伴うものは禁止）。`cd /path && cmd` の代替策は `~/.claude/docs/bash-tips.md` 参照。
 
-- `cmd1 && cmd2`、`cmd1 || cmd2`、`cmd1 ; cmd2` は使わない
-- フォールバック（`cmd1 || cmd2 || cmd3`）も使わない — 正しいコマンドを1つ決めて実行する
-- `cd /path && cmd` の代替:
-  - `cmd -C /path` や `cmd --cwd /path` などのフラグ（ツールが対応している場合）
-  - `jj diff -R /path` のようにリポジトリ指定フラグを使う
-- パイプ（`|`）は `rg`、`jq` などの read-only フィルタに限り許容（ただし書き込みを伴う場合は禁止）
+## スキル（SKILL.md）設計規約
+
+- **`allowed-tools` とスキル内指示ツールを一致させる**: スキル本文で「Write で保存する」「Edit で修正する」と指示するなら `allowed-tools` に `Write`/`Edit` を追加すること。ツールが許可リストに無いとスキル実行時にブロックされる。新しいスキルを書くたびに、本文を通読して使うツールをリストアップする習慣をつける。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 
 ## Working Rules
 
@@ -101,3 +90,4 @@ Shell operator（`&&`、`||`、`;`、`|`）を含む複合コマンドは**パ�
   - PR作成時の `jj bookmark create`, `jj git push`, `gh pr create` もworkspace/xxx/ 内で実行する
 - ドキュメントを書く際にトラブルシューティングの章を書くのは、ユーザーから指示がない限り禁止です。
 - 修正案がいくつかあるとき、一番楽なものではなく、長期的にみて一番筋のいい選択を取るようにして。
+- 認証・認可・ORM・バリデーション・ジョブ基盤など横断的な関心事を自前設計する前に、採用済みライブラリ/フレームワークに同等機能がないか公式ドキュメントで調査する。自前を選ぶ場合もその判断に根拠を持つ（自前設計自体が悪いのではなく、調査せず倒すのが問題）。

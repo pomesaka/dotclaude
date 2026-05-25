@@ -62,3 +62,9 @@ PRが存在しない場合はここで完了。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
 - **複数コミットのチェーンをリベースすると全中間コミットが conflict になる**: `jj rebase -s <root> -d main` で A→B→C のチェーンをリベースして A が conflict すると、その conflict が伝播して B・C も × 状態になる。working copy `@` でファイルを解消しても、中間コミット自体の × は残るため `jj git push` が拒否される（"Won't push commit since it has conflicts"）。対処: ①`jj squash -m "..."` で working copy 変更をコミット（`-m` で vim を回避）、②`EDITOR=true jj squash --from <top> --into <bottom>` を繰り返して1コミットに集約する。注意: `jj squash -r X --into Y` は無効（`-r` と `--into` は共存不可）、`--from X --into Y` を使う。commit message が両方非空のとき jj は editor を開こうとするため `EDITOR=true` で抑止する。
   <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
+- **semantic conflict（意味的コンフリクト）はマーカー解消後の lint で発覚する**: main が新規追加した関数が、自ブランチで削除したメソッドを呼んでいるケース。テキスト的なコンフリクトマーカーを解消しただけでは気づけない。対処: コンフリクト解消・squash 後に必ず `task be:lint`（または相当する lint コマンド）を実行して意味的エラーを検出する。例: main が `ExportV2` を追加 + `GetHead` を使用、自ブランチが `GetHead` を `ProjectSpecSnapshotRepository` から削除済み → `ExportV2` をブランチベースのロジックに更新が必要。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
+- **`>>>>>>> ends` 以降のコードは「自ブランチのコンテキスト」で、main で削除済みの型/関数を参照していることがある**: コンフリクトブロック外のコードはそのまま自ブランチの内容として残るが、main で既に削除されたリポジトリメソッドや型を参照しているケースがある（例: `APIOverviewSettingRepository` が domain パッケージから削除済みなのにファイル内に残存）。lint の `undefined` エラーが出たら自ブランチ固有の実装が main と乖離していないか確認する。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+- **`atlas.sum` は 2-sided conflict になりやすい**: 両ブランチが異なるマイグレーションを追加すると、ヘッダーハッシュ行（`h1:...=`）とファイルエントリ行の2箇所で conflict になる。解決: ①両ブランチのエントリをタイムスタンプ順（ファイル名順）にマージしてコンフリクトマーカーを除去、②`task db:migrate:rehash` でヘッダーハッシュを再生成（手動で正しい hash を計算することは不可能なので必須）。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->

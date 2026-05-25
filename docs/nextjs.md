@@ -54,6 +54,48 @@ React の観点に加え、以下の観点でレビューする。
 /{resource}/[id]/edit  # 編集
 ```
 
+## UI 永続化パターン（localStorage vs Cookie）
+
+サイドバー開閉・テーマ・ロケールなど「ページ間で保持したい UI 状態」を SSR と整合させる方法：
+
+| 手法 | SSR で読める？ | 実装コスト | 向いている用途 |
+|------|--------------|-----------|--------------|
+| `localStorage` | ❌（クライアント専用） | `isLoaded` フラグ + hydration ガードが必要 | SPA・クライアント限定のキャッシュ |
+| `Cookie` | ✅（`next/headers` で読める） | SC で読んで props で渡す | テーマ・サイドバー・ロケールなど SSR に影響する UI 状態 |
+
+**Cookie パターン（推奨）**:
+
+```ts
+// lib/cookie/sidebar.ts  ("use server")
+import { cookies } from "next/headers";
+export async function getSidebarOpenCookie() {
+  return (await cookies()).get("adet:sidebar-open")?.value !== "false";
+}
+
+// layout.tsx (Server Component)
+const defaultSidebarOpen = await getSidebarOpenCookie();
+<ModeSwitch defaultSidebarOpen={defaultSidebarOpen} />
+
+// use-sidebar-open.ts ("use client")
+// initialOpen はサーバーから渡された値 → isLoaded フラグ不要
+export function useSidebarOpen(initialOpen: boolean) {
+  const [isOpen, setIsOpen] = useState(initialOpen);
+  const toggle = useCallback(() => {
+    setIsOpen((prev) => {
+      const next = !prev;
+      // biome-ignore lint/suspicious/noDocumentCookie: Cookie Store API は非同期かつブラウザサポートが限定的
+      document.cookie = `adet:sidebar-open=${next}; path=/; max-age=31536000; SameSite=Lax`;
+      return next;
+    });
+  }, []);
+  return { isOpen, toggle };
+}
+```
+
+`localStorage` パターンは `isLoaded` フラグと SSR での初期値ミスマッチを避けるための `useEffect` が必要になり複雑化する。SSR で状態を読む必要がある場合は Cookie を選ぶ。
+
+<!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
+
 ## ローディングパターン
 
 非同期処理（データフェッチ・mutation）を扱う場面では、必ずローディング状態をセットで設計する。「データを取ってくる」と「その間に何を見せるか」は一体の問題。

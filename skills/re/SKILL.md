@@ -37,17 +37,17 @@ allowed-tools: Read, Write, Edit, Bash(fd *), Bash(rg *)
 | プロジェクト規約・アーキテクチャ制約 | `docs/conventions.md` または `docs/architecture.md` |
 | 設計上の意思決定（Why + 却下案） | `docs/adr/` または `docs/architecture.md` |
 | グローバルに使えるパターン・Tips | `~/.claude/docs/<topic>.md`（新規 or 既存に追記） |
-| Claude の振る舞い・ユーザーの好み | memory（feedback / user type） |
+| Claude の振る舞い・ユーザーの好み | `~/.claude/CLAUDE.md` に追記 |
 | 一時的・このセッション限りの情報 | スキップ |
 | 毎回手動で実行している静的チェック（lint・typecheck・format 等） | `update-config` スキルで hook として設定することを提案する |
 
 **書き先の選択基準**:
 1. このプロジェクト固有か？ → プロジェクト側（`docs/` or プロジェクト `CLAUDE.md`）
 2. 他のプロジェクトでも起きうるか？ → グローバル（`~/.claude/docs/`）
-3. Claude の挙動を変えるべきか？ → memory
+3. Claude の挙動を変えるべきか？ → `~/.claude/CLAUDE.md`
 4. スキルのフローに問題があったか？ → スキルファイルの `Gotchas`
 
-書き先が不明な場合は AskUserQuestion で確認する。
+書き先が不明な発見は、とりあえず `~/.claude/CLAUDE.md` に追記する（memory システムは使わない）。
 
 **プロジェクト内の書き先確認**: `docs/` が存在するかを `fd --type d --max-depth 1 docs` で確認してから判断する。
 
@@ -84,7 +84,7 @@ rg -i "<キーワード>" <書き先ファイル>
 
 - **新規ファイル**: kebab-case で作成。frontmatter は不要（`~/.claude/docs/` 以下は prose で書く）
 
-- **memory**: 会話の memory システムに書き込む（feedback / project / user type に応じて）
+- **`~/.claude/CLAUDE.md`**: Claude の振る舞い・ユーザーの好み、および書き先が定まらない発見はここに追記する（既存ルールと重複・矛盾しないか Read で確認してから）。memory システム（MEMORY.md）には書かない
 
 - **docs/ への追記**: 既存セクションに自然につながるよう挿入する
 

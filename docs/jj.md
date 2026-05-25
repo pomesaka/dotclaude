@@ -82,6 +82,13 @@ jj git push --bookmark <name>
 gh pr create --head <name> --base main
 ```
 
+## PR を push した後、別件を始める前に `jj new` する
+<!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+
+jj では **working copy (`@`) 自体が PR のコミット**。push 後にそのまま無関係なファイルを編集すると、変更が**同じ push 済みコミットに amend され**、別の関心事が 1 つの PR に混ざる（次に `jj git push` した瞬間に紛れ込む）。push 直後・別件着手前に `jj new`（または `jj new -m "..."`）で新しい WC を切ること。
+
+逆に「同じ PR を追記更新する」のが目的なら amend で正しい（`/update-pr` のケース）。**今の `@` が push 済み PR コミットか、新規作業用かを着手前に意識する**のがポイント。
+
 ## その他
 
 ```bash
@@ -108,3 +115,40 @@ jj file untrack <path>
 ```
 
 で追跡から外す。`jj status` で消えたことを確認してから push すること。
+
+## rebase conflict の両側が同一内容に収束している場合
+
+`jj resolve --list` が "2-sided conflict including 1 deletion" を示しても、main 側とブランチ側の最終内容が**同一**に収束していることがある（例: 両者が独立して同じリファクタリングを行った場合）。マニュアルマージに入る前に差分確認を先に行うと無駄な作業を省ける。
+
+```bash
+# conflict ファイルの branch 側コンテンツ行番号を確認
+grep -n "^+++++++" <conflict-file>   # 例: 425行目から branch 側
+
+# main の内容と branch 側を比較
+jj file show -r main <file> > /tmp/main.md
+sed -n '<start>,<end_before_footer>p' <conflict-file> > /tmp/branch.md
+diff /tmp/main.md /tmp/branch.md
+```
+
+差分がなければ main の内容で上書きして `jj squash` するだけで解決できる。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+
+## divergent commit の解消
+
+`jj workspace update-stale` や並行した別ワークスペースの操作で、同一 change ID が複数のコミットに分岐（divergent）することがある。  
+`jj log` で `(divergent)` + `mxyvqxwo/0`, `mxyvqxwo/6` のようなサフィックスが付いたら要対処。
+
+```bash
+# 1. 差分確認（どちらの状態が正しいか判断する）
+jj diff --from <abandon_hash> --to <keep_hash> --stat
+
+# 2. 不要な方を abandon
+jj abandon <abandon_hash>
+
+# 3. bookmark の conflict も解消する（?? が消える）
+jj bookmark list <name>        # conflict 状態を確認
+jj bookmark set <name> -r @   # 正しい revision に向ける
+```
+
+**なぜ起きるか**: jj は各ワークスペースが独立して `@` をスナップショットするため、複数ワークスペースが同一 change ID を同時に操作するか、`update-stale` が中途半端な状態で走ると change ID が分岐する。
+<!-- importance: high | mentions: 1 | first-seen: 2026-05 -->

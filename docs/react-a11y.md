@@ -13,6 +13,17 @@
 | `useSemanticElements` (group) | `<div role="group" aria-label>` | `<fieldset>` + `<legend className="sr-only">` ※`aria-label` は付けない |
 | `useSemanticElements` (radio) | `<button role="radio" aria-checked>` | `<button aria-pressed>` （toggle button パターン） |
 | `noRedundantRoles` (list) | `<ul role="list">` | `<ul>`（role 省略。`list-none` + `aria-label` で意味論を担保） |
+| `noStaticElementInteractions` | `<div onClick>` / **`<div onMouseEnter>` / `<div onMouseLeave>`** | ハンドラを `<button>` 等の interactive 要素へ移す |
+
+### `noStaticElementInteractions` は mouse enter/leave も弾く
+<!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+
+`onClick` だけでなく **`onMouseEnter` / `onMouseLeave` を非 interactive 要素（`<div>` 等）に付けても弾かれる**（jsx-a11y の handler リストより広い）。ホバーで状態を変えるなら、ハンドラは行内の既存 `<button>` に集約する。「コンテナ全体の onMouseLeave で解除」したくなるが、それも div では弾かれるので、解除も近接の button の onMouseEnter で代替する（例: ハイライト解除は隣接行のボタンに `onMouseEnter={() => clear()}`）。
+
+### 横幅いっぱいの `<button>` オーバーレイはクリックで横スクロールが飛ぶ
+<!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+
+横スクロール領域内に「トラック幅いっぱいの透明 `<button>`」（ガントのバー行クリック領域など）を置くと、**クリック時にフォーカスが移り、ブラウザがその幅広要素を可視域へスクロールして横スクロール位置が飛ぶ**。対処: `onMouseDown={(e) => e.preventDefault()}` でクリック時のフォーカス移動だけ抑止する（`onClick` は発火し続け、Tab キーでのフォーカスも残る＝ a11y を壊さない）。`tabIndex={-1}` では解決しない（クリックフォーカスは残る）。
 
 `<fieldset>` のデフォルトスタイルは `className="border-0 p-0 m-0"` でリセットする。本物のラジオグループが必要なら `<input type="radio">` + `<label>` を CSS でスタイリングする。
 
@@ -115,6 +126,25 @@ const PHASE_MESSAGES: Partial<Record<Phase, string>> = {
 
 - **`<main>` は1ページに1つ**: AppLayout がすでに `<main>` を持つ場合、ページコンポーネントでは `<section aria-label="...">` を使う
 - **`<a>` 内に `<button>` は HTML 仕様違反**: `<Link><Button>` ネストは不可。`asChild` パターン（`<Button asChild><Link>...</Link></Button>`）か `variant="link"` で解決
+- **Radix `PopoverTrigger asChild` + `Button` の内部にインタラクティブ要素を置くと `<button>` inside `<button>` になる**: `PopoverTrigger asChild` は children を button としてレンダリングするため、内部に chips の削除ボタン等を置くと HTML 仕様違反になり Next.js が hydration エラーを報告する。対処: 内部のインタラクティブ要素は `<button>` ではなく `<span role="button" tabIndex={0} onKeyDown={...}>` で実装する。
+  ```tsx
+  // ❌ button > button — hydration error
+  <PopoverTrigger asChild>
+    <Button>
+      <button onClick={handleUnselect}>✕</button>  {/* 内側の <button> が違反 */}
+    </Button>
+  </PopoverTrigger>
+
+  // ✅ span role="button" で代替
+  <PopoverTrigger asChild>
+    <Button>
+      <span role="button" tabIndex={0}
+        onClick={(e) => { e.stopPropagation(); handleUnselect(); }}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleUnselect(); } }}>✕</span>
+    </Button>
+  </PopoverTrigger>
+  ```
+  <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
 - **カードリンクの accessible name**: `<Link aria-labelledby={headingId}>` + `<h3 id={headingId}>` で読み上げ内容を見出しに絞る
 - **`<fieldset aria-label>` + `<legend>` は二重アクセシブル名**: `<legend className="sr-only">` だけ使い `aria-label` は付けない
 - **WCAG 2.5.3 Label in Name**: visible text と `aria-label` のミスマッチは違反。accessible name には visible text を含める

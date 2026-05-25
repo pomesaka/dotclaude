@@ -103,7 +103,16 @@ useEffect(() => {
 ```
 
 **判断基準**: updater は「次の状態を計算するだけ」に限定する。ネットワーク・localStorage・DOM 操作などの副作用は必ず `useEffect` へ。
-<!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
+
+初回マウント時にスキップしたいなら `useRef` フラグで制御する:
+```tsx
+const hasRunOnce = useRef(false);
+useEffect(() => {
+  if (!hasRunOnce.current) { hasRunOnce.current = true; return; }
+  persist(isOpen); // 2回目以降のみ実行
+}, [isOpen]);
+```
+<!-- importance: high | mentions: 2 | first-seen: 2026-05 -->
 
 ## ObjectURL のライフサイクル管理
 
@@ -291,3 +300,59 @@ function useParsedReport(report: string) {
 - **formatter**: 複数属性を持つ JSX で長い属性値があれば多行フォーマットを強制される。初めから多行で書く
 - **`organize-imports`**: packages before relative、type before value。`biome check --write` で自動修正
 - a11y 関連 Biome ルール → `react-a11y.md`
+
+## アプリ全体で共有する state は `useSyncExternalStore` + モジュール変数で作る
+
+`useState` ベースの hook を複数コンポーネントから呼ぶと、それぞれが独立した state インスタンスを持つ。片方のコンポーネントが値を更新しても、他のインスタンスには伝わらない。
+
+**典型的な症状**: ダークモードトグルを押すと toggle コンポーネント自身は再描画されるが、開きっぱなしの別コンポーネント（例: CodeMirror エディタ）の theme prop が古い値のまま残る。
+
+**判断基準**: アプリ内で「1つしか存在しない」状態（テーマ、言語、認証状態など）はモジュールレベルの singleton store にする。`Context` も選択肢だが、アプリ全体 singleton なら Provider が増えるだけで利点がない。
+
+source of truth が DOM にある場合（例: `<html>` クラスでテーマを管理）はさらにシンプルにできる。モジュール変数のキャッシュも `Set<Listener>` も不要 — DOM を直接読み、`window` event で通知する。
+
+```ts
+const EVENT = "my:flag-change";
+
+function applyFlag(next: boolean) {
+  document.documentElement.classList.toggle("my-flag", next);
+  window.dispatchEvent(new Event(EVENT));
+}
+
+function subscribe(listener: () => void) {
+  window.addEventListener(EVENT, listener);
+  return () => window.removeEventListener(EVENT, listener);
+}
+
+export function useGlobalFlag() {
+  const value = useSyncExternalStore(
+    subscribe,
+    () => document.documentElement.classList.contains("my-flag"),
+    () => false,
+  );
+  return { value, toggle: () => applyFlag(!value) };
+}
+```
+
+モジュール変数にキャッシュする版は、DOM 以外（API 状態、認証トークンなど）に向く:
+
+```ts
+type Listener = () => void;
+const listeners = new Set<Listener>();
+let value = false;
+
+function subscribe(listener: Listener) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+export function useGlobalFlag() {
+  return useSyncExternalStore(subscribe, () => value, () => false);
+}
+
+export function setGlobalFlag(next: boolean) {
+  value = next;
+  for (const l of listeners) l();
+}
+```
+<!-- importance: high | mentions: 2 | first-seen: 2026-05 -->

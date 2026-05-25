@@ -105,3 +105,5 @@ issue ファイルの `status` を `done` に更新する。Devlog は Step 6 �
 - **deps 削除は既存コードへの影響を確認**: サブエージェントが「新機能では使っていない」と判断して deps を削除することがある。削除前に `rg 'package-name'` で他ファイルへの import がないかを確認させること。CI でしか気づけず PR を汚す
 - **`.claude/scheduled_tasks.lock` がコミットに混入する**: Claude Code は `.claude/scheduled_tasks.lock` をワークスペース内に生成する。`.gitignore` に追加しないと jj の working copy に入り push されてしまう。対処: プロジェクトの `.gitignore` に `.claude/scheduled_tasks.lock` と `.claude/settings.local.json` を追加する（`.claude/skills/` は意図的に追跡するため `.claude/` ディレクトリごと除外しない）。既に tracking 中なら `jj file untrack .claude/scheduled_tasks.lock` で外す。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+- **新しいドメインエンティティを設計するとき、管理 UI の有無を先に確認する**: issue の AskUserQuestion 段階で「この概念を CRUD できる管理画面があるか」を確認すると無駄な汎用テーブル設計を防げる。管理 UI がなければ汎用テーブル（例: `departments`）は不要で、「ロール（role）」のような opaque な文字列で代替し具体値をアプリ層に委ねる設計が正しい。今回の事例: 部門管理機能がないのに `departments` テーブルを設計し始め、ユーザーの補足で修正した。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->

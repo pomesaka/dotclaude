@@ -268,6 +268,11 @@ playwright-cli tracing-stop
 playwright-cli close
 ```
 
+## Gotchas
+
+- **`--filename=` スナップショットはカレントディレクトリに保存される**: `playwright-cli snapshot --filename=iter01.yaml` はそのまま CWD に保存される。リポジトリ内のディレクトリで実行すると jj/git に追跡され PR に混入する。必ず `~/.claude/tmp/` などの絶対パスを指定すること。例: `playwright-cli screenshot --filename=/Users/username/.claude/tmp/snap.png`
+  <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
+
 ## Specific tasks
 
 * **Request mocking** [references/request-mocking.md](references/request-mocking.md)

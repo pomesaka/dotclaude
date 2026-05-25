@@ -157,3 +157,14 @@ infra/
 
 **NatGateway・コスト**
 - `pulumi preview` 出力に `aws:ec2:NatGateway` が出たら意図した構成か確認（dev で Single にしていないか）
+
+**SaaS マルチテナント: ALB 共有 vs 顧客ごと独立 ALB**
+- **「共有 ALB + ホストベースルーティング」はコスパよく見えるが初期の正解ではない**。ALB 1 台（~$22/月）で全顧客をカバーできるが、以下の問題がある
+  - 障害ブラスト半径が全顧客になる（Listener Rule ミス・WAF 設定変更が全員に影響）
+  - Listener Rule 上限 100/ALB（顧客あたり 2-3 ルール消費で 30-40 顧客で限界。緩和可だが運用負荷）
+  - TG はどっちみち顧客ごとに必要（ECS サービスが分かれるため）。簡素化効果は限定的
+  - WAF / アクセスログ / CloudWatch メトリクスが全顧客混在し、課金按分・障害切り分けが煩雑
+  - IAM: 各顧客スタックが共有 ALB の Listener Rule を変更する権限が必要になり権限が広がる
+- **「1顧客=1ALB」の方がスタック設計がクリーン**: スタック完全独立、顧客退出は `pulumi destroy` だけ
+- **再評価ライン**: 顧客 50+ でコスト差（$22 vs $22×N/月）が現実的になったら「Tier 別（SMB は共有 / Enterprise は専用）」を検討する
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
