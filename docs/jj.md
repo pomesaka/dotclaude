@@ -1,5 +1,7 @@
 # Jujutsu (jj) リファレンス
 
+> **TL;DR**: Git の代わりに jujutsu(jj) を使う。ステージングエリアなし・全変更が自動コミット。PR 作成は `jj git push --named <name>=@`。rebase は `jj rebase -s <rev> -d <dest>`。コミットのdescriptionは `jj desc -m "..."` で設定。divergent commit は `jj bookmark set <name> -r <rev>` で解消。
+
 ## 基本概念
 
 - **ステージングエリアがない**: ファイルへの変更は自動的にワーキングコピーコミット（`@`）にスナップショットされる

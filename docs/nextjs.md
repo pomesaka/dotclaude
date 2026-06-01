@@ -197,6 +197,12 @@ export function SomeClientWrapper({ data }) {
 
 ## Gotchas
 
+- **`server-only` パッケージは standalone import できない**: `import "server-only"` は Next.js 内部にバンドルされているが、`bun add server-only` してから `import "server-only"` で直接 import しようとするとモジュール解決エラーになる。代替: ファイル冒頭の WHY コメントに「このファイルは SC / Server Action 専用」と明記し、誤って CC から import した場合は TypeScript のビルドエラーで気づけるよう型設計で守る（例: `async` 関数はそのままでは CC で直接呼べない制約を利用する）。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+- **mock の storage を async API で統一すると SC/CC 境界の選択が自由になる**: mock 段階で「sessionStorage など CC でしか読めない同期 API」を使うと、読み取り専用ページでも CC + useEffect を強いられ Convention C（SC fetch first）から外れる。代わりにモジュール scope の Map を async 関数（`async getDraftResult(id)`）でラップすれば、SC で `await` できて SC/CC 境界を妥協なく設計できる。本番化時も DB クエリに差し替えるだけで呼び出し側ゼロ変更。判断基準: 「この storage 関数は SC で await できるか？」できなければ本番非対応のシグネチャ。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+- **`consume`（取得+削除）one-shot パターンは server-side でないと確実に実装できない**: 「一度だけ復元する」（ブラウザバック・リロードで再復元されない）を sessionStorage で実装しようとすると、SSR/CSR の二重読み込み・タブ間共有・リロード race condition に対処する複雑さが出る。server-side Map + `consumeXxx`（get + delete をアトミックに）なら Next.js dev（単一 Node プロセス）では確実に one-shot を保証できる。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 - **`useQuery + initialData` を渡すと Suspense が永遠に発火しない（ただし SC Fetcher パターンは例外）**: `initialData` を渡すとクエリは即 `success` 状態になる。CC を直接 `<Suspense>` で包んでいる場合、CC は絶対に suspend しないため fallback は表示されない（"dead Suspense"）。**例外**: async SC Fetcher が Suspense の内側にある場合、SC の await 中は Suspense が発火する。CC が `useSuspenseQuery(initialData)` を持っていても、SC の await 完了後に CC は即 success になるだけで dead Suspense にはならない。判断基準: Suspense の直接の子が SC か CC か。SC なら有効、CC なら dead。
   <!-- importance: high | mentions: 3 | first-seen: 2026-05 -->
 - **`router.refresh()` は CC の state（useState 等）を保持する**: SC データを再取得するがクライアントツリーはアンマウントされない。「refresh したら state がリセットされる」という誤解が生じやすい。Next.js 公式: "The client will merge the updated RSC payload without losing unaffected client-side React state."

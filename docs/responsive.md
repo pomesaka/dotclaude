@@ -1,5 +1,7 @@
 # Responsive Design レビュー観点
 
+> **TL;DR**: Mobile-first（小が default、大は `lg:` で上書き）。ブレークポイントは `sm:` と `lg:` の 2 段階。タッチターゲットは `min-h-11 lg:min-h-9`（≥44px）。パディングは `p-4 lg:p-8`、タイトルは `text-2xl lg:text-4xl`。グリッドは `grid-cols-1 lg:grid-cols-2`。
+
 Tailwind CSS（mobile-first）を前提とした実装・レビュー観点。
 
 ---

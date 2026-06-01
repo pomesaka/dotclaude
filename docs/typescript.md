@@ -53,6 +53,8 @@
   <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
 - **バックエンドが常に初期化するフィールドは required にする**: バックエンドがジョブ作成時に `steps: []`・`sources: []` で初期化することが確定しているなら、TypeScript の型も `optional?` ではなく required にする。Optional にすると全参照箇所で `?? []` フォールバックが必要になり防衛的コードが増殖する。判断基準: "API が返す JSON にこのフィールドは必ず存在するか？" → Yes なら required。"クライアントがいつ設定するか決まっていない" → optional。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+- **`async` 関数のリファクタリング後に sync 化を確認する**: 既存の `async function` が内部で呼んでいた非同期関数（例: `analyzeService()`）をリファクタリングで取り除いたとき、関数自体の `async` キーワードと戻り型 `Promise<T>` が残骸として残りやすい。`await` が不要になったら `async` を外して同期関数に変えられる。判断: 関数本体に `await` が1つも残っていなければ sync 化できる（TypeScript は `await` なし `async` 関数を許容するが不要な Promise ラップを生成する）。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 - `class`: **原則使わない**。オブジェクトリテラル・関数・型で表現する
   ```typescript
   // ❌ 避ける
@@ -590,6 +592,28 @@ observed.field; // ✅
 
   **判断基準**: 「このモジュールが X を必要とするが、X の提供元がこのモジュールを集約している」という構造が見えたら即座に DI を検討する。
   <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
+
+## `noUncheckedIndexedAccess` で正規表現マッチの戻り値が `string | undefined` になる
+
+`noUncheckedIndexedAccess: true`（strict モード相当）が有効なプロジェクトでは `match[1]` の型が `string | undefined` になる。
+
+```typescript
+// ❌ match が非 null でも match[1] は string | undefined — コンパイルエラー
+const label = text.match(/\[要記入: (.+)\]/)?.[0];
+const value: string = label; // NG
+
+// ❌ match を先に guard しても match[1] は undefined の可能性が残る
+const m = text.match(pattern);
+if (m) {
+  const val: string = m[1]; // NG: `string | undefined`
+}
+
+// ✅ オプショナルチェーン + nullish coalescing でまとめて対処
+const label = text.match(/\[要記入: (.+)\]/)?.[1] ?? "";
+```
+
+判断基準: `tsconfig.json` に `"noUncheckedIndexedAccess": true` が入っていたら（または `"strict": true`）、配列・match 戻り値へのインデックスアクセスは全て `T | undefined` になる。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 
 ## テストが analyzer の内部メソッドに直接依存するリスク
 

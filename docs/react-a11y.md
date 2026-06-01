@@ -190,6 +190,12 @@ const PHASE_MESSAGES: Partial<Record<Phase, string>> = {
   <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
 - **`role="link"` on `<div>` も Biome `useSemanticElements` が拒否**: disabled なナビゲーション項目を `<div role="link" aria-disabled>` で表現するとBiome エラー。`<button type="button" disabled>` が正しい代替（ナビ操作ではなくアクションとして扱い、 disabled でインタラクション不可を表現）。`<a>` を使いたい場合は `href` 省略 + `aria-disabled` が必要だがBiome の `useSemanticElements` が `href` なし `<a>` に対して `<span>` 推奨を出すことがある。`<button disabled>` が最も安全。
   <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
+- **`aria-required` は `radiogroup` に付けられない**: WAI-ARIA 1.2 の `radiogroup` ロールの許可属性に `aria-required` は含まれない。「このフィールドは必須」を伝えたい場合は各 `<input type="radio">` に `required` 属性を付けるか、ブラウザの form バリデーションに任せる。Biome はこれを静的に検出しないことがあるが、AT（スクリーンリーダー）は無視するため実害も伝達もない — ならば付けない方が正確。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+- **ネイティブ `<button disabled>` に `aria-disabled` を重複させない**: `disabled` 属性があれば AT は自動的に「無効」と認識する。`aria-disabled` を追加すると二重アナウンスになるスクリーンリーダーが存在する。`aria-disabled` が必要なのは `disabled` を付けずにフォーカスを保持したいとき（e.g. フォーカスリングを残してユーザーにエラーを気づかせる UX）のみ。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+- **WCAG SC 2.5.3 (Label in Name): `aria-label` は可視テキストを包含しなければならない**: `aria-label` が AT のアクセシブル名を上書きするため、音声操作ユーザーが可視テキストを読んでコマンドを発話しても一致しない。fix パターン: (a) `aria-label` を削除して可視テキストそのままをアクセシブル名にする、(b) 可視テキストを完全に含む文字列に `aria-label` を変更する。例: ボタン内テキスト「ドラッグ&ドロップ または クリックして選択」に対して `aria-label="ファイルをドラッグアンドドロップ、またはクリックして選択"` → 違反。解決策 (a): `aria-label` を削除するだけ。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 - **Biome `useSemanticElements` が `role="radio"` on `<button>` を拒否**: 単一選択グループをボタン＋`role="radio"` で実装すると Biome がエラー。ネイティブの `<input type="radio" className="sr-only">` を `<label>` で包み、ラベル要素にカード状のスタイルを適用する。これで Biome・a11y・キーボード操作すべてが正しく動く。`aria-pressed` はボタンのトグル（複数選択を示唆）なので単一選択に使ってはいけない。
   ```tsx
   <label className={cn("flex-1 border px-3 py-2.5 cursor-pointer", isSelected ? "border-primary bg-primary" : "border-border")}>

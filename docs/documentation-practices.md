@@ -1,5 +1,7 @@
 # ドキュメンテーション・プラクティス
 
+> **TL;DR**: ADR（Architecture Decision Record）形式で「Context → Decision → Consequences」を残す。決定が変わったら古い ADR を deprecated にして新規を書く（上書きしない）。ドキュメントは「なぜそうしたか」を書く — 実装者でなく将来の自分が読む想定で。
+
 このドキュメントはドキュメンテーションの手法と、その目的を説明する。
 
 ## 目的

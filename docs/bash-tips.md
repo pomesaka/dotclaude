@@ -1,5 +1,7 @@
 # Bash / CLI Tips
 
+> **TL;DR**: `bunx` / `npx` はバージョン固定（`bunx tool@1.2.3`）。`cd dir && cmd` は `mise exec --cd dir -- cmd` で代替（パーミッション回避）。`&&` / `||` 等の shell operator はプロンプトを誘発するため read-only パイプ（`rg | jq`）以外は避ける。
+
 ## `bunx <tool>`（npx 系）はバージョンを固定しないとリポと食い違う
 <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 

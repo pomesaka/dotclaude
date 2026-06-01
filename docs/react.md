@@ -1,6 +1,6 @@
 # React レビュー観点
 
-> **TL;DR**: Container/Presenter 分離を徹底し、ビジネスロジックはカスタムフックに集約して View を dumb 化する。`role` prop 禁止（ARIA 属性と衝突）。Props は明示型・肯定形 boolean・`on` プレフィックス統一。a11y・Biome a11y ルール → `react-a11y.md`。
+> **TL;DR**: Container/Presenter 分離を徹底し、ビジネスロジックはカスタムフックに集約して View を dumb 化する。`role` prop 禁止（ARIA 属性と衝突）。Props は明示型・肯定形 boolean・`on` プレフィックス統一。a11y・Biome a11y ルール → `react-a11y.md`。JSX の `key={i}` は Biome `noArrayIndexKey` で拒否 — content-based key か `.map()` 外変数に切り出して biome-ignore を付ける。`useState(initialValue)` は初回マウント時のみ有効 — sessionStorage 等の非同期初期値は hasMounted パターンで対処。
 
 TypeScript の観点に加え、以下の観点でレビューする。
 
@@ -49,6 +49,22 @@ TypeScript の観点に加え、以下の観点でレビューする。
   }, [onSummarize, input]);
   const handleCancel = useCallback(() => { generationRef.current++; }, []);
   ```
+- **`useState(initialValue)` は初回マウント時のみ適用される — sessionStorage / 非同期初期値を渡す場合は hasMounted パターン**: `useState(props.initialValue)` はコンポーネントの最初のレンダーにしか適用されない。親から `useEffect` 経由で非同期に計算した初期値を `setResume(value)` しても、子コンポーネントの `useState` は再度初期化されない。対処: 子コンポーネントを「初期値が確定してから初めてレンダーする」ように `hasMounted` フラグで制御する。
+  ```tsx
+  // ❌ useEffect で resume を取得 → DocumentNewView の useState は既に "" で初期化済み
+  const [resume, setResume] = useState(null);
+  useEffect(() => { setResume(consumeResumeInput()); }, []);
+  return <DocumentNewView initialTemplateId={resume?.templateId} />;
+
+  // ✅ hasMounted が true になるまで描画をスキップ → mount 時に resume が確定している
+  const [resume, setResume] = useState(null);
+  const [hasMounted, setHasMounted] = useState(false);
+  useEffect(() => { setResume(consumeResumeInput()); setHasMounted(true); }, []);
+  if (!hasMounted) return null;
+  return <DocumentNewView initialTemplateId={resume?.templateId} />;
+  ```
+  判断基準: "子コンポーネントが `useState(props.xxx ?? default)` の形で props を初期値に使っているか？" → 使っているなら hasMounted パターンが必要。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 
 ## 禁止パターン
 
@@ -232,6 +248,25 @@ const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => { e.preventDefault
 
 **判断基準**: `bun run typecheck` が通るなら deprecated 警告 [6385] は受け入れてよい。型精度を落とすより正確な型を維持する方が重要。React 19 対応の完全な解決（`FormEvent` 削除）は別 issue で対処する。
 <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+
+## Gantt / カレンダーの日付演算は全操作を UTC で統一する
+
+ピクセル位置を日番号（epoch days）で管理する Gantt・カレンダー系コンポーネントで、Date 操作がローカルと UTC で混在すると **JST 等の環境で表示が1日ずれる**。
+<!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+
+- **原因**: `new Date("2026-06-02T00:00:00")` はローカル時刻として解釈 → JST では UTC 06-01 15:00 → 日番号が 06-01 になりバーが1列左にずれる
+- **修正**: 日付文字列のパースは `Date.parse("...T00:00:00Z")`（末尾に `Z`）で UTC 固定。`Date` オブジェクトからの読み出しは `getUTCDate()` / `getUTCDay()` / `Date.UTC(y, m, d)` を使う。`Date.now() / DAY` は UTC 日番号になり、ローカルの「今日」と1日ずれることがある（`Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / DAY` で同じ空間に写す）。
+
+```ts
+// NG: ローカル時刻解釈 → JST で1日ずれる
+const toDay = (s: string) => Math.floor(new Date(`${s}T00:00:00`).getTime() / DAY);
+const today = Math.floor(Date.now() / DAY); // UTC 日番号（JST の「今日」と1日ずれる）
+
+// OK: 全演算を UTC で統一
+const toDay = (s: string) => Math.floor(Date.parse(`${s}T00:00:00Z`) / DAY);
+const now = new Date();
+const today = Math.floor(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / DAY);
+```
 
 ## SSR-safe な ISO 日付パース
 
