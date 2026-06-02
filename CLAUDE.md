@@ -55,12 +55,20 @@
 
 - ドキュメント: 外部から使用される可能性があるものには必ずドキュメントを記載
 - コメント: 設計判断・分岐・非対称な扱いには **WHY（なぜそうしたか）と WHY NOT（なぜ他のもっともらしい選択肢を採らなかったか）を両方**書く。WHY だけだと「やり残し / バグ」と区別がつかない。自明なロジックには引き続きコメント不要
+- **WHY コメントに書く前提は実機で検証してから書く**（憶測の WHY は将来の罠になる）: 「TypeScript が circular inference で推論できない」「library X が auto-fallback してくれる」のような **ライブラリ・ツールの挙動を断定する WHY** は、必ず実機で検証（型エラーを誘発・公式ドキュメントを当たる・実際に呼び出す）してから書く。検証せず憶測を書くと、後続レビューが「ここは確認済み」とスルーし誤りが温存される。実例: noah で `betterAuth() 内で循環推論できないため "role" in ガードが必要` と書いたが実際は外部から推論可能、`admin plugin が admin ロールに自動で標準権限を付与する` と書いたが実際は roles 指定時は置換され消える — いずれもドキュメント・型確認で即否定できた憶測だった。さらに `jp. inference profile は ap-northeast-1 に留める` という未検証の断定がコメントと CLAUDE.md に書かれた結果、「東京リージョンだけ IAM 許可すればよい」という誤実装の根拠として参照され、確率的 403 障害を生んだ（実際は東京+大阪の2リージョン構成・`aws bedrock get-inference-profile` で即確認できた）— **誤った WHY は単に放置されるのでなく、後続実装の「正しさの根拠」として再利用され障害を再生産する**。NG: `// WHY X: library Y がそうする`（未検証）／OK: `// WHY X: library Y vN.M で動作確認・公式パターン a/foo を参照`（検証済み）
+  <!-- importance: high | mentions: 3 | first-seen: 2026-06 -->
+- **ツールが所有する生成物ファイルは手書きしない — 必ずツールのコマンドで生成する**: lockfile・migration journal/snapshot（drizzle の `_journal.json`・`meta/*_snapshot.json` 等）・チェックサムファイルのような「ツールが読み書きする前提のメタデータ」を手で書くと、ツールが暗黙に守っている不変条件（タイムスタンプの単調増加・snapshot のチェーン整合・ハッシュ一致）を破り、**エラーではなく無音の故障**（migration の無音スキップ・次回生成時の重複 DDL 等）として現れる。エントリの一部だけ手書きするのも同罪（不変条件はファイル全体で守られる）。実例: noah で drizzle の journal エントリを epoch 手計算で追記 → 年を 2025/2026 取り違え、適用済みより古い `when` になり migration が「成功表示のまま」スキップされ続けた。**現在時刻・epoch を書く必要があるときも頭で計算せず `date +%s` 等のコマンドで取得する**（年・タイムゾーンを取り違えやすい）。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 - TypeScript: as キャストは禁止
+- **値による分岐は switch-case を使う**: 1つの変数の値によって複数のケースに分岐するコード（step → 型変換・status → ラベル等）は `if (x === "a")` の連鎖ではなく `switch (x) { case "a": ... }` で書く。switch は「この関数は x の全ケースを網羅している」という意図が読み手に伝わりやすく、TypeScript の exhaustive check とも相性が良い。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 
 ## Testing Policy
 
 - テストはできるだけ **table driven test** で書く（Go: `t.Run` + スライス、Bun/Jest: `test.each`）
 - 個別の `test(...)` 呼び出しは、テーブル化できない固有のセットアップが必要なケースに限る
+- **`test.each` テーブル行に条件分岐フラグ（`needsSegments` 等）を入れない**: ケースによって異なるセットアップが必要なとき、テーブル行の中で `if (flag)` や `condition ? setupA() : setupB()` を使うとテストの意図が不明瞭になる。代わりに独立した `test(...)` に分割する。テーブルの各行は「1ケース = 完全に自己完結した入力と期待値」で成立させる
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 
 ## Interaction Rules
 

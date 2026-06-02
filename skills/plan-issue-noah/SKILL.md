@@ -31,6 +31,7 @@ ls issues/$ARGUMENTS-*.md
 - `status` が `open` であること（`in-progress` / `done` / `wontfix` なら中断して、本当に再計画するかユーザーに確認）
 - `depends` が全て `done` であること（未完了の依存があれば、先にそちらを実装すべきと指摘）
 - 既に `## 設計` セクションがあれば「再度詰め直すか」「追記するか」をユーザーに確認
+- **issue 本文の技術前提が現状と整合しているか**: issue が書かれた時点と plan 時点で採用技術が変わっていないか確認する（例: STT provider が Whisper → AWS Transcribe に変わって ffmpeg 抽出が不要になった・Lambda が zip+layer → container image に変わって「Lambda layer」前提が崩れた、等）。やること節に書かれているライブラリ・ツール・前処理ステップが、現在のコード（依存先 issue の実装後）で本当に必要かをコードを Read して検証する。前提が崩れていれば「## 設計」で前提訂正を明示し、必要なら issue タイトル・depends・size も再計画する。**前提を確認せず古い前提のまま impl に流すと不要な抽象（ffmpeg バンドル等）が混入する**
 
 ## Step 1: コンテキスト調査
 
@@ -57,10 +58,12 @@ AskUserQuestion を使い、以下の観点を**順に**詰める。各質問で
 - `packages/features/<feature>/` — ドメイン型・UI・AI 呼び出しロジック（推奨デフォルト）
 - `packages/ui/` — 汎用 UI（特定機能に依らないボタン・入力等）
 - `packages/ai/` — AI SDK ラッパー・ストリーミング基盤レベルの汎用機能
-- `apps/<customer>/` — 顧客固有のデータ取得・mock・page.tsx・system prompt
+- `apps/<customer>/` — 顧客固有のデータ取得・mock・page.tsx・設定注入
 - `infra/` — Pulumi インフラ
 
 判断基準は CLAUDE.md の「判断基準（apps に残してよいのは）」に従う。
+
+**オーケストレーション view / hook の配置も明示的に問う**: 「画面を組み立てる view」や「client SDK を叩く hook（`useChat` 等）」を**どこに置くか**を必ず質問項目に入れる。顧客固有でなければ `packages/features` に置き、apps を SDK 非依存・薄く保つ（apps は page.tsx と props 注入のみ＝参照実装の原則）。**既存のモックが apps に view を持っていても、その配置を惰性で踏襲しない**——「この view/hook は再利用可能か？ client SDK 結合を apps に残していないか？」を改修前に問い直す。この問いを framing から漏らすと、配置が論点に上がらないまま apps に SDK 結合が残る（実例: issue 037 で `useChat` を含む view を当初 apps に置き、後で features へ移す手戻りが発生）。
 
 ### 2.2 ドメイン型
 - 主要なドメイン型を 1〜数個提示し、命名・フィールドの妥当性を確認

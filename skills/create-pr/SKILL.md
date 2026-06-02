@@ -121,3 +121,5 @@ echo "$PR_URL"
 
 - **PR ボディの冒頭に `issue:` / `related:` を必ず載せる**: PR に直接対応する issue があれば `issue: #N`、参考になる関連 issue/PR があれば `related: #N, #M` を概要の一番上に書く。対応 issue が無い場合は `issue: なし（起点を1行で）` と明示する。理由: 数ヶ月後に PR を遡るとき、issue リンクが無いと「なぜこの変更があったか」を会話ログから掘り起こす必要があり追跡コストが高い。`gh issue view` で背景を即座に辿れる状態にする。
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+- **`PR_URL=$(gh pr create ... --body "$(cat <<'EOF' ...)")` の heredoc 入れ子は zsh で parse error になることがある**: テンプレート通りのコマンド置換 + heredoc 入れ子が `parse error near 'PR_URL=$(gh pr creat...'` で落ちるケースがある（Claude Code の Bash ツール経由・zsh 環境で確認 2026-06-10）。対処: PR ボディを先に `cat > /tmp/pr_body.txt << 'EOF'` で一時ファイルに書き出し、`gh pr create --body "$(cat /tmp/pr_body.txt)"` の 2 段に分ける。最初から 2 段方式で書けばリトライが不要。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->

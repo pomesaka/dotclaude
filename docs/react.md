@@ -94,6 +94,53 @@ useEffect(() => {
 ```
 <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
 
+## `setInterval` は `useEffect` cleanup で必ず停止する
+
+`setInterval` をカスタムフック内で使うとき、`clearInterval` を `useEffect` の cleanup に書かないとコンポーネントがアンマウントされた後もインターバルが動き続け、unmounted コンポーネントへの `setState` 呼び出しが発生する。React StrictMode の二重マウントでも二重 interval が起きる。
+
+```ts
+// ❌ アンマウント後もポーリングが走り続ける
+function usePolling(jobId: string) {
+  const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const stopPolling = useCallback(() => {
+    if (intervalRef.current !== undefined) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = undefined;
+    }
+  }, []);
+
+  const startPolling = useCallback(() => {
+    intervalRef.current = setInterval(async () => { ... }, 2500);
+  }, [stopPolling]);
+
+  // cleanup がないためページ離脱後も setState が走る
+  return { startPolling, stopPolling };
+}
+
+// ✅ useEffect cleanup で必ず stopPolling を呼ぶ
+function usePolling(jobId: string) {
+  const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const stopPolling = useCallback(() => {
+    if (intervalRef.current !== undefined) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = undefined;
+    }
+  }, []);
+
+  // WHY useEffect cleanup: コンポーネントが unmount された後も setInterval が走り続けると
+  // unmounted コンポーネントへの setState が起きる。cleanup で stopPolling を呼ぶことで
+  // ページ離脱時・strict mode の二重マウント時でもポーリングがリークしない。
+  useEffect(() => {
+    return () => stopPolling();
+  }, [stopPolling]);
+
+  return { stopPolling };
+}
+```
+
+**判断基準**: `setInterval` / `setTimeout` を ref で管理するフックには **必ず** `useEffect(() => () => clear*(ref.current), [])` の cleanup を追加する。`clearInterval` を別の関数（例: `done`/`failed` 分岐での `stopPolling()` 呼び出し）から呼ぶだけでは、ユーザーがページを離脱した場合をカバーできない。
+<!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+
 ## setState updater 内に副作用を書かない（StrictMode 二重実行）
 
 `setState(prev => { sideEffect(); return next; })` の形はアンチパターン。React StrictMode では updater が二重実行されるため、`localStorage.setItem` などの副作用が2回走る。
@@ -402,4 +449,42 @@ export function setGlobalFlag(next: boolean) {
   // ✅
   async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) { ... }
   ```
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+- **React 19 フォームの標準形は `useActionState` + `<form action={fn}>`**: `onSubmit` + 手動 `isLoading` より宣言的で Server Actions と互換性がある。
+  ```tsx
+  // ❌ 旧パターン（React 18 以前）
+  const [isLoading, setIsLoading] = useState(false);
+  async function handleSubmit(e: SyntheticEvent<HTMLFormElement>) {
+    e.preventDefault(); setIsLoading(true);
+    // ... 
+    setIsLoading(false);
+  }
+  <form onSubmit={handleSubmit}>
+    <button disabled={isLoading}>送信</button>
+  </form>
+
+  // ✅ React 19 標準形
+  const [state, formAction] = useActionState(async (_prev, formData) => {
+    // ... action logic
+    return { error: "..." };
+  }, {});
+  <form action={formAction}>
+    <FormContent error={state.error} />  {/* useFormStatus で pending を読む */}
+  </form>
+  ```
+  `useFormStatus` の制約: `<form>` の**子コンポーネント**でしか使えない（`form` を render するコンポーネント自身では不可）。フォームのインプット・ボタン群を `FormContent` のような内部コンポーネントに切り出して `useFormStatus` を呼ぶのが正しいパターン。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+- **`() => void` の props に async 関数を渡すと Promise rejection が uncaught になる**: `onLogout?: () => void` のように `void` 型の callback props に `async () => { await signOut(); }` を渡すと、TypeScript は型エラーを出さない（`void` は戻り値を無視する）が Promise の rejection は黙って飲まれる。対処: callback の型を `() => void | Promise<void>` と明示する。呼び出し側で `void handler()` と書いて rejection を明示的に無視するか、`handler().catch(console.error)` でエラーを表面化させる。**判断基準**: onClick・onSubmit・onXxx 系の props が async な実装を受け取る可能性があれば `() => void | Promise<void>` を標準とする。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+- **Enter で submit する input は `e.nativeEvent.isComposing` をガードする**: `onKeyDown` で `e.key === "Enter"` を submit トリガーにすると、IME（日本語・中国語・韓国語等）の**変換確定 Enter でも発火**してしまい、変換確定と同時に送信される。チャット入力・検索ボックス・タグ入力など Enter 送信する全 input で `if (e.key === "Enter" && !e.nativeEvent.isComposing)` を条件にする（`e.isComposing` でなく `e.nativeEvent.isComposing`。React の合成イベントには `isComposing` が無い）。変換中の Enter は composition の確定操作であり送信意図ではない。CJK ユーザー向けプロダクトでは必須。
+  ```tsx
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      submit();
+    }
+  }
+  ```
+  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+- **textarea の高さ自動調整は `useEffect([value])` でなくイベントハンドラで行う**: `el.style.height="auto"; el.style.height=scrollHeight+"px"` という DOM 同期を `useEffect(() => {...}, [value])` に書くと、effect 本体が `value` を参照しない（DOM ref しか読まない）ため biome `useExhaustiveDependencies` が「不要な依存」と誤検知してエラーになる。これは値変化が**イベント由来**（onChange・送信リセット）なので、effect ではなく `onChange` 内で同期的にリサイズするのが React 的に素直（React 公式も「ハンドラでできる DOM 操作を effect にしない」）。プログラムによる値クリア（送信後の `setValue("")`）は onChange を発火しないため、その箇所だけ明示的に `ref.style.height="auto"` で 1 行に戻す。上限は CSS（`max-h-[...] overflow-y-auto`）で頭打ちにする。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->

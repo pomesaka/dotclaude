@@ -55,3 +55,7 @@ jobs:
   <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
 - **`grep` で部分一致による誤検知**: git tag の存在確認で `git ls-remote --tags origin "$TAG" | grep -q "$TAG"` とすると、`v1.0` を検索して `v1.0.1` にも match する。対処: `grep -qF "refs/tags/$TAG"` で完全パス・固定文字列マッチにする。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+- **AWS Lambda コンテナ関数は docker buildx の provenance attestation を受け付けない**: `docker/build-push-action@v6` は push 時にデフォルトで provenance を付け、tag が OCI image index（manifest list）になる。Lambda は単一 manifest（Docker V2 schema2 / OCI 単体）しか pull できず、`CreateFunction`/`UpdateFunctionCode` が `The image manifest, config or layer media type ... is not supported` で 400 になる（ECR への push・ECS の pull は許容するので気づきにくい）。対処: build ステップに `provenance: false`（または env `BUILDX_NO_DEFAULT_ATTESTATIONS=1`）。根拠: AWS docs images-create「does not support multi-architecture container images」/ `aws/aws-lambda-roadmap#82`（Open・本エラー文言と一致）
+  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+- **共有 action / reusable workflow を直しても、それを使う workflow を自動起動しない**: `app-deploy-*.yml` の paths が `apps/<app>/**` のとき、`.github/actions/**` や reusable workflow を編集しても push トリガーにマッチせず再ビルドされない。さらに失敗 run の「Re-run jobs」は**同じ commit SHA**でやり直すため古い action のまま。action 修正を反映するには新 SHA で `workflow_dispatch`（または対象 paths に触る commit）で起動し直す
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->

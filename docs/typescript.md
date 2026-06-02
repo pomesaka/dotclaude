@@ -48,7 +48,21 @@
   export const VARIABLE_TYPES = ["text", "number", "date"] as const;
   export type VariableType = (typeof VARIABLE_TYPES)[number];
   ```
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+  特に **zod を併用する場合は値配列必須**: `z.enum(VARIABLE_TYPES)` のように渡せる。型のみ export だと `z.enum` に渡せず（型消去）、結局 zod schema 内に値を直書きすることになり真実が分散する。値配列を真の単一情報源にする。
+  <!-- importance: medium | mentions: 2 | first-seen: 2026-05 -->
+- **fetch envelope は `z.discriminatedUnion` で検証して `as` キャストを排除する**: `Response.json()` の戻り値は `unknown`。`as { ok: boolean; data: T }` で型付けすると不正レスポンスがランタイムで silently 通過し、サーバー contract 違反を検出できない。`z.discriminatedUnion("ok", [success, error])` で envelope を検証し、success バリアントには `data: dataSchema` を渡せば内側 payload も自動検証されて `as` 不要・型安全（"as キャスト禁止" 環境での標準 fetch ヘルパパターン）。
+  ```typescript
+  const envelopeSchema = z.discriminatedUnion("ok", [
+    z.object({ ok: z.literal(true), data: z.unknown() }),
+    z.object({ ok: z.literal(false), error: z.unknown() }),
+  ]);
+  async function fetchOk<T>(url: string, dataSchema: z.ZodType<T>): Promise<T> {
+    const env = envelopeSchema.parse(await (await fetch(url)).json());
+    if (!env.ok) throw new Error(`API error: ${JSON.stringify(env.error)}`);
+    return dataSchema.parse(env.data); // T を返す（as 不要）
+  }
+  ```
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 - **`readonly` 配列のコンピューテッドインデックスは `T | undefined` を返す**: `const TABS = ["a","b"] as const; TABS[index]` は `"a" | "b" | undefined` に推論される。`setState(TABS[next])` は型エラー。`const tab = TABS[next]; if (tab) { setState(tab); }` でガードが必要。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
 - **バックエンドが常に初期化するフィールドは required にする**: バックエンドがジョブ作成時に `steps: []`・`sources: []` で初期化することが確定しているなら、TypeScript の型も `optional?` ではなく required にする。Optional にすると全参照箇所で `?? []` フォールバックが必要になり防衛的コードが増殖する。判断基準: "API が返す JSON にこのフィールドは必ず存在するか？" → Yes なら required。"クライアントがいつ設定するか決まっていない" → optional。
@@ -634,3 +648,58 @@ const label = text.match(/\[要記入: (.+)\]/)?.[1] ?? "";
 
   **判断基準**: テストが `ANALYZER.xxx()` という形で analyzer のプロパティにアクセスしていたら要注意。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+- **導出可能なフィールドを型に持たせない**: `name` から `initials`（先頭文字）が算出できるように、他フィールドから自明に導出できる表示専用値は型に含めない。Render 時にインラインで計算する（`user.name.charAt(0)` 等）。持たせると「誰が算出してどこに渡すか」の責務が曖昧になり、呼び出し側に不必要な計算義務が生まれる。**判断基準**: 「このフィールドが変わるとしたら、元のフィールドも変わるか？」YES なら派生値 → 型から除去。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
+## 環境変数から数値に変換するときは `Number.parseInt` を使う
+
+- **`Number(value)` は NaN を黙過する**: `Number("abc")` は `NaN` を返しエラーにならない。型は `number` なのでコンパイルエラーにもならない。環境変数（`process.env.PORT`）やフォーム入力など文字列から数値に変換するときは `Number.parseInt(value, 10)` または `Number.parseFloat(value)` を使う（基数 10 を明示）。
+  ```ts
+  // ❌ NaN を黙過
+  const port = Number(process.env.PORT ?? 3000); // process.env.PORT="abc" で NaN になる
+
+  // ✅ 基数 10 明示
+  const port = Number.parseInt(process.env.PORT ?? "3000", 10);
+
+  // ✅ Zod を使う場合（入力バリデーションがある場所）
+  const portSchema = z.coerce.number().int().positive();
+  ```
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
+## Zod スキーマの合成は `.shape` spread を使う
+
+- **`.extend()` ではなく `z.object({ ...A.shape, ... })` を使う**: zod v4 では schema 合成のプライマリ API が `.shape` の object spread。`.extend()` は型推論が浅くなる場面があり、v4 では非推奨方向。複数 schema を組み合わせるときは spread でフラットに合成する。
+  ```ts
+  // ❌ extend
+  const envSchema = dbEnvSchema.extend({
+    BETTER_AUTH_SECRET: z.string().min(1),
+  });
+
+  // ✅ shape spread
+  const envSchema = z.object({
+    ...dbEnvSchema.shape,
+    BETTER_AUTH_SECRET: z.string().min(1),
+  });
+  ```
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
+## HTTP 境界で外部 SDK 型を `as` キャストせず型付けする: `z.custom<T>()`
+
+- **`as` 禁止だが外部 SDK 型は Zod で完全記述できない場合がある**: Route Handler などの HTTP 境界で `request.json()` を外部 SDK の複合型（例: `UIMessage[]`）に型付けするとき、`(await request.json()) as { messages: UIMessage[] }` は禁止。`z.custom<T>()` を使うと型推論のみ SDK 型を与えて、最低限のランタイム検査（object かどうか等）と組み合わせられる。
+  ```ts
+  import type { UIMessage } from "ai";
+  import { z } from "zod";
+
+  // ✅ z.custom<T> で as キャストなしに UIMessage[] 型推論を得る
+  const bodySchema = z.object({
+    messages: z.array(z.custom<UIMessage>((val) => typeof val === "object" && val !== null)),
+  });
+
+  const result = bodySchema.safeParse(await request.json());
+  if (!result.success) {
+    return Response.json({ ok: false, error: { code: "BAD_REQUEST" } }, { status: 400 });
+  }
+  // result.data.messages は UIMessage[] として型推論される
+  ```
+  実際のバリデーションは SDK 側（`convertToModelMessages` 等）に委ねる。クライアントが自社コードで信頼できる場合に適用する。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->

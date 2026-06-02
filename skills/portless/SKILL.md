@@ -87,3 +87,5 @@ URL をユーザーに案内する:
 - **`run_in_background` でプロセスが即終了 = 失敗**: 正常起動時は長時間動き続ける。即完了通知が来たらエラーと判断してログを確認する
 - **ログファイルは `>>` で追記**: 再起動時に前回のログが残る。古いエラーと混同しないよう末尾を見る
 - **同一アプリの複数ワークスペース同時起動**: `package.json` の name をそのまま使うとホスト名が衝突する。ブックマーク名・ワークスペース名を含めたカスタム名（例: `ms-holdings-issue-006`）を使うこと
+- **「ホスト名固定 env」を使う認証ライブラリ（BetterAuth 等）が portless ホスト名と不一致で Invalid origin になる**: portless のホスト名はワークスペース/ブックマークで変わるが、認証ライブラリ側は `BETTER_AUTH_URL=https://ms-holdings.localhost` のように env で固定するパターンが多い。dev サーバーログに `Invalid origin: https://ms-holdings-iori-b747.localhost` が出ていたら env と portless ホスト名のミスマッチ。対処の選択肢: (1) ワークスペースごとに `.env.local` の URL を書き換える（毎回必要）、(2) ライブラリの trustedOrigins 設定を関数化して Origin ヘッダーから動的に許可する（要ライブラリ調査）、(3) portless に固定名で起動して env を 1 つに保つ（ただし複数ワークスペース同時起動はできない）
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->

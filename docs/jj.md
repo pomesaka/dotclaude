@@ -85,11 +85,25 @@ gh pr create --head <name> --base main
 ```
 
 ## PR を push した後、別件を始める前に `jj new` する
-<!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+<!-- importance: high | mentions: 2 | first-seen: 2026-06 -->
 
-jj では **working copy (`@`) 自体が PR のコミット**。push 後にそのまま無関係なファイルを編集すると、変更が**同じ push 済みコミットに amend され**、別の関心事が 1 つの PR に混ざる（次に `jj git push` した瞬間に紛れ込む）。push 直後・別件着手前に `jj new`（または `jj new -m "..."`）で新しい WC を切ること。
+jj では **working copy (`@`) 自体が PR のコミット**。push 後にそのまま無関係なファイルを編集すると、変更が**同じ push 済みコミットに amend され**、別の関心事が 1 つの PR に混ざる（次に `jj git push` した瞬間に紛れ込む）。push 直後・別件着手前に `jj new`（または `jj new -m "..."`）で新しい WC を切ること。**特に claude-deck workspace では jj コマンドを打つたびに on-disk 編集が `@` へ自動スナップショットされる**ので、新規作業の着手前に `jj log` で「`@` が push 済み PR コミットでないこと」を必ず確認する。
 
 逆に「同じ PR を追記更新する」のが目的なら amend で正しい（`/update-pr` のケース）。**今の `@` が push 済み PR コミットか、新規作業用かを着手前に意識する**のがポイント。
+
+**もう汚染してしまったときの復旧**: `jj new`（空の子 `@` を作る）→ `jj squash --from <PRコミット> --into @ <別件のファイルパス…>` で別件の変更だけを子コミットへ抜き出す。PR コミットは元の内容（= origin と一致）に戻る。削除ファイルに対する `No matching entries for paths` 警告は rename 検出が処理するので無害。さらに `task ...:gen` 等で**無関係な生成物 drift**（`*_diff.gen.go` 等）が混ざっていたら `jj restore --from <bookmark>@origin <paths>` で push 済み状態に戻し、コミットを目的の差分だけに絞る。
+
+## `jj log` DAG の視覚的近接は親子関係を意味しない
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
+`jj log` の DAG 表示で `@` が `main` の隣に表示されていても、実際の parent が `main` ではなく別のコミット（例: `main` よりも古い revert コミット）である場合がある。空間的な近接 ≠ 親子関係。
+
+```bash
+jj show @          # Parents: ... で正確な親を確認
+jj log -r @::      # @ から先の lineage を確認
+```
+
+リベースが必要か判断するときは `jj log` の見た目でなく `jj show @` の `Parents:` フィールドで親を確認すること。実際の parent が `main` でなければ `jj rebase -s @ -d main` が必要。
 
 ## その他
 
@@ -153,4 +167,5 @@ jj bookmark set <name> -r @   # 正しい revision に向ける
 ```
 
 **なぜ起きるか**: jj は各ワークスペースが独立して `@` をスナップショットするため、複数ワークスペースが同一 change ID を同時に操作するか、`update-stale` が中途半端な状態で走ると change ID が分岐する。
-<!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
+**復旧時の追加 Tips（noah セッション 2026-06）**: `update-stale` で古い operation log の状態に飛んでしまうと、`jj log` が「main が古い revision を指している」ように見え混乱する。`jj op log` を辿るより、目的の change hash を `jj edit <hash>` で直接ジャンプ→`jj rebase -r @ -d main` で正しい親に乗せ直す方が早い。bookmark の `(ahead by N commits, behind by N commits)` 表示が出たら強制 push（`--allow-backwards` でなく通常の push で OK・jj が remote 差分を判定）してリモートを合わせる。
+<!-- importance: high | mentions: 2 | first-seen: 2026-05 -->

@@ -42,6 +42,12 @@ React の観点に加え、以下の観点でレビューする。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
 - **コンポーネントライブラリの境界にはドメイン型を使う（transport 型を露出しない）**: `packages/features` の View が Server Action を props として受け取る場合、`(formData: FormData) => void` ではなく `(templateId: string, values: Record<string, string>) => void` のように **ドメイン型のシグネチャ** にする。FormData のパースは View 内部で完結させ、呼び出し側が `_templateId` のような内部キー名を知る必要をなくす。Server Action は JS から呼ぶ場合に任意の引数型を使えるため、FormData に縛られる必要はない。
   <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
+- **`redirect()` は try/catch の外で呼ぶ**: `redirect()` は内部的に `NEXT_REDIRECT` 例外を throw する。try ブロック内で呼ぶと catch に握り潰されてリダイレクトが発生しない。Server Action パターン: `try { await someAction() } catch(err) { /* handle */ throw err } redirect("/")` — redirect は try の外に出す。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+- **`useActionState` + `defaultValue` でフォームリセットを防ぐ**: Server Action が失敗すると React はフォームを `defaultValue` ベースにリセットする。エラー時に入力値（例: email）を保持したい場合は、state に入力値を含めて返し（`return { error, email }`）、input の `defaultValue={state?.email}` で制御する。password はセキュリティ上保持しない（毎回入力を促す）。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+- **`useActionState` の `isPending` を優先する（1フォーム+1アクションの場合）**: React 19 の `useActionState` は 3要素タプル `[state, formAction, isPending]` を返す。1フォーム+1アクションなら `isPending` を使う方がシンプル。`useFormStatus` は form の子コンポーネントに分離する必要があり、中間コンポーネント（`SubmitButton` / `FormContent` 等）が増える overhead がある。`useFormStatus` を使うべきケースは: ① form 内に複数の独立した送信領域（複数 button + 別 action）がある / ② 深いネストで pending を読みたい / ③ 単独の Server Action ではなく純粋な `<form action="...">` を扱う、の3つに限る。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 
 ## ルーティング規約
 
@@ -207,11 +213,14 @@ export function SomeClientWrapper({ data }) {
   <!-- importance: high | mentions: 3 | first-seen: 2026-05 -->
 - **`router.refresh()` は CC の state（useState 等）を保持する**: SC データを再取得するがクライアントツリーはアンマウントされない。「refresh したら state がリセットされる」という誤解が生じやすい。Next.js 公式: "The client will merge the updated RSC payload without losing unaffected client-side React state."
   <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
-- **dev 専用 API（`node:fs/promises` 等）をパッケージのバレルに含めると Turbopack がクライアントバンドルで検出してエラーになる**: dev モードの Turbopack は tree-shake をしないため、バレルの `export * from` が Node.js コアモジュールを参照するファイルまで辿り "does not support external modules (request: node:fs/promises)" のエラーになる。対処: dev 専用 API（eval runner・ファイル操作スクリプト等）はパッケージのサブパス（`"./evals": "./src/agent/evals/index.ts"` のように `package.json exports` に追加）から import させ、runtime バレルから完全に切り離す。
-  <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
+- **Node コアモジュール（`node:fs` 等）を参照するファイルをパッケージのバレルに含めると Turbopack がクライアントバンドルで検出してエラーになる**: dev モードの Turbopack は tree-shake をしないため、バレルの `export * from`／value re-export が Node.js コアモジュールを参照するファイルまで辿り "the chunking context does not support external modules (request: node:fs)" のエラーになる。**dev 専用 API（eval runner・ファイル操作スクリプト）だけでなく、server 専用の runtime 依存（AWS SDK・DB クライアント・LLM provider 等、内部で node コアを使う）も同じ**。対処: server 専用シンボルはパッケージのサブパス（`package.json exports` に `"./agent": "./src/agent/index.ts"` 等を追加）から import させ、Client Component が import する runtime バレルからは完全に切り離す。**型のみの re-export（`export type`）は erase されるので安全、value re-export だけが問題**。見極め: 「このバレルを `"use client"` のファイルが import するか？」が Yes なら server runtime を value re-export しない。発覚例: chat barrel が `createChatAgent`（→ `@aws-sdk/credential-providers` → `node:fs`）を value re-export しており、`@ai-sdk/amazon-bedrock`（aws4fetch でブラウザ安全）から `@aws-sdk/credential-providers`（node 依存）に変えた瞬間にビルドが壊れた。
+  <!-- importance: high | mentions: 2 | first-seen: 2026-05 -->
 
 - **ルートグループ `(name)` を含むパスは LSP が解決できず false positive になる**: Next.js App Router のルートグループ（`(auth)`, `(app)` 等）のように括弧を含むディレクトリに置かれたファイルへの import は、LSP（VS Code 等）が "Cannot find module" と誤検知することがある。`tsc --noEmit`（`bun run typecheck`）は正常通過するため false positive。対処: typecheck が通っていれば無視してよい。LSP の誤検知を修正しようとして不要なファイル移動をしないこと
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
+- **検証付き env をモジュールのトップレベルで `parse` すると `next build` がビルド時にランタイム env を要求して落ちる**: `export const env = schema.parse(process.env)` のようにトップレベルで検証する設計は、`next build` の 2 つのフェーズでランタイム env（本番は ECS/コンテナが起動時に注入し、ビルド時には存在しない）を要求して `ZodError` でクラッシュする。(1) **"Collecting page data"**: route モジュールを import して static/dynamic 判定するため、import チェーン上のトップレベル副作用（env parse・DB クライアント生成・auth 初期化）が全て走る。(2) **静的プリレンダー（export）**: 認証付きページを build 時に render しようとし、render 中の `auth`/`db`（→env）参照で落ちる。NG: `export const env = schema.parse(process.env)` / `export const db = drizzle(postgres({host: env.DB_HOST}))`（トップレベル即生成）。OK: env/db/auth シングルトンを**初回プロパティアクセスまで初期化を遅延する Proxy**でラップして import を副作用フリーにする（`env.X`/`db.X`/`auth.api.*` の API は不変。Proxy の target に `as` が要る点だけ許容）＋ **認証セグメントの layout に `export const dynamic = "force-dynamic"`** を付けてビルド時プリレンダー自体を止める。見極め: 「runtime env がビルド時に不在（ECS/Secrets Manager 注入）」かつ「その env を参照するモジュールが route/page から import される」なら必ず踏む。ビルド時ダミー env を Dockerfile で渡す手もあるが、遅延化のほうが import 副作用ゼロ・ランタイム検証維持で筋が良い。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 
 ## 禁止パターン
 

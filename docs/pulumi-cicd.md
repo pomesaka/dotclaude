@@ -128,3 +128,9 @@ ECS タスク定義更新・ローリングアップデート・安定待機を 
   <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
 - **GitOps: prod スタックは必ず `infra-deploy.yml` の matrix に含める**: prod を matrix から外すと、ユーザーが `Pulumi.prod.yaml` の imageTag を PR で更新してマージしても `infra-deploy.yml` が prod に対して何もしない。「prod へのデプロイをユーザーが制御する」とは「Pulumi.prod.yaml の変更を PR で承認する」ことであり、CI 側の matrix には prod を含めておく
   <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
+- **新しいデプロイ経路は CI の往復で1個ずつ潰さない。ただしエラーのクラスで検知手段を変える**: 新サービス追加（例: Lambda）を CI 任せで立ち上げると、`PR→merge→deploy→再実行`（毎回十数分）で 403/400 を1個ずつ踏み消耗する。**クラスごとに事前検知の手段が違う**:
+  - **build / コンテナ manifest 形式 / リソース設定ミス**（権限ではない実行時エラー）→ ローカルを **admin creds で `pulumi up`** すれば総ざらいできる（`preview` では出ないので `up` で炙る）
+  - **CI ロールの権限不足（403）→ ローカル admin では検知できない**（admin は全 action 通るので素通りする）。これは runtime 検知を諦め、別手段で潰す: ① **ロールを `service:*`（service-level）で持つ** → 「action 欠落」クラスが消滅。② **`rg 'new aws\.'` で infra が触る AWS サービスを静的列挙し、ロールポリシーの service 群と diff** → 「新サービスが丸ごと無い」を発見（①があるので「present だが action 欠落」は気にしなくてよい）。正確に炙るなら admin でなく **CI ロール / 同ポリシーの複製ロールを assume して up**、または **`iamlive`**（API コール捕捉→必要 action 生成）
+  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+- **Pulumi デプロイロールの権限は service-level（`ec2:*`/`rds:*`/`lambda:*` 等）で持つ。例外は IAM**: action 単位の最小権限は `up --refresh` が呼ぶ read 系 API（resource-level 非対応が多い・`rds:DescribeGlobalClusters` 等）で 403 のモグラ叩きになり運用コストに見合わない。デプロイで触るサービスは `service:*` に広げる。ただし **IAM だけは広げない**（`role/<prefix>-*` スコープ維持）— CI に `iam:*`（Resource `*`）を与えると侵害時に任意ロールへ AdministratorAccess を付与でき実質アカウント乗っ取り。Secrets は action を広げてよいが Resource は自プロジェクト ARN（`secret:<prefix>-*` / `secret:/<prefix>/*`）に限定する（project-prefixed なので whack-a-mole にならず、他人の secret や RDS マネージド master secret に触れない）
+  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
