@@ -210,6 +210,9 @@ export function SomeClientWrapper({ data }) {
 - **dev 専用 API（`node:fs/promises` 等）をパッケージのバレルに含めると Turbopack がクライアントバンドルで検出してエラーになる**: dev モードの Turbopack は tree-shake をしないため、バレルの `export * from` が Node.js コアモジュールを参照するファイルまで辿り "does not support external modules (request: node:fs/promises)" のエラーになる。対処: dev 専用 API（eval runner・ファイル操作スクリプト等）はパッケージのサブパス（`"./evals": "./src/agent/evals/index.ts"` のように `package.json exports` に追加）から import させ、runtime バレルから完全に切り離す。
   <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
 
+- **ルートグループ `(name)` を含むパスは LSP が解決できず false positive になる**: Next.js App Router のルートグループ（`(auth)`, `(app)` 等）のように括弧を含むディレクトリに置かれたファイルへの import は、LSP（VS Code 等）が "Cannot find module" と誤検知することがある。`tsc --noEmit`（`bun run typecheck`）は正常通過するため false positive。対処: typecheck が通っていれば無視してよい。LSP の誤検知を修正しようとして不要なファイル移動をしないこと
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
 ## 禁止パターン
 
 - Pages Router の混在（App Router に統一）

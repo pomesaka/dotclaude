@@ -391,3 +391,15 @@ export function setGlobalFlag(next: boolean) {
 }
 ```
 <!-- importance: high | mentions: 2 | first-seen: 2026-05 -->
+
+## React 19
+
+- **`React.FormEvent` は deprecated → `React.SyntheticEvent` を使う**: React 19 で `React.FormEvent<HTMLFormElement>` が deprecated になった。`<form onSubmit>` ハンドラの型は `React.SyntheticEvent<HTMLFormElement>` に移行する。`e.currentTarget` は引き続き利用可能。
+  ```tsx
+  // ❌ React 19 で deprecated
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) { ... }
+
+  // ✅
+  async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) { ... }
+  ```
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
