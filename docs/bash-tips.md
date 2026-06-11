@@ -91,3 +91,21 @@ rg -i 'fooSession' src/
 - `cmd -C /path` / `cmd --cwd /path` など、作業ディレクトリを指定するフラグ（ツールが対応していれば）
 - `jj diff -R /path` のようにリポジトリ/対象を指定するフラグを使う
 - どうしても順次実行が必要なら、2回に分けて別々の Bash 呼び出しにする
+
+## 破壊的操作（`rm -rf` 等）は絶対パスで書く
+<!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+
+`rm -rf "apps/adachi/app/(app)/dispatch"` のような相対パスは、Bash ツールの暗黙の作業ディレクトリが想定と異なるとサイレントに失敗し（no such file → エラーなし）ディレクトリが残る。破壊的なファイル操作は必ず絶対パスで書く。
+
+**NG（相対パスは作業ディレクトリ依存で誤作動しやすい）**:
+```bash
+rm -rf "apps/adachi/app/(app)/dispatch"
+# → Bash ツールの cwd がルートでなければ見つからずサイレント失敗
+```
+
+**OK（絶対パスで確実に指定）**:
+```bash
+rm -rf "/Users/pomesaka/.local/share/claude-deck/workspace/-Users.../apps/adachi/app/(app)/dispatch"
+```
+
+削除後は `ls <パス> 2>/dev/null && echo EXISTS || echo DELETED` で確認する。

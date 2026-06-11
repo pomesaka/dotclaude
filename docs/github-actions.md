@@ -1,5 +1,7 @@
 # GitHub Actions パターン集
 
+> **TL;DR**: noah CI/CD の GitHub Actions パターン集。matrix + reusable workflow で multi-client を scalable に管理。`config-map` で CI 実行時の config をインライン渡し。Gotchas: boolean を matrix に入れない・`secrets: inherit` は caller の permissions が適用される・Lambda コンテナは `provenance: false` 必須・shared action を直しても既存 workflow は自動再起動しない。
+
 ## matrix strategy × reusable workflow（scalable multi-client 構成）
 
 多クライアント・多スタックを管理する場合、ジョブを手書きで並べるのではなく `strategy.matrix.include` でエントリーを管理すると scalable になる。

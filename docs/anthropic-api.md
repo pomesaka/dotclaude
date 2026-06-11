@@ -1,5 +1,7 @@
 # Anthropic API — Gotchas と制約
 
+> **TL;DR**: Anthropic API の制約と落とし穴。構造化出力で `oneOf`（Valibot `v.variant`）は非対応 → フラット構造に畳んで後段で判別。`cache_control` ブレークポイントは 1 リクエスト最大 4 件 → `system` のみ `cachedText` を使い `message` は plain `text` のまま toolRunner に委ねる。
+
 ## Constrained Decoding（構造化出力）
 
 ### `oneOf` は非対応

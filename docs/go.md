@@ -1,5 +1,7 @@
 # Go レビュー観点
 
+> **TL;DR**: Go コードのレビュー観点と Gotchas。禁止: `interface{}` / 冗長エラープレフィックス。推奨: exported 上・early return・構造体改行。Gotchas: LSP は参考程度（`go test`/`task lint` が正）・GORM struct は generic 制約に使えない・`slog` に `err.Error()` 渡し禁止・`FindByXxx` は nil, nil チェック必須。
+
 プロジェクト固有の規約（CLAUDE.md等）に加え、以下の観点でレビューする。
 
 ## 禁止パターン

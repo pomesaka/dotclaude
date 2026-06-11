@@ -8,6 +8,8 @@ model: sonnet
 
 # impl-pulumi-noah: Pulumi インフラ実装フロー
 
+> **TL;DR**: noah の `infra/` Pulumi TypeScript を実装するスキル。実装前に `pulumi.md`・`pulumi-aws.md`・`pulumi-cicd.md` を必読。shared（VPC/ECR/Aurora）→ 顧客（ECS/Lambda）の順で構築。IAM 最小権限・暗号化・`protect: isProduction`・`defaultTags` を必ず付ける。`bun install` は `infra/components/` と `infra/<customer>/` の 2 箇所で実行。
+
 noah の `infra/` ディレクトリに Pulumi TypeScript プロジェクトを作成・実装する。
 
 **必読ドキュメント（実装前に確認)**:

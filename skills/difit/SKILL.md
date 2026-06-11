@@ -14,23 +14,46 @@ jj の差分を unified diff としてパイプし、difit（GitHub 風ローカ
 
 ## 起動コマンド
 
+portless 経由の名前付き URL で起動する。WHY: ポート被りと、ポート再利用時に origin（`localhost:<port>`）を共有して localStorage コメントが混ざる問題を、レビュー対象ごとの一意な origin で根本回避する（2026-06 実機検証: portless が `PORT` 環境変数で払い出した空きポートに difit がバインドし、stdin パイプも透過、`https://<name>.localhost` で応答することを確認済み）。
+
+```bash
+jj diffu -r '<rev>' | mise exec -- portless <name> sh -c 'npx difit - --clean --port "$PORT" --host 127.0.0.1 --no-open'
+```
+
+- Bash の `run_in_background` で起動する。ユーザーコメント（difit 終了時に stdout に出る）はタスク出力ファイルを Read で読む
+- `<name>` はレビュー対象ごとに一意にする（例: `difit-<ワークスペース名>`、PR なら `difit-pr<番号>`）。URL は `https://<name>.localhost` で確定するのでそれをユーザーに案内する
+- difit は `PORT` 環境変数を読まないため `sh -c` 内で `--port "$PORT"` に展開して渡す
+- `--no-open` を付ける（difit の自動オープンは portless の名前付き URL を知らない）
+- `--background` は使わない（URL が名前で確定するため JSON 出力を読む必要がない。`run_in_background` で足りる）
+- `<rev>` のデフォルトは `@`（現在の change）。比較したい場合は jj のリビジョン式を使う（例: `@-..@`、`main..@`）
+- `--clean` は localStorage のコメント蓄積を毎回リセットする（同一対象を再レビューするときの蓄積対策）
+- `-` は difit に標準入力から diff を読むよう指示する
+
+### フォールバック（portless proxy 未起動時）
+
+起動ログに `Proxy is not running` が出たら、`sudo portless proxy start --https` をユーザーに案内するか、従来の直接起動にフォールバックする:
+
 ```bash
 jj diffu -r '<rev>' | npx difit - --clean
 ```
-
-- `<rev>` のデフォルトは `@`（現在の change）。比較したい場合は jj のリビジョン式を使う（例: `@-..@`、`main..@`）
-- `--clean` は localStorage のコメント蓄積を毎回リセットする（パイプ運用での Files changed 膨張対策）
-- `-` は difit に標準入力から diff を読むよう指示する
 
 ## 起動時コメント（オプション）
 
 ユーザーに伝えたい説明や注意点があれば `--comment` で先にコメントを差し込める。
 
+**注意: `--comment` の JSON はシングルクォートで囲むため `sh -c '...'` の中に置けない。** コメントを注入する場合は `--app-port` の固定ポート方式を使い、`sh -c` なしで起動する（2026-06 実機検証済み: `Using port <P> (fixed)` で route が張られ、`--comment` も argv 直渡しで機能）:
+
 ```bash
-jj diffu -r '@' | npx difit - --clean \
+# 1. 空きポートを取得
+python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1])'
+
+# 2. 取得したポート <P> を portless（--app-port）と difit（--port）の両方に渡す
+jj diffu -r '@' | mise exec -- portless <name> --app-port <P> npx difit - --clean --port <P> --host 127.0.0.1 --no-open \
   --comment '{"type":"thread","filePath":"src/foobar.ts","position":{"side":"old","line":102},"body":"line 1\nline 2"}' \
   --comment '{"type":"thread","filePath":"src/example.ts","position":{"side":"new","line":{"start":36,"end":39}},"body":"L36-L39 の範囲コメント"}'
 ```
+
+- 起動ログの `difit server started on http://127.0.0.1:<P>` が指定ポートと一致することを確認する（difit の `--port` は preferred 扱いで、占有されていると別ポートに逃げて route が壊れる — `difit --help` 記載の挙動）
 
 - `type: "thread"` を使う
 - コメント本文はユーザーが使っている言語で書く

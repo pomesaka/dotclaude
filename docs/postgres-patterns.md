@@ -1,5 +1,7 @@
 # PostgreSQL パターン集（postgres.js / Drizzle）
 
+> **TL;DR**: postgres.js / Drizzle での落とし穴と安全パターン。DO ブロック内のパラメータバインドは非対応（PostgreSQL の仕様）→ `SELECT format('%I', ...) + sql.unsafe()` で DB サーバー側エスケープを使う。
+
 よくある落とし穴と安全な実装パターン。
 
 ## DO ブロック内でのパラメータバインドは機能しない
