@@ -475,3 +475,6 @@ const placeholderPattern = () => /\{\{([^}]+)\}\}/g;
   }
 }
 ```
+
+- **`get` トラップだけの Proxy ラッパーは consumer の `"x" in obj` チェックを破る**: 遅延初期化 Proxy（`new Proxy({} as T, { get: ... })`）は、`has` トラップ未実装だと `in` 演算子が target（空オブジェクト）を見て常に false を返す。ライブラリは duck-typing 分岐に `in` を使うことがあり（例: better-auth `toNextJsHandler` の `"handler" in auth ? auth.handler(req) : auth(req)`）、false 側に倒れて「auth is not a function」のような不可解な実行時エラーになる。typecheck は通る（型上は T のまま）ため静的に検出できない。対処: 遅延 Proxy を書くときは `get` に加えて `has: (_t, p) => p in resolve()`（必要なら `ownKeys`/`getOwnPropertyDescriptor` も）を実装し、トラップを resolve 済み実体に委譲する。判断基準: 「この Proxy をライブラリ関数に渡すか？」→ YES なら get 以外のトラップも必須と考える。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->

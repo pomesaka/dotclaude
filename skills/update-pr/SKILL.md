@@ -126,3 +126,7 @@ echo "$PR_URL"
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 - **ブックマーク・PRが存在しない場合は create-pr フロー**: ステップ1で `jj bookmark list` にブックマークがなく `gh pr list` にも該当PRが存在しない場合、実質的には新規PR作成になる。この場合は `create-pr` スキルの手順に切り替える（ブックマーク名を作業内容から命名 → `jj git push --bookmark <name>` → `gh pr create`）。`update-pr` と `create-pr` の区別は「既存PRがあるか」で判断する。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+- **`--body "$(cat file)"` は file が無いと PR body を空文字で上書きする — `--body-file` を使う**: `cat` が失敗するとコマンド置換が空文字に展開され、`gh pr edit` は「空 body への更新」として成功してしまう（既存 body が消える）。`gh pr edit <N> --body-file /path/to/body.txt` ならファイル不在で gh 自体がエラーになり、消失事故が起きない（`gh pr create` も同様）。実例: body を `~/.claude/tmp/` に保存したのに `/tmp/` を参照して PR #98 の body を一時的に全消去した。body 更新後は `gh pr view <N> --json body --jq '.body | length'` で非ゼロ確認を癖にする。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+- **実機検証のエビデンス（スクショ・録画・実行ログ）が手元にあれば PR に含める**: /verify 等で動作検証した結果のスクリーンショットが /tmp 等に残っている場合、`upload-screenshots` スキル（ドラフトリリースのアセット方式）でアップロードし、PR ボディの「動作検証」セクションに `![説明](URL)` で埋め込む。画像の下に「何を確認した画像か」の注記（観測ポイント）を添える。レビュアーが手元で再現しなくても検証結果を確認できる状態にするのが目的。テキストの検証結果（レスポンスボディ・カウント等）も同セクションに書く。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
