@@ -15,11 +15,13 @@ model: sonnet
 1. `./CLAUDE.md` — プロジェクト固有ルール（最優先。依存方向ルール・コーディングポリシー・ドキュメント更新マッピングを含む）
 2. `./DESIGN.md` — デザインシステム（色・タイポグラフィ・コンポーネントパターン）
 3. `./docs/architecture.md` — パッケージ構成と依存ルール
-4. `~/.claude/docs/typescript.md` — TypeScript 共通ルール
-5. `~/.claude/docs/react.md` — React 共通ルール
-6. `~/.claude/docs/readability.md` — 可読性ガイドライン
-7. `~/.claude/docs/cohesion.md` — 凝集度ガイドライン
-8. `~/.claude/docs/technical-writing.md` — ドキュメント品質ガイドライン
+4. `~/.claude/docs/typescript.md` — TypeScript 共通ルール（落とし穴は `typescript-gotchas.md`）
+5. `~/.claude/docs/typescript-gotchas.md` — TypeScript 落とし穴・コンパイラ挙動
+6. `~/.claude/docs/react.md` — React 共通ルール（落とし穴は `react-gotchas.md`）
+7. `~/.claude/docs/react-gotchas.md` — React 落とし穴・実装 Gotchas
+8. `~/.claude/docs/readability.md` — 可読性ガイドライン
+9. `~/.claude/docs/cohesion.md` — 凝集度ガイドライン
+10. `~/.claude/docs/technical-writing.md` — ドキュメント品質ガイドライン
 
 **2. 差分を取得する:**
 

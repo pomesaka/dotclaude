@@ -1,5 +1,7 @@
 # doobie + cats-effect: WeakAsync と Dispatcher
 
+> **TL;DR**: TX を保持しながら F（IO）の効果（SMTP 等）を呼ぶには `WeakAsync.liftK[F, ConnectionIO].use { fk => ... fk(fa) ... .transact(xa) }` パターンを使う。`WeakAsync` は doobie 固有の typeclass（cats-effect にはない）— `import doobie.WeakAsync`。落とし穴: `commitNoLog` で即 commit すると行ロック解放・`fk` を `.use` 外に持ち出すと runtime エラー・SMTP 等の外部 I/O は at-least-once 問題あり。
+
 doobie で「**トランザクション境界を保持したまま F の効果 (SMTP 送信等) を埋め込む**」パターンに必要な道具のメモ。
 
 `FOR UPDATE SKIP LOCKED` で取った行ロックを保持して業務処理 → NanoQueueRun 記録 → commit、を 1 TX でやりたい時の典型パターン。

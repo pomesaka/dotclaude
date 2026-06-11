@@ -81,7 +81,9 @@ Critical として報告。
 | docs ファイル | 参照すべきスキルの特徴 |
 |---|---|
 | `typescript.md` | TypeScript コードを生成・レビューするスキル |
+| `typescript-gotchas.md` | TypeScript レビュースキル（`typescript.md` 参照済みのもの） |
 | `react.md` | React コンポーネントを扱うスキル |
+| `react-gotchas.md` | React レビュースキル（`react.md` 参照済みのもの） |
 | `react-a11y.md` | React レビュースキル（`react.md` 参照済みのもの） |
 | `nextjs.md` | Next.js アプリを扱うスキル |
 | `pulumi.md` | Pulumi インフラを実装・レビューするスキル |

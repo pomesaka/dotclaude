@@ -67,8 +67,8 @@ policy-reviewer は設けない。各スタックレビュアーが**プロジ�
 
 | 検出条件 | agent 名 | スタックドキュメント |
 |---|---|---|
-| Next.js を使用 | nextjs-reviewer-{project} | `typescript.md`, `react.md`, `nextjs.md` |
-| React のみ（Next.js なし） | react-reviewer-{project} | `typescript.md`, `react.md` |
+| Next.js を使用 | nextjs-reviewer-{project} | `typescript.md`, `typescript-gotchas.md`, `react.md`, `react-gotchas.md`, `nextjs.md` |
+| React のみ（Next.js なし） | react-reviewer-{project} | `typescript.md`, `typescript-gotchas.md`, `react.md`, `react-gotchas.md` |
 | Go を使用 | go-reviewer-{project} | `go.md` |
 | `.tf` ファイルが存在 | terraform-reviewer-{project} | `terraform.md`（存在する場合） |
 | 保守すべきドキュメントが存在する | docs-reviewer-{project} | `technical-writing.md` |

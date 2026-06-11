@@ -24,7 +24,9 @@ model: sonnet
 言語・設計の観点:
 - ~/.claude/docs/go.md
 - ~/.claude/docs/typescript.md
+- ~/.claude/docs/typescript-gotchas.md
 - ~/.claude/docs/react.md
+- ~/.claude/docs/react-gotchas.md
 - ~/.claude/docs/cohesion.md
 - ~/.claude/docs/readability.md
 - ~/.claude/docs/design.md
@@ -43,6 +45,16 @@ jj diffu -r 'main..@'
 **3. ドキュメント関連変更があれば Read する（コードのみなら不要）。**
 
 **4. レビューを実施する。**
+
+## 再利用チェック（再発明の検出）
+
+diff に新規のユーティリティ的関数（フォーマッタ・変換・パース・バリデーション等の汎用処理）が含まれる場合、既存の同等実装がないか必ず確認する:
+
+1. `frontend/src/lib/` / `backend/util` 相当のディレクトリを Glob し、全ファイルの doc コメント・関数シグネチャを確認する（小さいので毎回読む）
+2. **関数名ではなく実装パターンの同義語**で rg する。再発明は「違う名前で同じこと」をしているため、名前検索では見つからない。例（日付フォーマットの場合）: `rg "toLocaleString|Intl.DateTimeFormat|ja-JP|date-fns"`
+3. 同一ドメインの隣接ディレクトリ（類似画面・類似 contents）に局所実装がないかも確認する
+
+**absence claim には根拠必須**: 「既存に〜は存在しない」と書くときは、実行した検索コマンドを根拠として併記する。検索1〜2回の空振りで断定しない（「ない」の証明は「ある」より網羅性が要る）。
 
 ## レポートフォーマット
 

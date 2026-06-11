@@ -36,9 +36,17 @@ model: sonnet
 
 !`cat ~/.claude/docs/typescript.md 2>/dev/null`
 
+### TypeScript Gotchas
+
+!`cat ~/.claude/docs/typescript-gotchas.md 2>/dev/null`
+
 ### React
 
 !`cat ~/.claude/docs/react.md 2>/dev/null`
+
+### React Gotchas
+
+!`cat ~/.claude/docs/react-gotchas.md 2>/dev/null`
 
 ### React a11y
 

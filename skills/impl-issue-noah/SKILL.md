@@ -92,7 +92,7 @@ PRのタイトル・本文に `closes #<issue番号>` を含めるよう指示�
 |---|---|
 | noah 固有の規約・禁止事項 | `CLAUDE.md` または `docs/apps/conventions.md` |
 | reviewer が複数 issue で同じ観点を指摘 | `docs/apps/conventions.md` に規約として明文化 |
-| TypeScript / React / Next.js の一般的なプラクティス | `~/.claude/docs/typescript.md` 等の言語ドキュメント |
+| TypeScript / React / Next.js の一般的なプラクティス | `~/.claude/docs/typescript.md` 等の言語ドキュメント（規約・設計パターンは本体、実装中の落とし穴は `typescript-gotchas.md` / `react-gotchas.md`） |
 | reviewer スキルが見落としている観点 | `dotclaude/skills/review-team-noah/teammate-reviewer.md` |
 
 ## Gotchas

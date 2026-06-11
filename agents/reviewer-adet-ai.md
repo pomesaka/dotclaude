@@ -21,6 +21,7 @@ model: sonnet
 
 TypeScript/Bun スタック:
 - ~/.claude/docs/typescript.md
+- ~/.claude/docs/typescript-gotchas.md
 
 ドキュメント品質:
 - ~/.claude/docs/technical-writing.md
