@@ -109,6 +109,19 @@ class AppService extends pulumi.ComponentResource {
 
 `parent: this` を子リソースに指定するとリソースが階層表示される。
 
+### 既存リソースの ComponentResource 化（reparent state 移行）
+
+スタックルート直下のリソースを component 配下に移すと parent 変更で URN が変わり、preview に replace / delete+create が出る。`aliases: [{ parent: pulumi.rootStackResource }]` を子リソースの opts に宣言すると旧 URN を引き継げる（新規スタックでは旧 URN が無く no-op なので付けっぱなしで害がない）。論理名も変える場合は `aliases: [{ name: "<旧論理名>", parent: pulumi.rootStackResource }]` のように name も併記する。
+
+移行 PR では旧コードを VCS から開き（`git show main:<file>` / `jj file show -r main <file>`）、リソースごとに次の 3 点を機械的に突き合わせる。意識が alias（URN）に向くため 2. と 3. が静かに脱落しやすい:
+
+1. **論理名の一致**: component 側は `${name}-<suffix>` で組むため、`name` に既に suffix が含まれると二重付加（`-jobs-jobs-` 等）で旧名と不一致になり alias が効かない
+2. **opts 水準の維持**: 旧コードが付けていた `protect: isProduction`・`dependsOn` 等が `{ parent: this, provider }` 直書きへの置き換えで消えていないか
+3. **statement / args 内容の一致**: 内容が変わると alias が効いても update / replace が出る
+
+preview の読み方: component プレースホルダの create・意図したリネームの create+delete（IAM RolePolicy は同一 role に別名共存でき create 先行のため権限の空白なし）・TaskDefinition の revision replace は期待される差分。**stateful リソース（Secret / RandomPassword / S3 / SecurityGroupRule / ECS Service）の replace / delete は alias 漏れの兆候**。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+
 ### Stack Reference — スタック間の出力参照
 
 ```typescript
@@ -156,6 +169,12 @@ pulumi.runtime.registerStackTransform((args) => ({ props: args.props, opts: { ..
 - **GitHub Actions (Pulumi CI) ロールの `secretsmanager:GetSecretValue` 要否は「何を Pulumi 管理するか」で変わる**: Secret コンテナ（`aws.secretsmanager.Secret`）だけを管理するなら値の読み取りは不要（`CreateSecret`/`DescribeSecret`/`DeleteSecret` + `GetResourcePolicy` で足りる）。**だが `aws.secretsmanager.SecretVersion` を Pulumi 管理する場合は `GetSecretValue` が必須**: `pulumi up --refresh` が SecretVersion を Read する際、AWS provider は `GetSecretValue` を呼ぶ（version の実体＝値のため `DescribeSecret` では足りない）。これが無いと refresh が `AccessDenied` で落ちる（noah で実際に CI が落ちた）。付与する場合は Resource を自プロジェクトの secret ARN（`secret:noah-*` / `secret:/noah/*`）に限定し、RDS マネージド master secret（`rds!` プレフィックス）には及ばせない。ブラスト半径懸念はあるが、CI ロールは同 ARN に既に `Put/Delete/CreateSecret` を持つため、書き換え・削除できる相手の値を読める追加リスクは小さい（読み取りを避けたいのは人間が投入する機微シークレット。Pulumi 生成の random 値は別物）
   <!-- importance: high | mentions: 2 | first-seen: 2026-06 -->
 - **`SecretVersion` を Pulumi で管理すると差分で毎回 update が走る**: `aws.secretsmanager.SecretVersion` を Pulumi で管理すると、値が変わるたびに `pulumi up` で update が走り CI が壊れる。初期値や手動ローテーションが必要なシークレットは `SecretVersion` を Pulumi 管理外にし、AWS CLI / コンソールから直接値を投入する運用を選ぶ。Pulumi で管理するのはシークレットの「コンテナ（`Secret`）」だけに留める。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+- **ALB アクセスログ有効化では `BucketPolicy.id` を渡して implicit 依存を作る — `bucket.id` では不足**: ALB は `accessLogs` 有効化時（`ModifyLoadBalancerAttributes`）にバケットへテスト PutObject を行う。`SecureBucket` 内の `BucketPolicy` は別リソースなので `bucket.id`（`BucketV2`）を渡すだけでは BucketPolicy が未配置でも ALB が起動しようとし Access Denied になる。対処: `bucketPolicy.id`（`BucketPolicy.id` = バケット名と同値だが Output の依存チェーンが BucketPolicy を経由する）を `accessLogsBucket` に渡す。`LoadBalancer` がこの `Output` を消費することで BucketPolicy 完了まで暗黙的に待機する。`dependsOn: [secBucket]` は ComponentResource ごとで粗すぎる（内部リソース順序を保証しない）ため `.id` チェーン方式が正確。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+- **ALB アクセスログ配送の Principal はサービスプリンシパル方式を使う（旧 ELB アカウント ID 方式は非推奨）**: AWS 公式ドキュメント "Enable access logs for your Application Load Balancer" は `logdelivery.elasticloadbalancing.amazonaws.com` を現行推奨とし、旧 `aws.elb.getServiceAccount`（リージョン固定 ELB アカウント ID）を "Legacy bucket policy" として置き換え推奨。サービスプリンシパル方式なら `aws.elb.getServiceAccount` 呼び出し・CI ロールへの `elasticloadbalancing:DescribeAccountLimits` 権限追加がいずれも不要。Statement の Resource は `${bucketArn}/AWSLogs/${accountId}/*`、Condition に `ArnLike: { "aws:SourceArn": "arn:aws:elasticloadbalancing:*:${accountId}:loadbalancer/*" }` を加えて同アカウントの ALB のみに絞る（AWS 推奨・2026-06-11 確認）。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+- **バケットポリシー Statement がバケット自身の ARN を参照する場合は component 内部で組み立てる**: `SecureBucket` への `extraPolicyStatements` のような「外から Statement を注入する」方式では、Statement の `Resource` フィールドに `bucket.arn` を含める場合に循環参照になる（バケット ARN が確定する前に Statement を組み立てる必要があるため）。この場合は `albLogDelivery?: { accountId }` のような専用引数を component に持たせ、constructor 内で `bucket.arn` が参照可能になってから Statement を組み立てる。外部注入で使える `extraPolicyStatements` はバケット ARN を含まない Statement（例: 特定プリンシパルの読み取り許可）に限る。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 - **`config.require()` を追加したら対応する `Pulumi.*.yaml` も同時に更新する**: `config.require("key")` を実装した後に `Pulumi.dev.yaml`（や `.prod.yaml`）へのキー追加を忘れると、`pulumi up` / `pulumi preview` が即時クラッシュする。infra 実装後に「`config.require` / `config.get` しているキー」と「`Pulumi.*.yaml` に存在するキー」の整合を目視確認すること。**特に `Pulumi.prod.yaml`**: dev にキーを追加しても prod をコメントアウトのままにするのは NG。ドメイン未確定などの理由で本値が決まっていなくても `"https://placeholder-replace-after-ISSUENUM.example.com"` 等のプレースホルダーを入れること（コメントアウトは `config.require` でクラッシュするため等価でない）。issue 060 で `betterAuthUrl` を prod で `# コメントアウト` にして Round 3 のレビューで検出した。
   <!-- importance: medium | mentions: 2 | first-seen: 2026-06 -->

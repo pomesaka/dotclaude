@@ -106,6 +106,28 @@ if (!result.success) {
 実際のバリデーションは SDK 側（`convertToModelMessages` 等）に委ねる。クライアントが自社コードで信頼できる場合に適用する。
 <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 
+### `test.each` 行の型が行ごとに違う場合は `execute` クロージャで `as` を排除する
+
+`test.each` のテーブル行で factory の返り値型やアクセス先の型が行ごとに異なると、TypeScript が共通型を推論できず `as` キャストが必要になる。`execute: () => result` クロージャに閉じ込めると各行が自己完結し、`as` 完全不要になる。
+
+```ts
+// NG: 行ごとに型が違うため as キャストが必要
+test.each([
+  { factory: (() => ({ answer: 42 })) as () => object, access: (p: never) => (p as { answer: number }).answer, expected: 42 },
+])("$label", ({ factory, access, expected }) => { ... });
+
+// OK: execute クロージャで各行を自己完結させる
+test.each([
+  { label: "returns number", execute: () => lazyProxy(() => ({ answer: 42 })).answer, expected: 42 },
+  { label: "returns string", execute: () => lazyProxy(() => ({ name: "noah" })).name, expected: "noah" },
+])("$label", ({ execute, expected }) => {
+  expect(execute()).toBe(expected);
+});
+```
+
+**判断基準**: `test.each` 行の型を統一するために `as` を使いそうになったら `execute` クロージャ化を試みる。`factory` + `access` の 2 変数パターンは特に `as` が生まれやすい。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
 ---
 
 ## コンパイラの罠

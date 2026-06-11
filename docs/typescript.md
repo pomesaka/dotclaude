@@ -181,15 +181,17 @@ function getProps(type: VariableType) {
     case "time":    return { type: "time" };
     default: {
       // WHY: VariableType に新値を追加したとき、コンパイル時に修正漏れを検知する
-      const _exhaustive: never = type;
+      type satisfies never;
       return { type: "text" };  // 実行時のフォールバック（到達不能のはず）
     }
   }
 }
 ```
 
+**アサーションの形は `x satisfies never;`（変数を作らない）を使う**: `const _exhaustive: never = x` は `noUnusedLocals` 環境で TS6133（declared but never read）になる（`_` プレフィックスの除外は parameter のみで local には効かない）。`satisfies` 式文なら変数を作らないため lint/compiler の未使用検査に引っかからない（TS 5.x で確認・2026-06-11）。
+
 **使い分け**: 戻り値が必要なら上記。`throw new Error(\`Unknown: \${type}\`)` のみでもよいが、型推論で戻り値型が `never` になり呼び出し側の型が壊れることがある。
-<!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+<!-- importance: medium | mentions: 2 | first-seen: 2026-05 -->
 
 ## 「別フィールドの値が条件の optional」は discriminated union に
 

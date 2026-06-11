@@ -65,7 +65,7 @@
       "/Users/pomesaka/github.com/pomesaka/dotclaude"
     ]
   },
-  "model": "claude-fable-5[1m]",
+  "model": "claude-opus-4-8",
   "hooks": {
     "UserPromptSubmit": [
       {
