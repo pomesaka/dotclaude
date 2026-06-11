@@ -291,7 +291,7 @@ const date = new Date(Number(y), Number(m) - 1, Number(d));  // 常にローカ�
   <View onSubmit={(data) => startTransition(() => submitAction(data))} isSubmitting={isPending} />
   ```
   `<form action={formAction}>` で渡す場合は React が transition を張るためこの問題は起きない。構造化データ（File 含む）を渡したい・presigned URL への直接 PUT が要る等で form action にできないケースで踏む。
-  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+  <!-- importance: high | mentions: 2 | first-seen: 2026-06 -->
 - **`() => void` の props に async 関数を渡すと Promise rejection が uncaught になる**: `onLogout?: () => void` のように `void` 型の callback props に `async () => { await signOut(); }` を渡すと、TypeScript は型エラーを出さない（`void` は戻り値を無視する）が Promise の rejection は黙って飲まれる。対処: callback の型を `() => void | Promise<void>` と明示する。**判断基準**: onClick・onSubmit・onXxx 系の props が async な実装を受け取る可能性があれば `() => void | Promise<void>` を標準とする。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 - **Enter で submit する input は `e.nativeEvent.isComposing` をガードする**: `onKeyDown` で `e.key === "Enter"` を submit トリガーにすると、IME（日本語・中国語・韓国語等）の**変換確定 Enter でも発火**してしまう。`e.isComposing` でなく `e.nativeEvent.isComposing` を使うこと（React の合成イベントには `isComposing` が無い）。CJK ユーザー向けプロダクトでは必須。

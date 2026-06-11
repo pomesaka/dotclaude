@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PR Review Monitor</title>
+<link rel="icon" id="favicon">
 <style>
   :root {
     --bg: #101014;
@@ -178,6 +179,49 @@ function card(pr) {
   </div>`;
 }
 
+// タブのインジケーター: タイトル + canvas で描く動的 favicon。
+// PWA インストールなしのタブでは Badging API (setAppBadge) が使えないため、この2つが Chrome での正攻法。
+function setTabIndicator(actionCount, stale) {
+  const base = "PR Review Monitor";
+  document.title = actionCount > 0 ? `🔴(${actionCount}) ${base}` : stale ? `⚠ ${base}` : base;
+
+  // GitHub の status check 風: アイコン全体を1つのステータスシンボルにする（16px のタブで視認しやすい）。
+  // 色は GitHub のパレット: success #2da44e / danger #cf222e / attention #bf8700
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const ctx = c.getContext("2d");
+  ctx.beginPath();
+  ctx.arc(32, 32, 28, 0, Math.PI * 2);
+  ctx.fillStyle = actionCount > 0 ? "#cf222e" : stale ? "#bf8700" : "#2da44e";
+  ctx.fill();
+  if (actionCount > 0) {
+    // 赤丸 + 件数（changes requested 相当）
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 34px -apple-system, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(actionCount > 9 ? "9+" : String(actionCount), 32, 35);
+  } else if (stale) {
+    // 黄丸 + 白ドット（pending 相当）
+    ctx.beginPath();
+    ctx.arc(32, 32, 10, 0, Math.PI * 2);
+    ctx.fillStyle = "#fff";
+    ctx.fill();
+  } else {
+    // 緑丸 + 白チェック（success と同じ）
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 8;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(18, 33);
+    ctx.lineTo(28, 43);
+    ctx.lineTo(46, 23);
+    ctx.stroke();
+  }
+  document.getElementById("favicon").href = c.toDataURL("image/png");
+}
+
 async function load() {
   const errEl = document.getElementById("error");
   try {
@@ -194,8 +238,10 @@ async function load() {
     const updDate = new Date(state.updatedAt);
     const staleMin = Math.round((Date.now() - updDate.getTime()) / 60000);
     upd.textContent = `更新 ${rel(state.updatedAt)}`;
-    upd.classList.toggle("stale", staleMin > 40);
-    if (staleMin > 40) upd.textContent += " ⚠ ループ停止の可能性";
+    const isStale = staleMin > 40;
+    upd.classList.toggle("stale", isStale);
+    if (isStale) upd.textContent += " ⚠ ループ停止の可能性";
+    setTabIndicator((state.prs ?? []).filter(p => p.state === "action_required").length, isStale);
 
     document.getElementById("repos").innerHTML = (config.repos ?? []).map(r =>
       `<a class="repo-chip" href="https://github.com/${esc(r.repo)}/pulls" target="_blank">${esc(r.repo)}${r.reviewerAgent ? ` <span class="agent">· ${esc(r.reviewerAgent)}</span>` : ""}${r.authorFilter ? ` <span class="agent">· by ${esc(r.authorFilter)}</span>` : ""}</a>`

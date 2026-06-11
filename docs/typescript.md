@@ -94,6 +94,27 @@ type SummarizeHistoryItem = {
 item.inputMode === "file" ? item.fileType : undefined
 ```
 
+## discriminated union Result 型に型と同名の companion object でコンストラクタを付ける
+
+TypeScript は type 名前空間と value 名前空間が独立しているため、`type Foo` と `const Foo` は同名で共存できる。これを利用して Result 型に `ok`/`fail` コンストラクタを「型名で呼べる」形で付与するパターン。
+
+```ts
+export type KickResult = { ok: true; jobId: string } | { ok: false; code: string; status: number };
+
+// 同名の const（value 名前空間）にコンストラクタを置く
+const KickResult = {
+  ok: (jobId: string): KickResult => ({ ok: true, jobId }),
+  fail: (code: string, message: string, status: number): KickResult => ({ ok: false, code, message, status }),
+};
+
+// 利用側: ガード節が 1 行に畳まれ本筋のフローが読みやすくなる
+if (!valid) return KickResult.fail("FORBIDDEN", "Access denied", 403);
+return KickResult.ok(jobId);
+```
+
+**適用基準**: ガード節で何度も同じ型のエラーオブジェクトを組み立てる箇所。`{ ok: false, code, message, status }` のリテラルが 5〜6 行 × N 箇所になるなら companion に畳む価値がある。`fail` の実装が全 Result 型で同一なら共通関数（`serviceError` 等）に切り出して再利用する。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
 ## 依存性注入: カリー化ファクトリパターン
 
 クラスは使わずに **`createFoo(deps): Foo`** のカリー化ファクトリで表現する。deps（DB・クライアント・設定）はリクエストをまたいで安定しており、クロージャで束縛することで呼び出し側は `foo.send(input)` だけになる。テストでは spy を注入し、不要な deps は省略できる。
