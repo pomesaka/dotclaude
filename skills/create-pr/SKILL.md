@@ -86,7 +86,7 @@ PR_URL=$(gh pr create --base <base branch> --head <name> --title '適切なタ�
 issue: #<番号>（PR が解決する issue。無ければ「なし（経緯を1行で）」）
 related: #<番号>, #<番号>（参考になる関連 issue / PR。無ければ省略可）
 
-## 背景・動機（WHY）
+## 背景・動機
 なぜこの変更が必要だったか。課題や問題の説明。
 
 ## 概要

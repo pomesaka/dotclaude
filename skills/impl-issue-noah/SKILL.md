@@ -65,13 +65,15 @@ PRのタイトル・本文に `closes #<issue番号>` を含めるよう指示�
 ## Step 5: 受け入れ基準を照合して issue を done にする
 
 1. **受け入れ基準のチェックボックスを1つずつ照合して埋める**: issue ファイルの `## 受け入れ基準` / `## 受け入れ基準（詳細）` の `- [ ]` を、実際に満たしたものだけ `- [x]` にする。満たしていない・部分的にしか検証できていない項目は `- [ ]` のまま残し、検証メモを添える（例: 「ストリーミングは Nova で確認・本番 Claude は外部要因で未検証」）。**「status を done にする」だけで済ませてチェックボックスを放置しない** — 実態と記録が乖離する
-2. issue ファイルの `status` を `done` に更新する。Devlog は Step 6 の `re` が書く。
+2. issue ファイルの `status` を `done` に更新する。
 
-## Step 6: 振り返り（Devlog 込み）
+## Step 6: 最終 update-pr（issue 更新を PR に含める）
 
-`re` スキルを呼び出す（Skill ツール使用）。
+`update-pr` スキルを呼び出す（Skill ツール使用）。
 
-**このプロジェクトでは `re` が Devlog も書く**。`re` 実行時に以下を伝える:
+Step 5 で issue ファイルを更新した後、**必ず `update-pr` を呼んで push する**。`update-pr` 内部の `re` が Devlog も兼ねる。
+
+`re` に以下を伝えること（`update-pr` の引数として渡す）:
 - 対象 issue ファイルのパス（`issues/NNN-*.md`）
 - Devlog の各セクションを会話ヒストリーから埋めること
 
@@ -100,11 +102,14 @@ PRのタイトル・本文に `closes #<issue番号>` を含めるよう指示�
 - **Issue番号なしで起動**: `$ARGUMENTS` が空なら AskUserQuestion でユーザーに確認する
 - **実装サブエージェントがjjを使う**: jjコマンドを使わないよう明示すること（ファイル編集のみ）
 - **create-prの前にreview-team-noahを呼ぶ**: review-team-noahはupdate-prを呼ぶためPRが存在しないと失敗する。Step 3（create-pr）→ Step 4（review-team-noah）の順を守ること
+- **Step 5（issue 更新）の後に必ず update-pr を呼ぶ**: Step 4（review-team-noah）内の update-pr はコードレビューループの変更を push するが、Step 5 で issue ファイルを更新した後の変更は push されていない。Step 6（update-pr）を省くと issue の `status: done` とチェックボックスが PR に反映されないまま残る。今回の事例: issue 088 で Step 5 後に push 漏れがあり、ユーザーが手動で `/update-pr` を呼んで発覚。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 - **lint/typecheckコマンド**: `mise exec -- bun run lint` と `mise exec -- bun run typecheck`。直接 `bun` はPATHに入っていない場合があるため必ず `mise exec --` を前置する
 - **変更フィルタ**: `bun run lint` / `bun run typecheck` はモノレポルートで実行すれば全パッケージをチェックする。変更したパッケージのみ絞る場合は `mise exec -- bun --filter='@noah/xxx' lint` を使う
 - **bun install 未実施・構造変更後の symlink 陳腐化**: 実装前に `bun install` 済みかを確認する。`node_modules` がなければ lint/typecheck が依存解決エラーで全滅する。`ls node_modules 2>/dev/null | head -1` で確認し、空なら `mise exec -- bun install` を先に実行すること。また **ファイルを移動する構造的リファクタ（ディレクトリ rename・namespace 再編等）の後も `bun install` が必要**: workspace symlink が旧パスを指したまま残り LSP が `Cannot find module` を出し続ける。typecheck も symlink 経由で解決するため実行前に `mise exec -- bun install` でリフレッシュする。今回の事例: issue 059 で `packages/ai/src/agent/` → `src/llm/agent/` 移動後に `bun install`（608 packages）が必要だった。**`bun install` 直後に LSP が `Cannot find name 'Proxy'`・`Cannot find module 'bun:test'` 等の stale エラーを出すことがある — これは LSP キャッシュの問題で実エラーではない**。`mise exec -- bun run typecheck` が pass すれば問題なし（LSP の表示を鵜呑みにしない）。今回の事例: issue 082 で `packages/core/src/lazy/` 新設後に LSP stale エラーが出たが typecheck は全パッケージ 0 エラーだった
   今回の事例: issue 088 で新規 workspace に `node_modules` がなく `bun install`（608 packages）が必要。その後も LSP が `Cannot find module '@noah/ai/llm/agent'` を出し続けたが typecheck は全パッケージ pass（LSP キャッシュ問題）。
-  <!-- importance: high | mentions: 5 | first-seen: 2026-05 -->
+  今回の事例: issue 057 で `correction.ts`・`factory.test.ts` 新規ファイル追加後に `Cannot find module '@noah/ai/llm/agent'` が出た。`mise exec -- bun install` で解消（既存ディレクトリへのファイル追加でも symlink が陳腐化する）。
+  <!-- importance: high | mentions: 6 | first-seen: 2026-05 -->
 - **deps 削除は既存コードへの影響を確認**: サブエージェントが「新機能では使っていない」と判断して deps を削除することがある。削除前に `rg 'package-name'` で他ファイルへの import がないかを確認させること。CI でしか気づけず PR を汚す
 - **`.claude/scheduled_tasks.lock` がコミットに混入する**: Claude Code は `.claude/scheduled_tasks.lock` をワークスペース内に生成する。`.gitignore` に追加しないと jj の working copy に入り push されてしまう。対処: プロジェクトの `.gitignore` に `.claude/scheduled_tasks.lock` と `.claude/settings.local.json` を追加する（`.claude/skills/` は意図的に追跡するため `.claude/` ディレクトリごと除外しない）。既に tracking 中なら `jj file untrack .claude/scheduled_tasks.lock` で外す。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
@@ -112,8 +117,8 @@ PRのタイトル・本文に `closes #<issue番号>` を含めるよう指示�
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 - **UI/UX デザイナー subagent レビューは PR 作成前に挟む**: review-team-noah の policy/quality reviewer は「型・規約・a11y 属性の有無」しか見ない。design token 使用 / 主動線の配置 / スクリーンリーダーへの動的フィードバック / 空状態 / キーボードフォーカス可視化 / URL に乗せる値の妥当性などは指摘されない。これらは UI/UX デザイナーロールの subagent（「業界のベストプラクティスと照らし合わせて UI モックをレビュー」）に Agent ツールで明示的に投げる必要がある。タイミングは Step 1（実装）完了直後・Step 3（create-pr）前が良い。PR 作成後に大量の UX 修正が乗ると「v3.1 UX 改善」のような追加コミットが発生し、PR diff が膨らむ。今回の事例: PR #32（v3）作成後にユーザーから UI/UX レビュー指示があり、9 カテゴリの追加修正が同 PR に乗った。
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
-- **機械的 import パス変換の後は `bun run lint` が必須**: import パスを一括置換（例: `@noah/features/jobs` → `@noah/ai/jobs`）すると、新しいパスが旧パスと異なるアルファベット順になり Biome の `organizeImports` ルールが違反を検出する。typecheck は通るが lint が失敗するため CI でしか気づけない。**import パスを複数ファイルで一括変更した後は必ず `mise exec -- bun run lint` を通し、エラーがあれば `--write` で自動修正する**。今回の事例: issue 059 で 7 ファイルが import sort 違反になり `bunx @biomejs/biome@2.4.16 check --write` で修正
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+- **機械的 import パス変換の後は `bun run lint` が必須**: import パスを一括置換（例: `@noah/features/jobs` → `@noah/ai/jobs`）すると、新しいパスが旧パスと異なるアルファベット順になり Biome の `organizeImports` ルールが違反を検出する。typecheck は通るが lint が失敗するため CI でしか気づけない。**import パスを複数ファイルで一括変更した後は必ず `mise exec -- bun run lint` を通し、エラーがあれば `--write` で自動修正する**。今回の事例: issue 059 で 7 ファイルが import sort 違反になり `bunx @biomejs/biome@2.4.16 check --write` で修正。再発例: issue 063 で import 一括張替えに加え、barrel `index.ts` の `export { type ISODateString, ... }` で `organizeImports` が type export を value export の後に並べ替え、JSX 式の行長超過も検出（`check --write` で修正）。**import だけでなく barrel の re-export 編集後も lint 必須**。
+  <!-- importance: medium | mentions: 2 | first-seen: 2026-06 -->
 - **`infra/` 変更時も biome format が CI で走る**: `infra/` の TypeScript は Pulumi スタックだが、ルート `biome.json` の `includes: ["**", ...]` に含まれるため CI の `biome check` でフォーマット検査される。`tsc --noEmit` だけ通しても `lineWidth: 100` 超過行があると CI で fail する。ローカルで `mise exec -- bun run lint` がルート `biome.json` の設定エラー（古い biome 同梱バージョンとの互換問題等）で動かないことがあるので、`infra/` だけ確認するには `mise exec -- bunx @biomejs/biome@<version> check infra/` を使う（バージョンは `biome.json` 1行目の `$schema` URL から取得）。CI と同じバージョンで走るためズレが出ない。今回の事例: PR #45 で `infra/ms-holdings/index.ts` の 100 文字超過行が CI でしか発見できず、format fail で 1 度 push やり直し。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 - **issue の「やること」節は `docs/apps/architecture.md` の既決定事項との整合を実装前に確認する**: issue ファイルの「やること」は architecture.md が更新される前に書かれたり、ドラフト段階のままになっていることがある。実装サブエージェントに渡す前に「やること」のひとつひとつが architecture.md の決定と矛盾しないかを確認すること。矛盾があれば実装前に issue ファイルを修正し、設計節に「撤回・修正の経緯」を記録する。今回の事例: 「やること」に `TENANT_SCHEMA` が env 分解対象として含まれていたが、architecture.md 決定 #1（TENANT_SCHEMA は定数・env 化禁止）と矛盾。plan-issue 段階の AskUserQuestion で検出し修正した。
@@ -122,8 +127,8 @@ PRのタイトル・本文に `closes #<issue番号>` を含めるよう指示�
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 - **AI SDK v6: `convertToModelMessages` が async 関数に変更**: v5 以前は同期関数だったが v6 では `Promise<ModelMessage[]>` を返す。`UIMessage[]` を `ModelMessage[]` に変換する Service 関数や Route Handler は `async` にして `await convertToModelMessages(messages)` とすること。同期で呼ぶと型エラーではなく Promise オブジェクトが渡るため、typecheck 通過後に実行時エラーになる危険がある。
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
-- **`status: done` にする前に受け入れ基準のチェックボックスを埋める**: 実装・検証が済んでいても、issue ファイルの `- [ ]` を `- [x]` に更新する作業を忘れやすい（status だけ done にして次へ進んでしまう）。Step 5 で受け入れ基準を1項目ずつ照合し、満たしたものを `- [x]`、未検証・部分検証は `- [ ]` のまま検証メモを添える。記録（チェック状態）と実態を一致させる。ユーザーに「なぜチェックが付いていないのか」と指摘されてから直すのは手戻り。
-  <!-- importance: medium | mentions: 2 | first-seen: 2026-06 -->
+- **`status: done` にする前に受け入れ基準のチェックボックスを埋める**: 実装・検証が済んでいても、issue ファイルの `- [ ]` を `- [x]` に更新する作業を忘れやすい（status だけ done にして次へ進んでしまう）。Step 5 で受け入れ基準を1項目ずつ照合し、満たしたものを `- [x]`、未検証・部分検証は `- [ ]` のまま検証メモを添える。記録（チェック状態）と実態を一致させる。ユーザーに「なぜチェックが付いていないのか」と指摘されてから直すのは手戻り。**受け入れ基準が「素案（`## 受け入れ基準`）」+「詳細（`## 受け入れ基準（詳細）`）」の2セクションに分かれている場合は両方照合する**: plan-issue-noah は素案を残したまま詳細版を追記するため、詳細版だけ埋めて素案版を `[ ]` のまま放置しやすい。素案項目が設計変更で廃止された場合は単純な `[x]` でなく打ち消し線 + 廃止注記にして「達成」と「要件自体を変えた」を区別する。実例: issue 057 で詳細版は全 `[x]` だったが素案版が全 `[ ]` のまま残り、ユーザーに「チェックついてなくね？」と指摘されて発覚。
+  <!-- importance: medium | mentions: 3 | first-seen: 2026-06 -->
 - **実装サブエージェントへのプロンプトに import 方向ルールを明示する**: サブエージェントは `@noah/ai` の型・関数（`JobRecord` / `JobStatus` / `createMemoryJobStore` 等）を使うとき、`apps/*` から `@noah/ai`（またはその subpath `@noah/ai/stt` 等）を直接 import する違反を繰り返す（CLAUDE.md に規約があっても、ソースパッケージに手が伸びる）。Step 1 のプロンプトに「`@noah/ai` 由来の型・関数を `apps/*` で使うときは必ず `@noah/features` 経由で import する（root barrel が re-export 済み。直接 import は禁止）。Lambda 等の非 React consumer は `@noah/features/jobs` subpath を使い UI 引き込みを避ける。`@noah/ai/<subpath>` の型が必要な場合は `@noah/features/<feature>/<subpath>` に re-export を追加してから使う」を1行入れて予防する。発生例: 009（`schema.ts`）・034（`db/queries/jobs.ts`・`src/jobs/store.ts`）・019/035（`jobs/lambda.ts`・`db/job-store.ts`）・047（`db/commands/transcription.ts` が `@noah/ai/stt` subpath から `TranscriptionSegment` を直接 import）。いずれもレビューや /re で初めて検出された（typecheck は通るため気づけない）。
   <!-- importance: high | mentions: 4 | first-seen: 2026-06 -->
 - **apps から `UIMessage` 等の AI SDK 型が必要な場合は `@noah/features/chat/server` 経由で import する**: `apps/*` は `ai` パッケージを直接依存しない（CLAUDE.md「apps は AI SDK 非依存」方針）。`UIMessage` 等の SDK 型が `apps/*/src/db/queries/` や `commands/` で必要になる場合、`@noah/features/chat/server` が `export type { UIMessage } from "ai"` として re-export しているためそこから import する。直接 `import type { UIMessage } from "ai"` と書いても typecheck で `Cannot find module 'ai'` になる。今回の事例: 038（`db/queries/messages.ts`・`db/commands/messages.ts`）で発生し修正。
@@ -152,3 +157,5 @@ PRのタイトル・本文に `closes #<issue番号>` を含めるよう指示�
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 - **「観測可能な挙動」を記述する doc issue（テストケースカタログ・手順書等）の期待結果は PRD でなく実コードで検証してから確定する**: PRD は理想仕様を書くため実装と乖離する（例: PRD は streaming 生成・実装は mock の一括生成 / バリデーションは presign 400 + kick 413/415 の 2 層 / UI 進捗ステップに DB 内部状態 `queued` は出ない）。PRD だけを入力に書くと初回実走が「カタログの誤り」の検出で埋まる。対処: 実装サブエージェントの初稿に対し coverage（足りないケース）/ validity（期待結果の正しさ）の 2 並列検証サブエージェントを挟み、参照した実装パスをケースに記載させる。また期待結果に「A または B」のような判定不能な記述を残さない — 該当コンポーネントの実装（disabled 条件等）まで読んで一意に確定する。今回の事例: issue 083 で validity 検証が 9 件の実装乖離を検出し、副産物として UI 表示と実制限のドリフト（500 MB 表示 vs 200 MB 実制限）も発見・修正できた。
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+- **`useChat` + `DefaultChatTransport` でカスタムリクエストボディを送る場合は `pendingInputRef` パターンで stale closure を回避する**: `prepareSendMessagesRequest` コールバックは毎レンダリングで再生成される closure のため、コールバック内で React state を直接参照すると送信時の最新値を取得できない（stale closure）。対処: 送信したいデータを `useRef` に退避（`pendingInputRef`）し、`submit()` でまず ref を更新してから `sendMessage({ text: "..." })` プレースホルダーを呼ぶ。`prepareSendMessagesRequest` は ref から値を読むことで常に最新データを参照できる。今回の事例: issue 050 の `useSummarizeStream` で `SummarizeRequestInput` を `pendingInputRef` に退避し、`sendMessage({ text: "summarize" })` プレースホルダーで `useChat` をトリガー。参照実装: `packages/features/src/summarize/hooks/use-summarize-stream.ts`。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->

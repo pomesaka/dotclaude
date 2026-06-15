@@ -142,13 +142,32 @@ function rel(iso) {
   return abs;
 }
 
-function findingsBlock(label, items, dismissed) {
+// 開閉状態の保持: 30秒ごとの再描画で #main を innerHTML 丸ごと作り直すため、<details> の
+// open がデフォルト（閉）に戻ってしまう。openKeys を唯一の真実とし、各 details の toggle で
+// 即 localStorage に保存する（30秒更新でもリロードでも開閉が保たれる・閉じたら閉じたまま）。
+// 初回訪問（localStorage 未設定）時のみ「指摘」をデフォルト展開し、その状態も保存する。以降は
+// firstVisit=false で完全にユーザー操作を尊重する（リロードしても勝手に開かない）。
+const OPEN_STORAGE_KEY = "prReviewMonitor.openDetails";
+function loadOpenKeys() {
+  try {
+    const s = localStorage.getItem(OPEN_STORAGE_KEY);
+    return { keys: new Set(s ? JSON.parse(s) : []), firstVisit: s === null };
+  } catch { return { keys: new Set(), firstVisit: true }; }
+}
+function saveOpenKeys() {
+  try { localStorage.setItem(OPEN_STORAGE_KEY, JSON.stringify([...openKeys])); } catch {}
+}
+let { keys: openKeys, firstVisit } = loadOpenKeys();
+
+function findingsBlock(label, items, dismissed, keyBase) {
   if (!items || items.length === 0) return "";
+  const key = `${keyBase}:${label}`;
+  const isOpen = openKeys.has(key) || (firstVisit && label === "指摘");
   const lis = items.map(f => typeof f === "string"
     ? `<li><span class="f-sum">${esc(f)}</span></li>`
     : `<li><span class="sev sev-${esc(f.severity)}">[${esc(f.severity)}]</span><span><span class="f-file">${esc(f.file)}</span> <span class="f-sum">${esc(f.summary)}</span></span></li>`
   ).join("");
-  return `<details><summary>${esc(label)}（${items.length}件）</summary><ul class="findings ${dismissed ? "dismissed-list" : ""}">${lis}</ul></details>`;
+  return `<details data-key="${esc(key)}"${isOpen ? " open" : ""}><summary>${esc(label)}（${items.length}件）</summary><ul class="findings ${dismissed ? "dismissed-list" : ""}">${lis}</ul></details>`;
 }
 
 function card(pr) {
@@ -173,8 +192,8 @@ function card(pr) {
       ${pr.reviewedSha ? `<span><span class="k">レビュー済み </span><span class="mono">${esc(pr.reviewedSha.slice(0, 7))}</span></span>` : ""}
       ${pr.headSha && pr.reviewedSha && pr.headSha !== pr.reviewedSha ? `<span><span class="k">head </span><span class="mono">${esc(pr.headSha.slice(0, 7))}</span>（未レビュー差分あり）</span>` : ""}
     </div>
-    ${findingsBlock("指摘", pr.findings, false)}
-    ${findingsBlock("スルー判定（再指摘しない）", pr.dismissed, true)}
+    ${findingsBlock("指摘", pr.findings, false, `${pr.repo}#${pr.number}`)}
+    ${findingsBlock("スルー判定（再指摘しない）", pr.dismissed, true, `${pr.repo}#${pr.number}`)}
     ${pr.notes?.length ? `<div class="notes">${pr.notes.map(esc).join(" · ")}</div>` : ""}
   </div>`;
 }
@@ -252,6 +271,21 @@ async function load() {
       const body = prs.length ? prs.map(card).join("") : `<div class="empty">なし</div>`;
       return `<section><h2 class="sec-title ${g.cls}">${esc(g.title)}<span class="count">${prs.length}</span></h2>${body}</section>`;
     }).join("");
+
+    // 再描画で details は作り直されるので、開閉トグルを毎回張り直して即 localStorage に保存する。
+    document.querySelectorAll("#main details").forEach(d => {
+      d.addEventListener("toggle", () => {
+        if (d.open) openKeys.add(d.dataset.key); else openKeys.delete(d.dataset.key);
+        saveOpenKeys();
+      });
+    });
+    // 初回訪問のデフォルト展開（指摘）を openKeys に取り込んで永続化。以降は firstVisit=false で
+    // 純粋にユーザーの開閉を尊重する（リロードで勝手に開かない）。
+    if (firstVisit) {
+      document.querySelectorAll("#main details[open]").forEach(d => openKeys.add(d.dataset.key));
+      firstVisit = false;
+      saveOpenKeys();
+    }
   } catch (e) {
     errEl.style.display = "block";
     errEl.textContent = `読み込みエラー: ${e.message}`;

@@ -1,6 +1,6 @@
 # GitHub Actions パターン集
 
-> **TL;DR**: noah CI/CD の GitHub Actions パターン集。matrix + reusable workflow で multi-client を scalable に管理。`config-map` で CI 実行時の config をインライン渡し。Gotchas: boolean を matrix に入れない・`secrets: inherit` は caller の permissions が適用される・Lambda コンテナは `provenance: false` 必須・shared action を直しても既存 workflow は自動再起動しない。
+> **TL;DR**: noah CI/CD の GitHub Actions パターン集。matrix + reusable workflow で multi-client を scalable に管理。`config-map` で CI 実行時の config をインライン渡し。Gotchas: boolean を matrix に入れない・`secrets: inherit` は caller の permissions が適用される・Lambda コンテナは `provenance: false` 必須・shared action を直しても既存 workflow は自動再起動しない・CI が `GITHUB_TOKEN` で push した git イベント（tag/コミット）は下流 workflow を起動しない（連結は 1 workflow 統合 or PAT）。
 
 ## matrix strategy × reusable workflow（scalable multi-client 構成）
 
@@ -61,3 +61,5 @@ jobs:
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 - **共有 action / reusable workflow を直しても、それを使う workflow を自動起動しない**: `app-deploy-*.yml` の paths が `apps/<app>/**` のとき、`.github/actions/**` や reusable workflow を編集しても push トリガーにマッチせず再ビルドされない。さらに失敗 run の「Re-run jobs」は**同じ commit SHA**でやり直すため古い action のまま。action 修正を反映するには新 SHA で `workflow_dispatch`（または対象 paths に触る commit）で起動し直す
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+- **`GITHUB_TOKEN` で push した git イベント（tag push・ファイルコミット）は別の workflow を起動しない**: GitHub の再帰実行防止仕様で、デフォルト `GITHUB_TOKEN`（`actions/checkout` のデフォルト credential）が作った push/tag イベントは新しい workflow run を生まない（`workflow_dispatch`/`repository_dispatch` のみ例外）。よって「CI が tag を push → 別 workflow が tag トリガーで起動」「CI がファイルをコミット → paths トリガーで別 workflow 起動」のように **複数 workflow を CI 生成の git イベントで連結する設計はチェーンが切れる**（人間が手で push したときだけ繋がる半自動状態になり、気づきにくい）。検出: `auto-tag` のような「CI が git push する」step を見たら、その push に依存する下流 workflow があるか確認する。対処は 2 択 ——(1) **連結したい一連を 1 workflow 内の直列ジョブに統合**する（cross-workflow トリガー非依存・PAT 不要。推奨）/ (2) **PAT・GitHub App トークンで push**して下流を起動させる（長期 contents:write トークンの発行・ローテーション・漏洩管理コストを負う）。なお下流を起動「させたくない」自動コミット（GitOps の値コミット等）ではこの仕様が逆に好都合で、`GITHUB_TOKEN` push + `[skip ci]` で二重起動を防げる。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->

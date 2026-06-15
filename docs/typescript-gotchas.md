@@ -128,6 +128,39 @@ test.each([
 **判断基準**: `test.each` 行の型を統一するために `as` を使いそうになったら `execute` クロージャ化を試みる。`factory` + `access` の 2 変数パターンは特に `as` が生まれやすい。
 <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 
+### AI SDK `TextStreamPart` のフィールド名は `as` キャストで誤魔化せない — 実機で確認する
+
+AI SDK v6 の `TextStreamPart<TOOLS>` discriminated union は型定義がバージョンによって変わりやすい。`as TextStreamPart<ToolSet>` で誤魔化すとテストが型的に通っても実際の `applyPart` 等に渡すと wrong field で無音スキップされる（`part.text` を読む実装に `{ textDelta: "hello" }` を渡してもイベントが生成されない）。
+
+**ai v6.0.x 実機確認済みのフィールド名** (`node_modules/ai/dist/index.d.ts` 参照):
+
+```typescript
+// text-delta: text フィールド（NOT textDelta / NOT delta）, id が必須
+{ type: "text-delta", id: "test-id", text: "hello" }
+
+// tool-result: DynamicToolResult は output + input + dynamic: true（NOT result）
+{ type: "tool-result", toolCallId: "tc-1", toolName: "foo", input: {}, output: someValue, dynamic: true }
+
+// error: error フィールド（unknown 型）
+{ type: "error", error: new Error("failed") }
+```
+
+テストヘルパーでは `as` キャストを使わず正確な型で構築する:
+```typescript
+// NG: as キャストで誤魔化す → 実際の実装でフィールドが読めず無音スキップ
+function makeTextPart(text: string): TextStreamPart<ToolSet> {
+  return { type: "text-delta", textDelta: text } as TextStreamPart<ToolSet>;
+}
+
+// OK: 実際のフィールド名で構築（typecheck がフィールド名の誤りを検出する）
+function makeTextPart(text: string): TextStreamPart<ToolSet> {
+  return { type: "text-delta", id: "test-id", text };
+}
+```
+
+バージョンアップ後はまず `node_modules/ai/dist/index.d.ts` の該当 union 定義を確認してから WHY コメントを書く（未確認の field 名断定は将来の罠になる）。
+<!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+
 ---
 
 ## コンパイラの罠
@@ -353,6 +386,43 @@ createPost({ ...loc }); // またはスプレッドで直接渡せる
   **判断基準**: テストが `ANALYZER.xxx()` という形で analyzer のプロパティにアクセスしていたら要注意。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
 
+### optional 値の assertion は `if (x !== undefined)` でなく throw-guard で囲む（無音 pass を防ぐ）
+
+`expect` を `if (optionalValue !== undefined) { ... }` で囲むと、値が `undefined` のとき**ブロックごとスキップされてテストが無音で pass する** — 「検証したつもりで何も検証していない」false positive になる。`?.` でチェーンした値を直接 `expect` に渡すパターン（`expect(calls[0]?.opts?.expiresAt).toBeDefined()` の後で `calls[0]?.opts?.expiresAt.getTime()` を読む等）も同じ穴で、存在を assertion した「つもり」のまま optional chain が `undefined` を返し続ける。
+
+**対処**: 値を取り出して **throw-guard で「無ければ即失敗」にしてから** assertion を書く。throw 以降は型も narrowing され `?.` が不要になる。
+
+```typescript
+// ❌ x が undefined だとブロックごと skip され無音 pass
+const expiresAt = calls[0]?.opts?.expiresAt;
+if (expiresAt !== undefined) {
+  expect(expiresAt.getTime()).toBeGreaterThan(now);
+}
+
+// ✅ 無ければ即 throw → 以降 expiresAt は非 undefined に narrowing 済み
+const call = calls[0];
+if (!call) throw new Error("start が呼ばれているはず");
+const expiresAt = call.opts?.expiresAt;
+if (!expiresAt) throw new Error("expiresAt が設定されているはず");
+expect(expiresAt.getTime()).toBeGreaterThan(now);
+```
+
+**判断基準**: テスト内で `if (<optional> !== undefined)` や `?.` 経由の値を `expect` に渡していたら、その assertion は「値が無いとき何も検証しない」可能性がある。条件分岐が「ケースによって assertion 有無が変わる」正当な理由でない限り throw-guard に置き換える。
+<!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+
+### `spyOn(globalThis, ...)` はグローバルを書き換える — `afterEach` で必ず `mockRestore()` する
+
+`spyOn(globalThis, "fetch")`（や `Date`・`console` 等）はグローバルオブジェクトのメソッドを差し替えるため、restore しないと**同じファイルの後続テストへ mock が漏れる**。`fetch` を使わないつもりのテストがリークした mock を踏み、無関係な失敗・偽の成功を生む。`spyOn` を module スコープの `let spy` に退避し、`afterEach` で `spy?.mockRestore()` する。
+
+```typescript
+let fetchSpy: { mockRestore: () => void } | undefined;
+function mockFetch() { fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(...); }
+afterEach(() => { fetchSpy?.mockRestore(); fetchSpy = undefined; });
+```
+
+**判断基準**: `spyOn(globalThis, ...)` / `spyOn(global, ...)` を書いたら、同ファイルに `afterEach` restore があるか必ず確認する。ローカルオブジェクトの `spyOn` はテスト終了で GC されるが、グローバルは残る。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
 ### JSDoc の連続する `/** */` ブロックは最後のものだけが TSDoc として機能する
 
 関数の直前に `/** 説明 */` と `/** NOTE: ... */` を連続して置くと、最初のブロックが TSDoc から外れて孤立する。NOTE は `//` コメントにするか、1つの `/** */` ブロックに統合する。
@@ -520,6 +590,18 @@ for (const match of text.matchAll(pattern)) {
   }
 }
 ```
+
+- **`bun:test` の `mock.module` でモック引数を取得するとき、モック関数の引数型を具体化して `as` キャストを回避する**: `mock.module("./dep", () => ({ fn: (config: unknown) => ... }))` と引数型を `unknown` にすると、呼び出し引数を後で使う際に `config as { key: string }` が必要になる（`as` キャスト禁止環境では違反）。代わりに「引数として期待する形」を `MockConfig` 型で定義し、`mock.module` のファクトリ関数と受け取る変数セルの両方にその型を付ける。
+  ```typescript
+  type MockConfig = { messages: Array<{ role: string; content: string }>; model: unknown };
+  let capturedArgs: MockConfig | null = null;
+  mock.module("./dep", () => ({
+    fn: (config: MockConfig) => { capturedArgs = config; return result; },
+  }));
+  // 使う側: capturedArgs.messages — as キャスト不要
+  ```
+  注意: `import type { SomeType } from "./dep"` でモジュールが差し替えられていてもランタイム import は発生しないため `MockConfig` の定義ソースとして使える。`as const` テーブルでも型引数を揃えておくと `extend`・`spread` 時に明示キャスト不要になる。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 
 - **`get` トラップだけの Proxy ラッパーは consumer の `"x" in obj` チェックを破る**: 遅延初期化 Proxy（`new Proxy({} as T, { get: ... })`）は、`has` トラップ未実装だと `in` 演算子が target（空オブジェクト）を見て常に false を返す。ライブラリは duck-typing 分岐に `in` を使うことがあり（例: better-auth `toNextJsHandler` の `"handler" in auth ? auth.handler(req) : auth(req)`）、false 側に倒れて「auth is not a function」のような不可解な実行時エラーになる。typecheck は通る（型上は T のまま）ため静的に検出できない。対処: 遅延 Proxy を書くときは `get` に加えて `has: (_t, p) => p in resolve()`（必要なら `ownKeys`/`getOwnPropertyDescriptor` も）を実装し、トラップを resolve 済み実体に委譲する。判断基準: 「この Proxy をライブラリ関数に渡すか？」→ YES なら get 以外のトラップも必須と考える。
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->

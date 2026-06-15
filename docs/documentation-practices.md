@@ -30,9 +30,10 @@
 DDD (Domain-Driven Design) の基本プラクティス。コードと会話で使う言葉を統一し、認識のずれを防ぐ。
 
 **ルール**:
+- **読み手は非エンジニア（顧客・ドメインエキスパート）を含む。載せるのは業務概念だけ**（エンティティ・値オブジェクト・利用者が知覚する状態）。実装 plumbing（`*Store`/`*Client`/`*Agent`系/`*Input`/`*Config`/hooks/View/Server Action/CQRS 関数/ガード/定数/lifecycle 基盤/インフラ型）は載せない — 用語集を domain 層の型カタログにしない
 - 型名・変数名・コメントはすべて用語集の言葉で書く
 - 用語の意味が変わったら、コードとドキュメントを同時に更新する
-- 「この言葉はコードのどこに対応するか」を明記する
+- 「この業務概念はコードのどこに対応するか」を所在ポインタとして明記する
 
 **参考**: Eric Evans "Domain-Driven Design" Chapter 2 "Communication and the Use of Language"
 

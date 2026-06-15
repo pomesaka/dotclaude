@@ -115,6 +115,24 @@ A が B の型を必要とするが直接 import すると循環する、とい�
 
 ## コードスメル
 
+### データクライアントが URL 文字列を返すのは「IO が呼び出し側に漏れているシグナル」
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+クライアントが `stateUrl(id)` / `streamUrl(id)` のような URL 文字列を公開 IF に出す設計は、**IO（fetch / EventSource）とスキーマを呼び出し側に委ねている**ことになる。症状: スキーマが client と consumer の両方に重複定義される（envelope / step / source 等）。
+
+正しい境界: クライアントは API の **wire 契約全体**（URL・スキーマ・fetch・EventSource・パース）を所有し、呼び出し側には**型付きドメイン値**だけを渡す。
+- 読み取り → `getState(id): Promise<Job | null>`（失敗時は throw せず null — streaming hook が初期 snapshot として安全に扱える）
+- 購読 → `streamEvents(id, signal): AsyncIterable<Event>`（raw EventSource は client 内に閉じ、呼び出し側は `for await` で型付きイベントを受け取る）
+
+**設計の非対称（意図的）**: `getState` は失敗時 null、操作系（`kick` 等）は throw — 呼び出し元の用途（streaming 初期 snapshot vs 操作の起動）で契約を分ける。統一性のために合わせない。
+
+**購読は callback（`onEvent`/`onError` + unsubscribe）より `AsyncIterable` を優先する（React consumer があるとき）**
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+消費側が1つで、それが React hook のとき、購読を callback で返すと消費側に2つの臭いが出る: ① `stop()`/unsubscribe を done/failed/error/unmount の複数箇所から呼ぶ、② `setState` updater の中で副作用（再 fetch・stop）を起こす。これを `streamEvents(id, signal): AsyncIterable` にすると hook が `await getState()` → `for await streamEvents()` の**逐次1関数**になり、停止は「ループを return / signal.abort()」に集約、fold は local accumulator で書けて updater 副作用が消える。「snapshot 取得 → tail 購読」の順序崩れバグも構造的に解消する。
+
+トレードオフ: client 側は push（EventSource）→ pull（`for await`）の queue 橋渡し（到着を queue に積み、消費側 await 中だけ notify で起こす）が要る。これは client が一度書けば済む複雑さで、唯一の consumer を単純化する対価として妥当。**close の権威は generator の `finally` に一本化**（return / throw / abort のどの経路でも EventSource を close）。callback 版の「hook が close を所有」より stop 経路が1箇所に閉じる。
+
+判断基準: consumer が複数 or 非 React（callback で素直に書ける）なら callback でよい。**React の effect で購読を畳み込むなら `AsyncIterable` 一択**。逆に push→pull 橋渡しを避けたいなら、EventSource をやめて `fetch` + `ReadableStream`（ネイティブに async-iterable）にする手もあるが、SSE フレームの手パース + 再接続喪失と引き換え。
+
 ### Feature Envy（特性の横取り）
 自モジュールより他モジュールのデータを多用する関数。そのコードは本来あるべき場所に移動すべき。
 

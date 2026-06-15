@@ -132,6 +132,18 @@ npx difit comment get --port <difitPort> --format json
 
 **selection 注意**: コメントは diff selection（base/target リビジョン）でキー分けされる（`server.js:143-154`）。`--pr` の単一 diff モードなら `comment get`（クエリ無し）がデフォルト selection を共有して正しく取れるが、UI 上で比較対象を切り替える使い方をすると別 session になり得る。
 
+### スレッド返信（ユーザーの質問には difit で答える）
+
+pull でユーザーの返信（質問・反論・議論提起）を検知したら、**原則 difit スレッドに返信する形で答える**（2026-06-17 ユーザー合意。セッションのみの回答だと文脈が code から離れるため）。手順:
+
+1. **直前に再 pull** して最新の `{version, threads}` を取得する（POST は全 threads 置換なので clobber 回避に必須）
+2. 既存の threads・messages を**そのまま保持**したまま、対象スレッドの `messages[]` に自分の返信を1件追記する
+3. 返信 body は `↩︎ 回答:` 等で自分の発言と明示する。`author` は**付けない**（注入 finding と同じ無 author 形式が確実に通る。未知の author 値で弾かれるのを避ける）
+4. 日本語・ネスト JSON はインライン `-d` だと壊れやすいので、**一旦ファイルに書いて** `curl -s -X POST http://127.0.0.1:<difitPort>/api/comments -H 'Content-Type: application/json' --data-binary @<file>` で送る。temp ファイルは**配信ディレクトリ外**（`~/.claude/tmp/` 直下。`~/.claude/tmp/pr-review/` は dashboard が http で配信するため避ける）に置き、送信後に削除する
+5. POST 成功で version が +1 されるので、state の `difitVersion` を**返ってきた新しい値に更新**する（自分の書き込みを次イテレーションで delta として誤検知しないため）
+
+質問が大きく重いときはセッションにも要約を出してよいが、既定は difit スレッド返信。
+
 ## state.json スキーマ
 
 ```json

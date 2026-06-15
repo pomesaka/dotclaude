@@ -132,6 +132,24 @@ jj file untrack <path>
 
 で追跡から外す。`jj status` で消えたことを確認してから push すること。
 
+**`jj file untrack` は "ignored files" のみ対象 — `.gitignore` 追記を先に行う**: `jj file untrack` を実行すると `error: ... is not ignored` が出て失敗する。手順は ① `.gitignore` にパターンを追加 → ② `jj file untrack` の順でないと動かない。`.DS_Store` 等を後から除外したいときも同様。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
+## `jj new <branch>` でクリーンブランチを作る際にディスクファイルが branch 状態に戻る
+
+`jj new main` を実行するとディスク上のファイルは main の状態に戻る（作業コピーが main の子になるため）。既存ブランチから**特定ファイルだけを取り出したいとき**は以下のパターンを使う:
+
+```bash
+# 1. クリーンなベースを作る（ファイルは main 状態に戻る）
+jj new main
+
+# 2. 取り出したいファイルだけを旧ブランチから復元する
+jj restore --from <旧ブランチの revision> -- <file1> <file2> ...
+```
+
+`jj restore --from` はパス指定で特定ファイルだけを別 revision の内容に更新する。`jj new main` でリセットしてから必要ファイルだけ restore する組み合わせで、ブランチに混在した複数 issue の変更を分離できる。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
 ## rebase conflict の両側が同一内容に収束している場合
 
 `jj resolve --list` が "2-sided conflict including 1 deletion" を示しても、main 側とブランチ側の最終内容が**同一**に収束していることがある（例: 両者が独立して同じリファクタリングを行った場合）。マニュアルマージに入る前に差分確認を先に行うと無駄な作業を省ける。

@@ -85,3 +85,5 @@ jj diffu -r '@' | mise exec -- portless <name> --app-port <P> npx difit - --clea
   <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
 - **「ゼロベースで設計しなおしたら？」という問いが段階的改善では見えない設計歪みを露出する**: 段階的リファクタ（型追加・名前変更・wrapper 化）ではアーキテクチャの歪みが隠れやすい。difit で「インターフェース多すぎ・ゼロベースで」というユーザーコメントが来たとき、それは「整理」ではなく「型の存在自体を問い直す」シグナル。対処: 既存の型やパターンをいったん忘れて「この層の責務は何か？それを最も単純に表現すると？」から考え直す。既存実装の影響で複雑化した wrapper・factory・中間型は大抵この問いで消える。
   <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
+- **`npx difit` が `npm error Override without name: <key>` で落ちたら `bunx difit` に切り替える**: `npx` は CWD の `package.json` の `overrides` を読んで検証する。bun 系プロジェクトは overrides に説明用コメントキー（例: `"_comment_kysely": "..."`）を入れることがあり、bun はこれを許容するが npm は「名前のない override」として弾く（`npm error Override without name: _comment_kysely`）。これは**ポート衝突ではない** — portless のログで `Using port <P>` が出ていてもこのエラーで `npx` の段階で死ぬので、起動失敗時は最終行のエラーを確認すること。対処: 起動コマンドの `npx difit` を `bunx difit` に置き換える（bun は overrides コメントキーを許容し、stdin パイプ・`--port`/`--host`/`--no-open` もそのまま通る・2026-06 noah で確認）。bun 非採用リポジトリでは `npx` のままでよい。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->

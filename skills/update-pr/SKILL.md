@@ -49,6 +49,8 @@ jj log -r '<bookmark名>@origin..@'
 `re` スキルを呼び出す（Skill ツール使用）。
 push 前に呼ぶことで、まだ記憶が新鮮な状態で学びを記録できる。
 
+**PR が issue に紐づくなら、`re`（docs への記録）とは別に issue ファイルの `## Devlog` も更新する。** `re` は docs/CLAUDE.md にしか書かないため、これを省くと「PR を `/update-pr` でフォローアップするたびに issue の Devlog が置き去り」になる（フルの impl-issue-noah 経由でしか Devlog が書かれない）。今回のフォローアップで変わった点を `### 実装内容` / `### 設計判断`（**計画＝設計節からの逸脱を含む**）/ `### レビューで指摘・修正した点` / `### 困ったこと・ハマったこと` に追記する。`## Devlog` が無ければ新設する。
+
 ### 5. 動作検証
 
 PR更新前に変更の正しさを確認する。検証コマンドはプロジェクトの `CLAUDE.md` や `package.json` を参照して判断する。
@@ -88,7 +90,7 @@ PR_URL=$(gh pr edit <PR番号> --title '更新後のタイトル' --body "$(cat 
 issue: #<番号>（PR が解決する issue。無ければ「なし（経緯を1行で）」）
 related: #<番号>, #<番号>（参考になる関連 issue / PR。無ければ省略可）
 
-## 背景・動機（WHY）
+## 背景・動機
 なぜこの変更が必要だったか。課題や問題の説明。
 
 ## 概要
@@ -130,3 +132,5 @@ echo "$PR_URL"
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 - **実機検証のエビデンス（スクショ・録画・実行ログ）が手元にあれば PR に含める**: /verify 等で動作検証した結果のスクリーンショットが /tmp 等に残っている場合、`upload-screenshots` スキル（ドラフトリリースのアセット方式）でアップロードし、PR ボディの「動作検証」セクションに `![説明](URL)` で埋め込む。画像の下に「何を確認した画像か」の注記（観測ポイント）を添える。レビュアーが手元で再現しなくても検証結果を確認できる状態にするのが目的。テキストの検証結果（レスポンスボディ・カウント等）も同セクションに書く。
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+- **jj は push 後に作った無関係な編集を bookmark コミットへ無音で amend する — push 前に `jj diff --from <bookmark>@origin --to @` で差分を必ず確認する**: jj では `@`（作業コピー）が bookmark コミットと同一 change のことが多く、PR を push した後に作ったファイル（フォローアップ issue・調査メモ・別 concern の doc 編集など）が**同じコミットに吸い込まれる**。`jj st` は「変更あり」としか見えず、それが feature PR のコミットに入っていることに気づきにくい。次に push すると feature PR に無関係なファイルが混ざる（または content 同一でも timestamp だけ変わって CI が無駄に再走する）。対処: push 前に `jj diff --from <bookmark>@origin --to @ --stat` で「push される中身」を直接見る。PR に属さないファイルがあれば `jj new`（空の子コミットを作る → bookmark は親に残る）→ `jj squash --from @- --into @ <該当パス>`（無関係ファイルを子へ落とす）で分離し、`jj diff --from <bookmark>@origin --to <bookmark>` が空であることを確認してから扱う。content 同一（timestamp だけ差分）なら push 自体を省く判断もする。実例: PR #124 で、push 後に起票したフォローアップ issue 5 件＋CLAUDE.md 編集がモック PR のコミットに amend されており、上記手順で子コミットへ分離した。再発: PR #120（issue 052）で、push 後に作ったフォローアップ issue 107/108 が研究配線コミットに amend されていたのを `--stat` で検出。子コミットへ分離した結果 PR コミットが origin と byte 一致したため、その時点では push 不要と判断（後で `re` の conventions.md 更新を PR コミットに squash した分だけ push した）。
+  <!-- importance: high | mentions: 2 | first-seen: 2026-06 -->

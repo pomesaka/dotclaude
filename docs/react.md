@@ -65,6 +65,24 @@ TypeScript の観点に加え、以下の観点でレビューする。
   ```
   判断基準: "子コンポーネントが `useState(props.xxx ?? default)` の形で props を初期値に使っているか？" → 使っているなら hasMounted パターンが必要。
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+- **async fetch → EventSource の2ステップは単一 `useEffect` に統合する**: fetch が resolve した後に別の effect が再実行されることはない（deps が変化しない限り）。fetch と EventSource を別 effect に分けると、fetch が完了しても EventSource effect が起動せず永遠に EventSource が開かない。正しい設計: 単一 effect 内で `const run = async () => { const data = await fetch(...); if (data.status === "done") return; es = new EventSource(...); }` として sequential に記述し、cleanup で `cancelled = true; es?.close()` を返す。
+  ```ts
+  useEffect(() => {
+    let cancelled = false;
+    let es: EventSource | null = null;
+    const run = async () => {
+      const snapshot = await fetchState(stateUrl);
+      if (cancelled) return;
+      setJob(snapshot);
+      if (!snapshot || snapshot.status === "done" || snapshot.status === "failed") return;
+      es = new EventSource(streamUrl);
+      es.onmessage = (e) => { /* fold events */ };
+    };
+    void run();
+    return () => { cancelled = true; es?.close(); };
+  }, [stateUrl, streamUrl]);
+  ```
+  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 
 ## 禁止パターン
 

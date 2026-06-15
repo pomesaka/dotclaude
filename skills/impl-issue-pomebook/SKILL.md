@@ -104,7 +104,7 @@ Edit ツールで frontmatter の `status: open` → `status: done` に変更す
 対象:
 - レビューで複数回指摘されたこと → プロジェクト or グローバルの CLAUDE.md へ
 - アーキテクチャ上の発見（依存ルール、責務の境界） → `docs/architecture.md` や各 CLAUDE.md へ
-- ドメイン用語の新たな定義 → `docs/00-glossary.md` へ
+- 新たな**業務概念（ドメイン語）**の定義 → `docs/00-glossary.md` へ（plumbing 型は載せない）
 - 技術選定の判断 → `docs/adr/` へ（ADR が既になければ）
 
 ルールが抽出できた場合は該当ファイルを Edit ツールで更新する。
