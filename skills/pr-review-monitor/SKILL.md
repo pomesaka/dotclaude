@@ -72,6 +72,7 @@ mise exec -- portless pr-review sh -c 'python3 -m http.server "$PORT" --bind 127
    ```
    `authorFilter` があれば作者で絞る。レビュー対象は2系統 — **(a) formal review request**（reviewRequests に `config.reviewer` が含まれる）と **(b) コメント起因の依頼**（reviewRequests に無くても作者がコメントで依頼している。step 2 で判定）。**`gh search` は検索インデックス遅延で取りこぼすため使わない。**
 2. **差分判定**:
+   - **マージ/クローズ検出（最優先・difit pull より先に）**: state.json にあるのに今回の open PR ポーリング結果に居ない PR は close/merge された可能性が高い。`gh pr view <番号> --repo <repo> --json state` で確認し、`MERGED`/`CLOSED` ならクリーンアップ（常駐 difit を TaskStop + jj workspace forget + rm -rf + state.json から除去）。**WHY: マージ済み PR の `--keep-alive` difit は `--pr` モードで GitHub から取り続けて生存するため、difit pull だけ見るとマージを取りこぼす**（2026-06-15 #2543 で実際に発生: open リストから消えていたのに difit pull が生データを返し見逃した）。ポーリング結果と state.json の PR 集合を必ず突き合わせる
    - **difit からユーザーフィードバックを取り込む（pull）**: `difitAlive: true` の PR は判定の前に difit から現在のコメントを pull し、`dismissed`／`action_required` を更新する（詳細は「difit 運用ルール（pull モデル）」）。ユーザーが返信で質問・議論をしていれば action_required、すべて対応指示なら再レビュー候補にする
    - **初回レビュー（formal request + コメント起因）**: まだ現 head をレビューしていない（`reviewedSha != headSha`）PR を、次のいずれかのシグナルで対象にする:
      - **formal request**: reviewRequests に reviewer が含まれる

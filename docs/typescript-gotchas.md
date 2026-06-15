@@ -478,6 +478,29 @@ const placeholderPattern = () => /\{\{([^}]+)\}\}/g;
 
 `replace()` は `lastIndex` をリセットするので定数でも問題ないが、`exec()` / `matchAll()` を使う場合は必ずファクトリ関数にする。
 
+### Biome `noAssignInExpressions` — `while ((match = re.exec(str)))` は書けない
+
+Biome の `noAssignInExpressions` ルールが `while ((match = regex.exec(text)) !== null)` を拒否する。
+
+```ts
+// NG: Biome lint error
+let match: RegExpExecArray | null;
+while ((match = pattern.exec(text)) !== null) {
+  foundLabels.add(match[1]);
+}
+
+// OK: matchAll + for-of
+for (const match of text.matchAll(pattern)) {
+  const label = match[1];
+  if (label !== undefined) {
+    foundLabels.add(label);
+  }
+}
+```
+
+`match[1]` は `string | undefined` に型推論される（正規表現が全体マッチしている限り実行時は常に `string` だが TypeScript はそこまで推論しない）。非 null アサーション（`match[1]!`）は `as` キャストと同様に禁止された場合は `if (label !== undefined)` ガードで代替する。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
 ### `AbortError` 判定は `signal.aborted` で
 
 `catch` ブロックで `err.name === "AbortError"` を使うと、同名の独自 Error クラスによる false positive が起きる。`AbortController` の signal が手元にある場合は `controller.signal.aborted` を参照する方が確実。
