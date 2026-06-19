@@ -605,3 +605,17 @@ for (const match of text.matchAll(pattern)) {
 
 - **`get` トラップだけの Proxy ラッパーは consumer の `"x" in obj` チェックを破る**: 遅延初期化 Proxy（`new Proxy({} as T, { get: ... })`）は、`has` トラップ未実装だと `in` 演算子が target（空オブジェクト）を見て常に false を返す。ライブラリは duck-typing 分岐に `in` を使うことがあり（例: better-auth `toNextJsHandler` の `"handler" in auth ? auth.handler(req) : auth(req)`）、false 側に倒れて「auth is not a function」のような不可解な実行時エラーになる。typecheck は通る（型上は T のまま）ため静的に検出できない。対処: 遅延 Proxy を書くときは `get` に加えて `has: (_t, p) => p in resolve()`（必要なら `ownKeys`/`getOwnPropertyDescriptor` も）を実装し、トラップを resolve 済み実体に委譲する。判断基準: 「この Proxy をライブラリ関数に渡すか？」→ YES なら get 以外のトラップも必須と考える。
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+
+- **`switch` の `default` ブロックに `value satisfies never;` を書いて exhaustive check を強制する**: `$type<"a" | "b">()` で narrowed な値を switch するとき、`default` は型上到達不能。`value satisfies never;` を先頭行に置くと TypeScript がコンパイル時にそれを検証し、union に新しい variant が追加された場合に「型が `never` に代入できない」エラーで検出できる。その後の `console.warn` + フォールバック return はランタイム防衛（DB に予期外の値が混入したとき）:
+  ```typescript
+  default: {
+    row.inputMode satisfies never;   // compile-time exhaustive check
+    console.warn(`unknown inputMode "${row.inputMode}", falling back`);
+    return { ...base, inputMode: "text", inputText: "" };
+  }
+  ```
+  WHY NOT `throw new Error(...)` のみ: DB から来る値は実際に unexpected なものが混入し得る。throw はサービス全体が crash するため console.warn + フォールバックで継続を選ぶのが domain store の慣例。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
+- **`?.` は already `undefined` を返す — `?. ?? undefined` は冗長**: `input.file?.name` はチェーンが短絡したとき `undefined` を返す。`input.file?.name ?? undefined` は「undefined を undefined で置き換える」だけで意味がない。detect: `rg '\?\.\w.*\?\? undefined'`。
+  <!-- importance: low | mentions: 1 | first-seen: 2026-06 -->

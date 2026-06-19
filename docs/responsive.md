@@ -127,6 +127,20 @@ max-w-lg   ← グリッド不要
 | `w-60` のサイドバーが常時表示 | `hidden lg:block` でラップ |
 | テーブルに `overflow-x-auto` なし | `<div className="overflow-x-auto">` でラップ |
 | `flex` + 固定幅の組み合わせ | `flex-1 min-w-0` で overflow を防ぐ |
+| app-shell 用の `h-full overflow-hidden` 固定高 clamp を全幅に適用 | `lg:h-full lg:overflow-hidden` で gate（下記） |
+
+### app-shell の固定高 clamp は `lg:` で gate する（モバイル白画面の典型原因）
+
+「ヘッダー固定・内部パネルだけスクロール」の app-shell レイアウトでは、ラッパーに `h-full overflow-hidden`（+ 子に `lg:h-screen`）を付けて高さを 1 画面に固定する。**この clamp を breakpoint で gate しないと、モバイルの自然縦積みコンテンツが 1 画面分で clip され、下がスクロール不能の白画面になる**（コンテンツが「途切れる」）。Mobile-first 原則の典型違反: clamp は大画面の上書きなので `lg:h-full lg:overflow-hidden` と書く。モバイルは clamp なしで `<main overflow-y-auto>`（or ページ）が自然スクロールする。
+
+```tsx
+// 誤: 全幅で高さ固定 → モバイルでコンテンツが 1 画面に clip され下が白画面
+<div className="min-h-0 h-full overflow-hidden">{children}</div>
+// 正: clamp は lg(app-shell) のみ。モバイルは自然フロー
+<div className="min-h-0 lg:h-full lg:overflow-hidden">{children}</div>
+```
+
+**このバグの検証は「実際にスクロールする要素」基準で測る**。app-shell は `window`/`documentElement` でなく内部の `<main overflow-y-auto>` がスクロールするため、`window.scrollY` / `documentElement.scrollHeight` 基準の計測は実態と乖離して**誤った PASS を出す**（実際にハマった）。コンテンツが途切れる/白画面のバグは、コンテンツ要素から**祖先チェーンを辿り**各 ancestor の `height` / `overflowY` / `scrollHeight` / `clientHeight` を出力する。`scrollHeight == clientHeight`（スクロール不能）なのに子が overflow している ancestor が clamp 位置。修正後は「実スクロールコンテナの `scrollHeight > clientHeight`」「最下部へスクロール後に末尾要素が viewport 内」を確認する。
 
 ---
 

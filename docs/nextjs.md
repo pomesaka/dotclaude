@@ -225,6 +225,9 @@ export function SomeClientWrapper({ data }) {
 - **検証付き env をモジュールのトップレベルで `parse` すると `next build` がビルド時にランタイム env を要求して落ちる**: `export const env = schema.parse(process.env)` のようにトップレベルで検証する設計は、`next build` の 2 つのフェーズでランタイム env（本番は ECS/コンテナが起動時に注入し、ビルド時には存在しない）を要求して `ZodError` でクラッシュする。(1) **"Collecting page data"**: route モジュールを import して static/dynamic 判定するため、import チェーン上のトップレベル副作用（env parse・DB クライアント生成・auth 初期化）が全て走る。(2) **静的プリレンダー（export）**: 認証付きページを build 時に render しようとし、render 中の `auth`/`db`（→env）参照で落ちる。NG: `export const env = schema.parse(process.env)` / `export const db = drizzle(postgres({host: env.DB_HOST}))`（トップレベル即生成）。OK: env/db/auth シングルトンを**初回プロパティアクセスまで初期化を遅延する Proxy**でラップして import を副作用フリーにする（`env.X`/`db.X`/`auth.api.*` の API は不変。Proxy の target に `as` が要る点だけ許容）＋ **認証セグメントの layout に `export const dynamic = "force-dynamic"`** を付けてビルド時プリレンダー自体を止める。見極め: 「runtime env がビルド時に不在（ECS/Secrets Manager 注入）」かつ「その env を参照するモジュールが route/page から import される」なら必ず踏む。ビルド時ダミー env を Dockerfile で渡す手もあるが、遅延化のほうが import 副作用ゼロ・ランタイム検証維持で筋が良い。
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 
+- **`sessionStorage` / `localStorage` は SSR 時に `window is not defined` でクラッシュする — `useEffect` 内で初期化する**: CC ファイルに `"use client"` があっても、Next.js App Router は SC fetcher ツリーで SSR を実行するため `useState` の初期化関数（`useState(() => sessionStorage.getItem("key"))`) も SSR で実行される。対処: `const [value, setValue] = useState<T | null>(null)` で null 初期値にして、`useEffect(() => { setValue(sessionStorage.getItem("key") ?? null) }, [])` で mount 後に読み込む。WHY useState 初期化関数では不可: 初期化関数は SSR で eager 実行されるが、`useEffect` は client-only（`window` が存在する環境）なのでクラッシュしない。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+
 ## 禁止パターン
 
 - Pages Router の混在（App Router に統一）

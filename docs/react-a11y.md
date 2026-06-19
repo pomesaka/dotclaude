@@ -207,5 +207,19 @@ const PHASE_MESSAGES: Partial<Record<Phase, string>> = {
   <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
 - **`<section aria-label>` を `<div>` に変えるとランドマーク情報が消える**: `<section>` は暗黙的に `role="region"` を持つためスクリーンリーダーがランドマークとして認識する。`<div>` に変更すると `aria-label` が残っていても機能しない（plain `<div>` に `aria-label` を付けても AT は無視する）。`<div>` に移行する場合は `role="region" aria-label="..."` を明示すること。逆に「ランドマーク過剰」と感じるなら `<section>` ごと削除し `aria-label` も削除するのが一貫している。**判断基準**: 独立した機能単位（フォームエリア・ユーザーセクション等）は `<section>` または `<div role="region">` でランドマーク化する。装飾的グルーピングにはランドマーク不要。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+- **カスタムダイアログ（`<dialog>` / Radix UI 非使用）はフォーカス管理を手動で行う**: ネイティブ `<dialog>` や Radix `Dialog` を使わないカスタムオーバーレイは開時のフォーカス移動・Escape キーを自前で実装する。`tabIndex={-1}` を付けた内側コンテナに `useRef` でフォーカスを当て (`dialogRef.current?.focus()`)、外側コンテナに `onKeyDown` で Escape を捕捉する。
+  ```tsx
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (open) dialogRef.current?.focus(); }, [open]);
+
+  <div role="dialog" aria-modal="true" aria-labelledby="title-id"
+    onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); }}>
+    <div ref={dialogRef} tabIndex={-1} className="... focus:outline-none">
+      ...
+    </div>
+  </div>
+  ```
+  `focus:outline-none` を忘れるとフォーカスリングが意図しない場所に出る。Radix/headlessui が使えるならそちらが正解（フォーカストラップも含む）。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 - **ランドマーク設計は LLM レビュアー間で判断が揺れやすい**: `<section>` vs `role="region"` vs `<div>` の選択は複数の正当な答えが存在し、レビュアーラウンドをまたいで「追加→削除→再追加」という矛盾が起きうる。実装時点で確認する基準: そのエリアがページナビゲーション目的で独立したセクションなら `<section aria-label>`（AT がランドマークとして提示する）、UI グルーピング目的のみなら `<div>`（ランドマーク不要）。曖昧なら `<section>` にしておく方が過剰でも安全。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->

@@ -65,6 +65,26 @@ TypeScript の観点に加え、以下の観点でレビューする。
   ```
   判断基準: "子コンポーネントが `useState(props.xxx ?? default)` の形で props を初期値に使っているか？" → 使っているなら hasMounted パターンが必要。
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+- **early return の後で hook を呼べない → コンポーネントを分割する**: コンポーネントが早期 return（空状態・ローディング等）した後に hook を呼ぶ必要があるとき、React の「hook は条件分岐内・early return 後に呼べない」ルールに違反する。対処: コンポーネントを 2 層に分割する — 外側（`OuterComponent`）が early return を担い、内側（`InnerComponent`）が hook を呼ぶ。外側は early return を通過したときだけ内側をレンダーする。
+  ```tsx
+  // ❌ early return 後に useXxxPoll を呼べない（React ルール違反）
+  function InvoicePage({ months }: Props) {
+    if (months.length === 0) return <InvoiceEmptyState />;
+    const { job } = useInvoiceMatchingPoll(jobId); // Hook after conditional return
+    ...
+  }
+
+  // ✅ 外側が early return、内側が hook を呼ぶ
+  function InvoicePage({ months }: Props) {
+    if (months.length === 0) return <InvoiceEmptyState />;
+    return <InvoicePageInner months={months} />;
+  }
+  function InvoicePageInner({ months }: Props) {
+    const { job } = useInvoiceMatchingPoll(jobId); // OK: early return なし
+    ...
+  }
+  ```
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 - **async fetch → EventSource の2ステップは単一 `useEffect` に統合する**: fetch が resolve した後に別の effect が再実行されることはない（deps が変化しない限り）。fetch と EventSource を別 effect に分けると、fetch が完了しても EventSource effect が起動せず永遠に EventSource が開かない。正しい設計: 単一 effect 内で `const run = async () => { const data = await fetch(...); if (data.status === "done") return; es = new EventSource(...); }` として sequential に記述し、cleanup で `cancelled = true; es?.close()` を返す。
   ```ts
   useEffect(() => {
@@ -127,6 +147,24 @@ function useParsedReport(report: string) {
 }
 ```
 <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+
+## react-markdown で TOC を作るなら本文 id と目次 id を同じ正規化で揃える
+
+react-markdown + remark-gfm で本文を描画し、別途 raw markdown から目次（TOC）を作るとき、**本文側の見出し id（rendered text 由来）と目次側の id（raw markdown 由来）がズレやすい**。書式付き見出し（`## **重要**動向`）でアンカーが効かない（クリックしても飛ばない）形で表面化する。
+
+- 本文側: `components.h2` で id を振るには `children`（React 要素ツリー）からテキストを取り出す。`<strong>`・`<a>` 等インライン要素を含むと文字列でないので、`isValidElement` + `props.children` を再帰する `childrenToText` が必要。素朴な `String(children)` は `[object Object]` や一部欠落になる。
+- 目次側: raw markdown 行から id を作るので、`**bold**`・`[text](url)`・`` `code` `` 等のインライン記法を除去してからスラッグ化する。
+- **両者が同じ正規化（記法除去 → trim → 空白を `-`）に到達して初めて id が一致する**。片方だけ実装すると書式付き見出しでだけ静かに壊れる（プレーン見出しは一致するので気づきにくい）。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
+## 固定シェル + 内側パネルだけスクロール（h-screen + min-h-0 チェーン）
+
+ヘッダー/サイドを固定し、特定パネル（リスト・本文）だけを独立スクロールさせる「アプリシェル」型レイアウトの 2 つの落とし穴:
+
+1. **`h-full` は flex で伸ばされた親（height: auto）に対して解決しない** → 子の `height: 100%` が `auto` になりページ全体が伸びる。ルートを `h-screen`（ビューポート高を直接指定）にし、そこから各段を `flex flex-col min-h-0` で繋いで、スクロールさせたいパネルに `flex-1 min-h-0 overflow-y-auto` を付ける。**`min-h-0` が 1 段でも抜けると** flex item の min-content 高ではみ出し、パネルが縮まずページがスクロールする。
+2. **`<a href="#id">` のアンカー遷移はスクロール可能な祖先を全て動かす（window も含む）** → 内側パネルだけ動かしたいのにブラウザ既定挙動でページ全体（window）もジャンプする。対処: `onClick` で `e.preventDefault()` し、対象見出しの**最近接スクロール祖先**（`scrollHeight > clientHeight` を上に辿る）に対してだけ `scrollBy({ top: delta })` する。`href` は中クリック・コピー用に残す。
+3. **flex-COLUMN 内で `flex-1` から高さを得る overflow scroll container は、`clientHeight` が bound されていても `scrollHeight` を `documentElement.scrollHeight` に漏らす（Chromium）** → root を `overflow-hidden` にしても window は実際にはスクロールしないが、`documentElement.scrollHeight` が巨大化し phantom なページスクロール（ブラウザによっては縦スクロールバー）が出る。**祖先への `overflow:hidden` 追加でも、scroll container を div でラップしても止まらない**（overflow clip ではなく flex-column の「content 基準の高さ昇格」が原因のため）。唯一効くのは漏らす要素自身への **`contain: size layout`**（CSS containment で subtree を文書高から隔離）。`flex: 1 1 0%` で高さが外部決定されているので size containment は安全。**flex-ROW の scroll container（`flex-1 min-w-0 overflow-y-auto`）は同条件でも漏れない** — cross-axis stretch で高さが definite だから。切り分け: `el.style.contain='size layout'` を当てて `documentElement.scrollHeight` が落ちれば確定。実機計測で確認（ul を contain すると html scrollHeight 7739→900・内部スクロールは維持）。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 
 ## Biome Gotchas
 

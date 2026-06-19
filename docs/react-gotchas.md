@@ -131,6 +131,8 @@ function submit() { setPreviews([]); /* revoke しない */ }
 
 - **`mutate` 後に即 Dialog を閉じると `isPending` フィードバックが消える**: `onDelete(id)` の直後に `setDialogOpen(false)` を呼ぶと、削除処理が進行中にダイアログが消えて `isPending` ボタン状態をユーザーが見られなくなる。`useMutation` の `onSuccess` コールバックで閉じる設計にする。props 側でも `onDelete: (id: string, onSuccess: () => void) => void` のシグネチャにして、呼び出し元が完了タイミングを制御できるようにする。
   <!-- importance: medium | mentions: 2 | first-seen: 2026-05 -->
+- **mutation の `data` を `useEffect` で監視して別の state に写すのはアンチパターン — `mutate(vars, { onSuccess })` でイベント駆動にする**: `const m = useMutation(...)` の結果を編集可能な下書きへ取り込むとき、`useEffect(() => { if (m.data) setDraft(m.data) }, [m.data])` と書きたくなるが、これは「成功イベント」を「data の変化」として間接観測する derived-state アンチパターン。`m.data` は再フェッチ・再マウント・キャッシュ更新で予期せず再評価されて effect が再発火しうるし、「成功したら 1 回だけ取り込む」という意図が読み取れない。正しくは呼び出し時に `m.mutate(vars, { onSuccess: (data) => setDraft(data) })` を渡す（成功ごとに正確に 1 回発火）。再実行（再生成）で下書きをスケルトンへ戻したいなら mutate 直前に `setDraft(null)` する副作用も同じイベント駆動の流れに収まる。判断基準: **mutation 結果から state を導出する処理は useEffect でなく onSuccess に置く**。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 
 ---
 
@@ -303,6 +305,20 @@ const date = new Date(Number(y), Number(m) - 1, Number(d));  // 常にローカ�
     }
   }
   ```
+  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+- **async ポーリングに `setInterval` を使うと並列リクエストが積み重なる — 再帰 `setTimeout` を使う**: `setInterval(async () => { await fetch(...) }, 2000)` は前の fetch が 2s を超えても次の interval が発火し、リクエストが並列に積み重なる。再帰 `setTimeout`（fetch 完了後に `setTimeout(() => poll(id), interval)` でスケジュール）なら前の fetch が終わってから次をスケジュールするため直列化される。パターン:
+  ```ts
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isActiveRef = useRef(false);
+  const poll = useCallback(async (id: string) => {
+    const res = await fetch(`/api/jobs/${id}`);
+    const data = await res.json();
+    setJob(data);
+    if (data.step === "done" || data.step === "failed") { stop(); return; }
+    if (isActiveRef.current) timeoutRef.current = setTimeout(() => poll(id), INTERVAL_MS);
+  }, [stop]);
+  ```
+  `isActiveRef` で「アンマウント後のスケジュール」を防ぐ。useEffect のクリーンアップで `clearTimeout(timeoutRef.current)` を呼ぶ。
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 - **textarea の高さ自動調整は `useEffect([value])` でなくイベントハンドラで行う**: `el.style.height="auto"; el.style.height=scrollHeight+"px"` という DOM 同期を `useEffect(() => {...}, [value])` に書くと、effect 本体が `value` を参照しない（DOM ref しか読まない）ため biome `useExhaustiveDependencies` が「不要な依存」と誤検知してエラーになる。`onChange` 内で同期的にリサイズするのが正解。プログラムによる値クリア（送信後の `setValue("")`）は onChange を発火しないため、その箇所だけ明示的に `ref.style.height="auto"` で戻す。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
