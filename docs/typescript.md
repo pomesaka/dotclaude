@@ -191,7 +191,28 @@ function getProps(type: VariableType) {
 **アサーションの形は `x satisfies never;`（変数を作らない）を使う**: `const _exhaustive: never = x` は `noUnusedLocals` 環境で TS6133（declared but never read）になる（`_` プレフィックスの除外は parameter のみで local には効かない）。`satisfies` 式文なら変数を作らないため lint/compiler の未使用検査に引っかからない（TS 5.x で確認・2026-06-11）。
 
 **使い分け**: 戻り値が必要なら上記。`throw new Error(\`Unknown: \${type}\`)` のみでもよいが、型推論で戻り値型が `never` になり呼び出し側の型が壊れることがある。
-<!-- importance: medium | mentions: 2 | first-seen: 2026-05 -->
+<!-- importance: medium | mentions: 3 | first-seen: 2026-05 -->
+
+## 定数マップは `Record<UnionType, V>` で exhaustive に
+
+`Record<string, string>` ではなく `Record<MyUnion, string>` にすると、union に値が追加されたときコンパイルエラーで検知できる。フォールバック（`?? "fallback"`）は到達不能になるため削除する。
+
+```typescript
+// NG: union が広がっても検知できない
+const LABELS: Record<string, string> = { a: "A", b: "B" };
+const label = LABELS[value] ?? value; // フォールバックが必要
+
+// OK: union 追加でコンパイルエラー → `?? fallback` 不要
+type Status = "matched" | "diff" | "missing" | "extra";
+const LABELS: Record<Status, string> = {
+  matched: "一致",
+  diff: "差異",
+  missing: "欠落",
+  extra: "余剰",
+};
+const label = LABELS[status]; // フォールバック不要（exhaustive が保証）
+```
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 
 ## 「別フィールドの値が条件の optional」は discriminated union に
 

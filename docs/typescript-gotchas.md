@@ -619,3 +619,18 @@ for (const match of text.matchAll(pattern)) {
 
 - **`?.` は already `undefined` を返す — `?. ?? undefined` は冗長**: `input.file?.name` はチェーンが短絡したとき `undefined` を返す。`input.file?.name ?? undefined` は「undefined を undefined で置き換える」だけで意味がない。detect: `rg '\?\.\w.*\?\? undefined'`。
   <!-- importance: low | mentions: 1 | first-seen: 2026-06 -->
+
+- **Biome が未使用変数を `_` prefix に rename しても TypeScript TS6133 は残る**: Biome の `noUnusedVariables` ルールはハンドラ関数をリネームして `_toggleSelect` のような `_` prefix 形式にするが、TypeScript の `noUnusedLocals`（TS6133）は `_` prefix を特別扱いしない。結果として `bun run typecheck` がエラーを吐き続ける。対処: 使われなくなった関数は削除する。「`_` prefix = 無視」はコメントアウトに相当し、削除の方が明確。Biome の rename が出た時点で「この関数を本当に使うつもりか」を問い直すトリガーとして扱う。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
+- **Biome の `noUnusedImports` が複数 Edit 呼び出し間で import を削除する**: PostToolUse hook が Edit ごとに走り、import を追加した直後（まだ使用箇所を書いていない）に Biome がその import を「未使用」として即削除する。次の Edit で使用箇所を追加しようとすると「import が消えている」状態になる。対処: **import の追加と使用箇所の追加を 1 つの Edit ブロックで必ず同時に行う**。import だけ先に追加する分割 Edit は避ける。今回の事例: `selectVendorCandidateAction` に `updateInvoiceVendorResolution` を追加しようとして import だけ先に Edit したところ 3 回連続 Biome に削除された。1 つの Edit で import + 関数本体変更を同時に含めることで解消。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+
+- **`noUncheckedIndexedAccess` は type predicate による narrow の後でも index 式の型は `T | undefined` のまま**: `isKnownRole(user.role)` のような type predicate で `user.role` を `keyof Roles & string` に narrow しても、`roles[user.role]` のような index アクセスの型は依然 `RoleLike | undefined`。TypeScript は type predicate が「変数の型を変える」だけで「index 演算子全般の結果型」を変えない仕様のため。対処: `?.` で undefined アクセスを回避し、`?? false` 等で undefined を fail-closed な値に倒す（単純に `!` でアサートしない — `noUncheckedIndexedAccess` の目的と相反する）。
+
+- **`z.discriminatedUnion` は `ZodObject[]` を要求するため `z.refine()` と組み合わせられない**: `.refine()` を呼ぶと `ZodObject` → `ZodEffects` に変換されるため `z.discriminatedUnion("action", [schema.refine(...), ...])` は TypeScript エラーになる。代替: `z.union([schema.refine(...), otherSchema])` を使う。`z.discriminatedUnion` の「action フィールドで早期終了」メリットは union が 2〜3 択の規模では体感差がないため `z.union` で十分。今回の事例: `action="resolve"` のスキーマに `z.refine((d) => d.kind !== "discount" || d.amount !== null)` を追加した結果 discriminatedUnion が落ちた。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
+- **`T | null` を nullable にするとき optional（`?`）を付けると `undefined | null | T` の 3 値になる**: `amount?: number | null` は `undefined`・`null`・`number` の 3 状態を持ち、「null を明示的に渡す」と「省略する」を呼び出し側が区別できない。bridge 関数が `amount` を中継するとき「省略 = undefined → ?? null で null に倒せる」と思いがちだが、spread を使うと undefined のまま伝播してサーバー側の schema 検証が通る（optional にしているため）か silent bad state になる。対処: `amount: number | null`（required）にして全ての呼び出し箇所で `amount: null`（holdover/expense）または `amount: 数値`（discount）を明示的に渡す。detect: `rg ': (number|string) \| null\)'` が `?` を持つパターン。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->

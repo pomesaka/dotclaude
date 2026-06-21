@@ -109,6 +109,8 @@ TypeScript の観点に加え、以下の観点でレビューする。
 - `useEffect` でのデータフェッチ（React Query 等を使う）
 - `any` 型の Props
 - インラインでの複雑なロジック（カスタムフックに抽出する）
+- **テーブル `<thead>` の条件付き `<th>` に対応する `<td>` も同じ条件でラップする**: `{condition && <th>...</th>}` で列を条件付き表示するとき、対応する `<tbody>` 側の `<td>` を条件なしで常時レンダリングすると thead=N列・tbody=N+1列になりテーブル構造違反になる（スクリーンリーダーが列の対応を誤解釈する）。判断基準: "この `<th>` の追加は `{condition && ...}` でラップされているか？" → YES なら対応する全 `<td>` も同じ `{condition && ...}` でラップする。実例: pairing-detail-table.tsx の「対処」列で `onResolutionToggle` の条件が `<th>` にのみ付き `<td>` が常時存在していた（quality reviewer が検出）。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 - **JSX の boolean guard で `??` を "OR" の代わりに使う**: `{condition && (a ?? b)}` の形で `??` を使うと、`a` が truthy のとき `a`（文字列・オブジェクト等）が返り JSX がそれを render しようとする。"どちらか一方が存在すれば表示" の意図なら `||` か `!= null` の OR を使う。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
   ```tsx
@@ -233,3 +235,97 @@ export function setGlobalFlag(next: boolean) {
 }
 ```
 <!-- importance: high | mentions: 2 | first-seen: 2026-05 -->
+
+## `Response.json()` は一度しか読めない — ok/error 分岐の前に一度だけ読む
+
+`fetch` の `Response` body は ReadableStream のため、`.json()` を複数回呼ぶと 2 回目以降は `TypeError: body used already` になる。ok チェックより前に一度だけ読んでおき、成功・失敗どちらのパスでも同じ変数を使いまわす。
+
+```ts
+// ❌ エラーパスと成功パスで別々に読む（2 回目で runtime error）
+if (!res.ok) {
+  const rawBody = await res.json();  // 1 回目
+  setError(extractErrorMessage(rawBody));
+  return;
+}
+const rawData = await res.json();    // 2 回目 → body used already
+
+// ✅ 分岐の前に一度だけ読む
+const rawData = await res.json().catch(() => ({}));
+if (!res.ok) {
+  setError(extractErrorMessage(rawData));
+  return;
+}
+const count = rawData.data?.count ?? 0;
+```
+
+try/catch でエラー時に `{}` を返すフォールバック（`.catch(() => ({}))`）を付けると、JSON パース失敗（HTML エラーページ返却等）でもクラッシュしない。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
+## 二重送信防止は `disabled` よりレンダリング除去が構造的に強い
+
+in-flight 中に送信トリガー（ボタン・ドロップゾーン等）を `disabled` にするだけでは、将来の変更で `disabled` を漏らした場合に防止が機能しなくなる。in-flight 状態に専用 UI（スピナーカード等）を表示し、**送信トリガー自体をレンダリングしない** 3 分岐構造の方が構造的に強い。
+
+```tsx
+// ❌ disabled 頼み（将来の拡張で漏れやすい）
+<button disabled={isUploading} onClick={upload}>アップロード</button>
+
+// ✅ in-flight 中はトリガーをレンダリングしない
+{isUploading ? (
+  <div>取り込み中… <Spinner /></div>
+) : uploaded ? (
+  <SuccessCard>差し替えボタン</SuccessCard>   // ← in-flight 中は描画されない
+) : (
+  <DropZone onDrop={upload} />               // ← in-flight 中は描画されない
+)}
+```
+
+判断基準: 「同一フォームが複数の entry point（ボタン・ドロップ・キーボードショートカット等）を持つか？」YES なら全 entry point で disabled を揃えるコストが高いのでレンダリング除去一択。
+
+## 動的に挿入されるローディングカードには `role="status"` + `aria-hidden` が必要
+
+in-flight 中にスピナーカードをレンダリングする構造（上記「レンダリング除去」パターン）では、カードが**動的に DOM に挿入される**ため、スクリーンリーダーは mount 時の読み上げを行う。しかし `role="status"` がないと live region として扱われず、状態変化が通知されないリーダー実装もある。
+
+```tsx
+// ❌ role なし — 一部リーダーで読み上げが起きない
+<div className="flex items-center gap-3">
+  <RefreshCw className="animate-spin" />
+  <p>取り込み中…</p>
+</div>
+
+// ✅ role="status" + aria-hidden でリーダーに正しく通知
+<div role="status" aria-live="polite" className="flex items-center gap-3">
+  <RefreshCw aria-hidden="true" className="animate-spin" />
+  <p>取り込み中…</p>
+</div>
+```
+
+- `role="status"` は `aria-live="polite"` を暗黙に含むが、明示すると意図が読みやすい
+- 装飾的なアイコン（スピナー・チェックマーク等）は `aria-hidden="true"` でリーダーから隠す。テキストが意味を担うため二重読み上げが起きない
+- **`aria-label` は付けない**: `role="status"` の live region に `aria-label` を付けると内容とラベルを二重読み上げするリーダーがある（「ステータス: 取り込み中… 取り込み中…」のようになる）
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
+## 条件付きマウントのアラート div には `role="alert"` が必要
+
+`isError && <div>...</div>` や `isMultiInvoice && mode === "view" && <div>...</div>` のように**条件分岐によって動的にマウントされるエラー・警告 div** は `role="alert"` を付ける。`role="alert"` は `aria-live="assertive"` を暗黙に含むため、DOM に挿入された瞬間にスクリーンリーダーが割り込み読み上げを行い、ユーザーに警告を届けられる。
+
+`role="status"`（polite — 現在の読み上げを中断しない）との使い分け:
+- **`role="alert"`**: エラー・操作ロック警告・入力バリデーション失敗 — 即座に伝える必要がある
+- **`role="status"`**: ローディング・進捗 — 流れを妨げない程度に伝える
+
+```tsx
+// ❌ role なし — 条件付きマウントはスクリーンリーダーに通知されない
+{isMultiInvoice && <div className="rounded-lg bg-destructive/10 ...">
+  複数請求書が紐付いています。
+</div>}
+
+// ✅ role="alert" — マウント時に即時読み上げ
+{isMultiInvoice && <div role="alert" className="rounded-lg bg-destructive/10 ...">
+  <AlertTriangle aria-hidden="true" />
+  複数請求書が紐付いています。
+</div>}
+```
+
+静的に常時表示されている要素（非表示の切り替えに CSS class だけ使う場合）は `aria-live="assertive"` を直接付ける方が確実。`role="alert"` は「DOM に存在しない → 挿入」の遷移で発火するため、最初から存在して `hidden` → `visible` に変わるケースは拾えない。
+
+**装飾的なテキスト文字（✓・⚠）も `aria-hidden="true"` が必要**: SVG アイコンコンポーネントだけでなく、`✓` や `⚠` のような Unicode 文字もスクリーンリーダーが「チェックマーク」「感嘆符」として読み上げる。意味はその後のテキストが担うため `<span aria-hidden="true">✓</span>` で隠す（実例: issue 242 の `AlignBadge`）。
+<!-- importance: medium | mentions: 2 | first-seen: 2026-06 -->

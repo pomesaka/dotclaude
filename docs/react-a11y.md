@@ -9,8 +9,8 @@
 | `useAriaPropsSupportedByRole` | `<div aria-label>` / `<div aria-labelledby>` | `<section aria-labelledby={id}>` — `role="region"` はさらに `useSemanticElements` に弾かれるため `<section>` を使う |
 | `useSemanticElements` (region) | `<div role="region" aria-labelledby>` | `<section aria-labelledby={id}>` |
 | `noRedundantRoles` | `<ol role="list">` | `<ol>`（role 省略） |
-| `noNoninteractiveTabindex` | `role="tabpanel" tabIndex={0}` | `// biome-ignore … WAI-ARIA tabpanel パターン` |
-| `useSemanticElements` (group) | `<div role="group" aria-label>` | `<fieldset>` + `<legend className="sr-only">` ※`aria-label` は付けない |
+| `noNoninteractiveTabindex` | `<span tabIndex={0}>` / `role="tabpanel" tabIndex={0}` | `<button type="button">` に置き換える（`<button>` はデフォルトで keyboard-focusable）。WAI-ARIA tabpanel パターンが必要な場合のみ `// biome-ignore` |
+| `useSemanticElements` (group) | `<div role="group" aria-label>` | フォームのグループなら `<fieldset>` + `<legend className="sr-only">`。**フォーム以外（データテーブルの列グループ等）では `<fieldset>` は意味的に不適切** → `<section aria-label="...">` を使う（section は landmark role を持ち aria-label が有効に機能する）。`<fieldset>` の `aria-label` は付けない（`<legend>` で代替） |
 | `useSemanticElements` (radio) | `<button role="radio" aria-checked>` | `<button aria-pressed>` （toggle button パターン） |
 | `noRedundantRoles` (list) | `<ul role="list">` | `<ul>`（role 省略。`list-none` + `aria-label` で意味論を担保） |
 | `noStaticElementInteractions` | `<div onClick>` / **`<div onMouseEnter>` / `<div onMouseLeave>`** | ハンドラを `<button>` 等の interactive 要素へ移す |
@@ -222,4 +222,11 @@ const PHASE_MESSAGES: Partial<Record<Phase, string>> = {
   `focus:outline-none` を忘れるとフォーカスリングが意図しない場所に出る。Radix/headlessui が使えるならそちらが正解（フォーカストラップも含む）。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 - **ランドマーク設計は LLM レビュアー間で判断が揺れやすい**: `<section>` vs `role="region"` vs `<div>` の選択は複数の正当な答えが存在し、レビュアーラウンドをまたいで「追加→削除→再追加」という矛盾が起きうる。実装時点で確認する基準: そのエリアがページナビゲーション目的で独立したセクションなら `<section aria-label>`（AT がランドマークとして提示する）、UI グルーピング目的のみなら `<div>`（ランドマーク不要）。曖昧なら `<section>` にしておく方が過剰でも安全。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+- **可視の警告テキストがある場合、`aria-label` に副作用テキストを重複させるより `aria-describedby` で参照する**: ボタンの隣に「この操作は〇〇をリセットします」という visible な警告段落がある場合、`aria-label="差し替える（〇〇がリセットされます）"` のように副作用テキストを aria-label に詰め込むのは WCAG anti-pattern。スクリーンリーダーが label と可視テキストを両方読み上げ、情報が重複する（二度読み）。対処: 警告段落に `id="warning-id"` を付け、ボタンに `aria-label="<動詞>"` + `aria-describedby="warning-id"` を設定する。label は短いアクション名・describedby は可視の補足テキストを参照する形が WCAG の推奨パターン。
+  ```tsx
+  <p id="replace-warning">操作の効果説明（可視テキスト）</p>
+  <Button aria-label="差し替える" aria-describedby="replace-warning">差し替える</Button>
+  ```
+  実例: issue 224 の差し替えボタンで長い aria-label から `aria-describedby="replace-warning"` パターンに修正（PR #180 Round 2 quality reviewer 指摘）。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->

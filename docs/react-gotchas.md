@@ -133,6 +133,8 @@ function submit() { setPreviews([]); /* revoke しない */ }
   <!-- importance: medium | mentions: 2 | first-seen: 2026-05 -->
 - **mutation の `data` を `useEffect` で監視して別の state に写すのはアンチパターン — `mutate(vars, { onSuccess })` でイベント駆動にする**: `const m = useMutation(...)` の結果を編集可能な下書きへ取り込むとき、`useEffect(() => { if (m.data) setDraft(m.data) }, [m.data])` と書きたくなるが、これは「成功イベント」を「data の変化」として間接観測する derived-state アンチパターン。`m.data` は再フェッチ・再マウント・キャッシュ更新で予期せず再評価されて effect が再発火しうるし、「成功したら 1 回だけ取り込む」という意図が読み取れない。正しくは呼び出し時に `m.mutate(vars, { onSuccess: (data) => setDraft(data) })` を渡す（成功ごとに正確に 1 回発火）。再実行（再生成）で下書きをスケルトンへ戻したいなら mutate 直前に `setDraft(null)` する副作用も同じイベント駆動の流れに収まる。判断基準: **mutation 結果から state を導出する処理は useEffect でなく onSuccess に置く**。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+- **`mutationFn` で「成功したが特定の条件下ではエラー」を表現するときは `throw` する — `return { flag: true }` にすると `onSuccess` が走って誤った UI フィードバックが出る**: `useMutation` は `mutationFn` が値を返せば成功・例外を throw すれば失敗として扱う。「処理は完了したが重複・競合・拒否の理由でユーザーに失敗を伝えたい」ケースで `return { duplicate: true }` のように flag を返すと、`onSuccess` が呼ばれて「完了」アニメーションが走る（エラー UI に乗らない）。対処: `mutationFn` 内で `if (result.duplicate) throw new Error("同じ請求書がすでにアップロード済みです")` と throw する — `onError` / `mutation.error` に乗り、既存のエラー表示 UI がそのまま使える。判断基準: **ユーザーから見てエラー状態であれば `mutationFn` で throw する。呼び出し元で戻り値を分岐する設計にしない**。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 
 ---
 
@@ -195,7 +197,56 @@ void stream.startStream(gen)
 
 ---
 
+## コンポーネント分割
+
+### JSX helper を既存コンポーネントから抽出するとき import の棚卸しをする
+
+既存の `return` 内 JSX をインライン `switch` に書き直して helper コンポーネントに抽出するとき、親コンポーネントの import 宣言を更新し忘れやすい（コンポーネント分割でアイコン・型・サードパーティが helper 側に移動してもビルド時まで気付かない）。
+
+対処:
+1. helper を書く前に「helper が使うアイコン・型・コンポーネント名」を箇条書きでメモする
+2. helper ファイルの先頭にまとめて import を追加してから JSX を移す
+3. 分割後に `bun run typecheck` を即実行して import 漏れを検出する
+
+実例: `StagedUploadStatusCells` helper（switch-case で `extractionStatus` を分岐）抽出時に `CheckCircle2`/`RefreshCw` の import を追加し忘れ typecheck fail。親コンポーネントの import 宣言に追記して修正。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
+---
+
+## ブラウザ API / セキュリティ
+
+### `node:crypto` はブラウザで動かない — `"use client"` コンポーネントでは `crypto.getRandomValues` を使う
+
+`"use client"` コンポーネントから `import { randomBytes } from "node:crypto"` すると実行時にクラッシュする（Node.js 専用モジュール）。クライアントサイドで暗号学的乱数が必要なときは Web Crypto API の `crypto.getRandomValues(new Uint8Array(N))` を使う。
+
+```ts
+// NG: "use client" 内では使えない
+import { randomBytes } from "node:crypto";
+const bytes = randomBytes(16);
+
+// OK: Web Crypto API（ブラウザ・Node 18+ 両対応）
+const bytes = crypto.getRandomValues(new Uint8Array(16));
+```
+
+`packages/core/src/crypto/index.ts` のような `node:crypto` ベースのサーバー専用ユーティリティを Client Component に import しても同じクラッシュが起きる。クライアント・サーバー両対応にするには実装を Web Crypto に統一するか、subpath export でクライアント専用版を別ファイルに切り出す。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
+---
+
 ## 型・フォーム
+
+### 必須 props のデストラクチャリングにデフォルト値を付けない
+
+型が `boolean`（optional でない）の props に `isLoading = false` のようなデフォルト値をデストラクチャリングで付けると、呼び出し側が渡し忘れたときに型エラーではなくデフォルト値で隠蔽される。型を required に変更したなら、デストラクチャリングのデフォルト値も同時に削除すること。
+
+```tsx
+// NG: isLoading が required 型なのにデフォルト値が隠蔽
+function Comp({ value, isLoading = false }: { value: string; isLoading: boolean }) { ... }
+
+// OK: デフォルト値なしで渡し忘れを型エラーとして検知
+function Comp({ value, isLoading }: { value: string; isLoading: boolean }) { ... }
+```
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 
 ### React 19 の `useRef` 型変更
 
@@ -229,6 +280,37 @@ const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => { e.preventDefault
 
 **判断基準**: `bun run typecheck` が通るなら deprecated 警告 [6385] は受け入れてよい。型精度を落とすより正確な型を維持する方が重要。
 <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+
+### チェックボックスは `onClick` スタブ + `onChange={() => {}}` ではなく `onChange` のみで実装する
+
+チェックボックスの選択処理を `onClick={(e) => handleSelect(e, key)}` + `onChange={() => {}}` で書くパターンは、`onClick` でロジックを担い `onChange` は React の制御コンポーネント要件を満たすだけのスタブになっている。
+このとき後から `onClick` ハンドラーを削除・移動すると `_toggleSelect` のような未使用関数が残り、TypeScript TS6133 エラーになる（Biome が `_` prefix に rename しても TypeScript 側では未使用警告が残る）。
+
+正しくは `onChange` ひとつだけで実装する。`e.stopPropagation()` が必要な場合も `onChange` 内で呼べる。
+
+```tsx
+// NG: onClick でロジック + onChange スタブ
+<input
+  type="checkbox"
+  checked={isSelected}
+  onChange={() => {}}        // スタブ: 実体なし
+  onClick={(e) => {          // 実ロジックここ
+    e.stopPropagation();
+    toggle(key);
+  }}
+/>
+
+// OK: onChange 一本で実装
+<input
+  type="checkbox"
+  checked={isSelected}
+  onChange={(e) => {
+    e.stopPropagation();
+    toggle(key);
+  }}
+/>
+```
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 
 ---
 
@@ -327,7 +409,13 @@ const date = new Date(Number(y), Number(m) - 1, Number(d));  // 常にローカ�
 
 ## App Router / Suspense
 
+- **Radix Dialog は `open={true}` が残ると body に `pointer-events: none` がかかりページ全体が操作不能になる**: Server Action 成功後にダイアログを閉じ忘れると Radix が body の `pointer-events: none` を解除しないため、他のボタン・メニューが一切クリックできなくなる（リロードまで症状が持続）。対処: `useActionState` の返値 `state` を `useEffect` で監視し、`state?.success` が `true` になった時点で `setOpen(false)` を呼ぶ。`useActionState` を使う全ダイアログで同パターンを踏む。WHY NOT `onSubmit` での即時クローズ: SA の完了前にダイアログが閉じると isPending 中の UI が消えてフィードバックが得られない。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+
 - **`<Suspense>` は純粋 Client Component に効かない**: async Server Component か `use(promise)` を使う CC でのみ fallback が発火する。`useState` / `useRouter` だけの CC を `<Suspense>` で包んでも無意味。
+
+- **Radix UI `DropdownMenuTrigger asChild` に `<span>` を渡すとキーボードフォーカスが当たらない**: `asChild` はラップした要素を Radix のトリガーとして扱うが、`<span>` は本来 focusable でないため `tabIndex` や `role="button"` が付与されない場合がある（Radix の実装依存）。対応済みバッジのような非ボタン要素をトリガーにするとき、必ず `<button>` でラップしてから `asChild` に渡す。これでキーボードナビゲーション（Tab + Enter/Space）が確実に動く。今回の事例: `<DropdownMenuTrigger asChild><ResolutionBadge /></DropdownMenuTrigger>` → `<DropdownMenuTrigger asChild><button type="button" disabled={isReadOnly}><ResolutionBadge /></button></DropdownMenuTrigger>` に修正。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 
 - **Next.js App Router 部分ローディング**: `loading.tsx` はルート全体を Suspense で包むため、動的部分だけスケルトンにしたい場合は:
   1. `loading.tsx` を削除
