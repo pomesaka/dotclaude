@@ -273,6 +273,9 @@ playwright-cli close
 - **`--filename=` スナップショットはカレントディレクトリに保存される**: `playwright-cli snapshot --filename=iter01.yaml` はそのまま CWD に保存される。リポジトリ内のディレクトリで実行すると jj/git に追跡され PR に混入する。必ず `~/.claude/tmp/` などの絶対パスを指定すること。例: `playwright-cli screenshot --filename=/Users/username/.claude/tmp/snap.png`
   <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
 
+- **セッション全体の `.playwright-cli/` ディレクトリもリポジトリ内に生成される — `.gitignore` に追加する**: `playwright-cli open` を起動すると CWD に `.playwright-cli/` ディレクトリが生成されてコンソールログ・ページスナップショットが蓄積される。`--filename=` で個別ファイルを外に出しても、セッション記録ファイル（`console-*.log`・`page-*.yml`）は常に `.playwright-cli/` に残る。リポジトリで playwright-cli を使う前に `.gitignore` に `.playwright-cli/` が含まれているか確認し、なければ追加する。既に snapshot が working copy に入った場合は `jj file untrack ".playwright-cli/*"` で除外する（`.gitignore` 更新だけでは追跡済みファイルは消えない）。
+  <!-- importance: high | mentions: 2 | first-seen: 2026-06 -->
+
 ## Specific tasks
 
 * **Request mocking** [references/request-mocking.md](references/request-mocking.md)

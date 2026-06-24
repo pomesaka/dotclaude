@@ -5,7 +5,7 @@ when_to_use: 「ドメインレビューして」「設計を見て」「責務�
 allowed-tools: Read, Grep, Glob, Bash(jj diff *), Bash(jj log *), Bash(jj diffu *), Bash(find *), Bash(fd *)
 context: fork
 agent: general-purpose
-model: sonnet
+model: opus
 ---
 
 # ドメイン分析・アーキテクチャレビュー

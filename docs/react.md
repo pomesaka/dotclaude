@@ -329,3 +329,6 @@ in-flight 中にスピナーカードをレンダリングする構造（上記�
 
 **装飾的なテキスト文字（✓・⚠）も `aria-hidden="true"` が必要**: SVG アイコンコンポーネントだけでなく、`✓` や `⚠` のような Unicode 文字もスクリーンリーダーが「チェックマーク」「感嘆符」として読み上げる。意味はその後のテキストが担うため `<span aria-hidden="true">✓</span>` で隠す（実例: issue 242 の `AlignBadge`）。
 <!-- importance: medium | mentions: 2 | first-seen: 2026-06 -->
+
+**Radix UI の `asChild` でインタラクティブなトリガーを作るときは必ず `<button>` でラップする**: `<Popover.Trigger asChild>` や `<DropdownMenu.Trigger asChild>` に `<span>` を渡すと Radix が `aria-haspopup`・`aria-expanded` を付与はするがキーボードフォーカスを保証しない（`<span>` は本来フォーカス不可）。「バッジをクリックしてメニューを開く」のような UX では、バッジが対応済みでも未対応でも `<button>` でラップしてから `asChild` に渡すこと。対応済みで disabled にしたい場合は `<button disabled>` にすれば Radix がそれを尊重する。実例: issue 111 の `ResolutionBadge` で `<span asChild>` から `<button asChild>` に変更（quality reviewer 指摘）。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->

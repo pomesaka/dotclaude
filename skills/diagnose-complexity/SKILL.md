@@ -5,7 +5,7 @@ when_to_use: 「このコード複雑すぎる」「なぜこんなに分岐が�
 allowed-tools: Read, Grep, Glob, Bash(cat *), Bash(jj diffu *), Bash(jj diff *), Bash(find *), Bash(fd *), Bash(rg *), Bash(wc *), WebSearch, WebFetch, AskUserQuestion
 context: fork
 agent: general-purpose
-model: sonnet
+model: opus
 ---
 
 # 複雑さの根本原因診断

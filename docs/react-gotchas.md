@@ -414,6 +414,9 @@ const date = new Date(Number(y), Number(m) - 1, Number(d));  // 常にローカ�
 
 - **`<Suspense>` は純粋 Client Component に効かない**: async Server Component か `use(promise)` を使う CC でのみ fallback が発火する。`useState` / `useRouter` だけの CC を `<Suspense>` で包んでも無意味。
 
+- **Radix UI `DropdownMenu` を `Dialog` 内で使うと透明オーバーレイが Dialog を閉じる**: `DropdownMenu` はデフォルトでポインターイベントをブロックする透明オーバーレイを生成する。`Dialog` 内でドロップダウンを開いた後にモーダル内の別要素をクリックすると、クリックがオーバーレイに当たり Dialog の `onPointerDownOutside` が発火してモーダルが閉じる。対処: `<DropdownMenu modal={false}>` を指定する（オーバーレイ生成を抑制）。`onPointerDownOutside` にカスタムチェック（role="menu" など）を足す方法は根本解決にならない（透明なオーバーレイが role を持たないため）。WHY NOT `onPointerDownOutside` カスタム判定: イベントターゲットがオーバーレイの `<div>` になるため、DropdownMenu コンテンツ要素の `role` を確認しても常に「Dialog 外クリック」と判定される。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+
 - **Radix UI `DropdownMenuTrigger asChild` に `<span>` を渡すとキーボードフォーカスが当たらない**: `asChild` はラップした要素を Radix のトリガーとして扱うが、`<span>` は本来 focusable でないため `tabIndex` や `role="button"` が付与されない場合がある（Radix の実装依存）。対応済みバッジのような非ボタン要素をトリガーにするとき、必ず `<button>` でラップしてから `asChild` に渡す。これでキーボードナビゲーション（Tab + Enter/Space）が確実に動く。今回の事例: `<DropdownMenuTrigger asChild><ResolutionBadge /></DropdownMenuTrigger>` → `<DropdownMenuTrigger asChild><button type="button" disabled={isReadOnly}><ResolutionBadge /></button></DropdownMenuTrigger>` に修正。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 

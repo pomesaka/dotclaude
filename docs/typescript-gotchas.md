@@ -629,8 +629,7 @@ for (const match of text.matchAll(pattern)) {
 - **`noUncheckedIndexedAccess` は type predicate による narrow の後でも index 式の型は `T | undefined` のまま**: `isKnownRole(user.role)` のような type predicate で `user.role` を `keyof Roles & string` に narrow しても、`roles[user.role]` のような index アクセスの型は依然 `RoleLike | undefined`。TypeScript は type predicate が「変数の型を変える」だけで「index 演算子全般の結果型」を変えない仕様のため。対処: `?.` で undefined アクセスを回避し、`?? false` 等で undefined を fail-closed な値に倒す（単純に `!` でアサートしない — `noUncheckedIndexedAccess` の目的と相反する）。
 
 - **`z.discriminatedUnion` は `ZodObject[]` を要求するため `z.refine()` と組み合わせられない**: `.refine()` を呼ぶと `ZodObject` → `ZodEffects` に変換されるため `z.discriminatedUnion("action", [schema.refine(...), ...])` は TypeScript エラーになる。代替: `z.union([schema.refine(...), otherSchema])` を使う。`z.discriminatedUnion` の「action フィールドで早期終了」メリットは union が 2〜3 択の規模では体感差がないため `z.union` で十分。今回の事例: `action="resolve"` のスキーマに `z.refine((d) => d.kind !== "discount" || d.amount !== null)` を追加した結果 discriminatedUnion が落ちた。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+  <!-- importance: medium | mentions: 2 | first-seen: 2026-06 -->
 
 - **`T | null` を nullable にするとき optional（`?`）を付けると `undefined | null | T` の 3 値になる**: `amount?: number | null` は `undefined`・`null`・`number` の 3 状態を持ち、「null を明示的に渡す」と「省略する」を呼び出し側が区別できない。bridge 関数が `amount` を中継するとき「省略 = undefined → ?? null で null に倒せる」と思いがちだが、spread を使うと undefined のまま伝播してサーバー側の schema 検証が通る（optional にしているため）か silent bad state になる。対処: `amount: number | null`（required）にして全ての呼び出し箇所で `amount: null`（holdover/expense）または `amount: 数値`（discount）を明示的に渡す。detect: `rg ': (number|string) \| null\)'` が `?` を持つパターン。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+  <!-- importance: medium | mentions: 2 | first-seen: 2026-06 -->
