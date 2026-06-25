@@ -281,7 +281,22 @@ export type NewAgentActionRow = typeof agentActions.$inferInsert // schema
 
 判断基準は「参照される広さ」。ドメイン型は orchestrator・agents・UI から広く import されるため canonical 名を保つ方が長期的に変更コストが低い。Row 型は repository 実装内部で完結することが多く、リネームしても影響範囲が狭い。
 
-合わせて **discriminated union の literal 型（`Kind` enum など）はドメイン層に置く**。infra(schema) が `import type { Kind } from "../domain/types"` で参照し、必要なら `export type { Kind }` で re-export する。逆向き（schema が enum を所有、domain が import）にすると Clean Architecture の依存方向（infra → domain）に反する。
+合わせて **discriminated union の literal 型（`Kind` enum など）はドメイン層に置く**。
+
+- **discriminated union でステータス別フィールドを型保証する — ただし「ビュー外で参照するフィールド」は base type に残す**: `status: "done" | "failed"` のような union 型で「`failed` のときだけ存在するフィールド」（例: `fileName`）は `done` variant から除外してよい。しかし view コードが status チェック外でフィールドにアクセスする場合（`useEffect`・computed value の計算等）、そのフィールドは base type（全 variant に共通の型）に置く必要がある。
+  ```ts
+  // NG: summary が done にしか無く、useEffect で status チェック外から参照されると型エラー
+  type Done = { status: "done"; summary: string; fileName?: never };
+  type Failed = { status: "failed"; summary?: never; fileName: string | null };
+
+  // OK: summary は両方から使うので base に、fileName は failed 専用なので variant に
+  type Base = { summary: string; decisions: string[] }; // 両方で使うフィールド
+  type MinutesDetail =
+    | (Base & { status: "done" })
+    | (Base & { status: "failed"; fileName: string | null });
+  ```
+  判断基準: 「このフィールドは `status === X` を確認してからしかアクセスしない」→ variant 専用。「`status` のチェック前にアクセスしうる（`useEffect` 依存配列・計算 etc.）」→ base type。実例: issue 258 の `MinutesDetail` で `summary`/`decisions`/`utterances` は view の `allSpeakers` 計算・`useEffect` 依存から参照するため base に残し、`fileName` は `status === "failed"` チェック後のみ参照するため `failed` variant 専用にした。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->infra(schema) が `import type { Kind } from "../domain/types"` で参照し、必要なら `export type { Kind }` で re-export する。逆向き（schema が enum を所有、domain が import）にすると Clean Architecture の依存方向（infra → domain）に反する。
 
 ## モジュール間の循環依存を断つ注入パターン
 
@@ -300,3 +315,54 @@ export type NewAgentActionRow = typeof agentActions.$inferInsert // schema
 
   **判断基準**: 「このモジュールが X を必要とするが、X の提供元がこのモジュールを集約している」という構造が見えたら即座に DI を検討する。
   <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
+
+## 型ガードとしての early throw — `as` なし narrowing
+
+関数の特定ブランチで「この値は X のはず」という不変条件が成り立つとき、`as X` でキャストするより `if (val !== expected) throw new Error(...)` を関数頭に置く方が型安全かつ実行時検証も兼ねる。
+
+```typescript
+// ❌ as キャスト: ランタイム検証なし・UI 許可テーブルが変わっても気づかない
+const saveDiscount = (outcome: UnresolvedOutcome | undefined) => {
+  const o = outcome as "mismatch";  // "under_billed" が来たとき silent breakage
+  submitResolution({ outcome: o, amount });
+};
+
+// ✅ early throw: TypeScript が "mismatch" に narrowing + ランタイム不変条件を保証
+const saveDiscount = (outcome: UnresolvedOutcome | undefined) => {
+  if (outcome !== "mismatch") throw new Error(`Expected mismatch, got ${outcome}`);
+  // この時点で outcome: "mismatch" に narrowing 済み
+  submitResolution({ outcome, amount });
+};
+```
+
+**適用基準**: 「このパスでは X の値しか来ないはずだが、型上は広い union になっている」かつ「その前提が崩れたとき silent breakage になる」ケース。UI 許可テーブル・フロー設計が変わったとき `throw` が検知するため、`as` キャストより変更に強い。実例: issue 252 の `handleDiscountSave`（`outcome !== "mismatch"` は UI 上ありえないが、許可テーブルが変わった場合に気づけるよう throw を置く）。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
+## 定数マップは `Record<K, (arg) => string>` で関数型を統一する
+
+値によって引数シグネチャが変わる定数マップ（ラベル生成関数等）は、全 key で同じ関数型にそろえる。一部の key だけ引数ありにすると呼び出し側で分岐が発生し、key が増えるたびに呼び出しパターンが増殖する。
+
+```typescript
+// ❌ discount だけ amount あり → 呼び出し側で分岐が必要
+const LABEL = {
+  holdover: () => "★帳端",
+  discount: (amount: number | null) => `値引き ${amount ?? 0}`,
+  expense: () => "経費",
+} satisfies Partial<Record<ResolutionMethod, () => string>>;  // 型が揃わない
+
+// ✅ 全 key を (amount: number | null) => string に統一
+const RESOLUTION_LABEL = {
+  holdover: () => "★帳端",
+  discount: (amount: number | null) => `値引き ¥${amount ?? 0}`,
+  expense: (_amount: number | null) => "経費",
+} satisfies Record<ResolutionMethod, (amount: number | null) => string>;
+
+// 呼び出し側は常に 1 形
+const label = RESOLUTION_LABEL[method](amount);
+```
+
+**適用基準**: 「大多数の key は引数不要だが、特定の key だけ引数が必要」と感じたとき。引数を `_` で無視する key が増えても呼び出し側の統一性を保てる。`Record<K, V>` と `satisfies` で key 網羅チェックも兼ねる。実例: issue 252 の `RESOLUTION_LABEL`（holdover/expense は amount 不要だが統一して `(amount: number | null) => string` にした）。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
+- **正規化を要する検索/比較関数は raw 入力を受けて関数内部で正規化する defensive 契約にする**: `matches(item, query: string)` のように引数を「未加工の生の文字列」で受け取り、内部で `normalize(query)` を呼ぶ。`matches(item, normalizedQuery: string)` のように caller 側で事前正規化を期待する契約は、将来の追加 caller が「ここは生でいいか正規化済みか」を毎回判断することになり、normalize 忘れが silent miss（検索ヒット 0 件・比較が常に false など runtime error にならない無音バグ）を生む。一度公開した API 契約は変更コストが高いため、最初から defensive に「caller は何も気にしなくてよい・関数が責任を持って正規化する」形にする。NG: `matchesVendorSearch(vendor, normalizedQuery)` を caller に正規化させる ／ OK: `matchesVendorSearch(vendor, rawQuery)` を関数内部で `normalizeVendorName(rawQuery)` する。**判断基準**: 「この関数の引数を間違った形（生 / 正規化済み）で渡したとき、コンパイルエラーになるか？」NO（`string` 同士で型が同じ）なら defensive 契約にする。型で区別できるなら（branded type 等）caller 契約でもよい。実例: noah issue 263 の Round 1 review で `matchesVendorSearch` の引数名と中身が乖離し検出。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->

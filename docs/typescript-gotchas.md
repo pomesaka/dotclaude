@@ -616,6 +616,8 @@ for (const match of text.matchAll(pattern)) {
   ```
   WHY NOT `throw new Error(...)` のみ: DB から来る値は実際に unexpected なものが混入し得る。throw はサービス全体が crash するため console.warn + フォールバックで継続を選ぶのが domain store の慣例。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+  **亜種: `map` / `reduce` / `flatMap` のコールバック内 switch でも exhaustive default が必要 — Biome `useIterableCallbackReturn` が default を要求する**: 配列メソッドのコールバック内で switch を書くと「全 case が return しても TypeScript は callback の戻り値型を `undefined` を含む union と推論する」ため Biome `useIterableCallbackReturn` が default を要求する。対処は単独 switch と同じ: `default: { value satisfies never; throw new Error(...); }`（値が DB 由来でなく**自前で組み立てた結果値**＝ never 到達が真に不可能なケース）または `default: { value satisfies never; return <fallback>; }`（DB 由来 narrowing）。コールバックの戻り値が `T | null` のような nullable な union のときは `default: return null` でも Biome は満たすが、せっかくの exhaustive check 機会を失うので `value satisfies never;` を1行入れるのが推奨。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 
 - **`?.` は already `undefined` を返す — `?. ?? undefined` は冗長**: `input.file?.name` はチェーンが短絡したとき `undefined` を返す。`input.file?.name ?? undefined` は「undefined を undefined で置き換える」だけで意味がない。detect: `rg '\?\.\w.*\?\? undefined'`。
   <!-- importance: low | mentions: 1 | first-seen: 2026-06 -->

@@ -57,7 +57,7 @@ PRが存在しない場合はここで完了。
 - **`@` で直接コンフリクトを解消した場合は squash 不要**: コンフリクトファイルを `@` で直接編集した場合、`jj squash` は「into parent = immutable main」に向かってしまい失敗する。正しくは `jj new <conflict-rev>` → 編集 → `jj squash` の順。ただし `@` 直接編集でも working copy commit として反映されるため、そのまま `jj git push` で問題ない。
   <!-- importance: medium | mentions: 2 | first-seen: 2026-05 -->
 - **rebase 後は `bun install` を実行する**: main に新しい依存が追加されていると `typecheck` が `Cannot find module` で失敗する。rebase の直後に `mise exec -- bun install` を実行してから lint/typecheck に進む。**通常の `bun install` が「no changes」と言っても typecheck が `Cannot find module`（解決先が HOME の node_modules に climb する等）で落ちるなら symlink が陳腐化している — `mise exec -- bun install --force` で再生成する**（isolated install の workspace symlink が古いパスを指したまま残るため）。実例: issue 050 rebase 後に `zod`/`react-dom` が解決できず、plain install は no-op、`--force` で解消。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+  <!-- importance: medium | mentions: 2 | first-seen: 2026-06 -->
 - **`.next/` が biome の対象に入ると lint が大量エラーになる**: Next.js dev server 起動後に生成される `.next/` ディレクトリが biome に拾われて数万件のエラーになる場合がある。lint 前に `rm -rf apps/*/.next` で削除してから実行すること。
 - **`packages/features/package.json` の `exports` フィールドは各フィーチャーブランチが追加するため 2-sided conflict になりやすい**: 解決方法は常に「両方の export エントリを残す」こと。自ブランチのエントリ（例: `"./research": "./src/research/index.ts"`）と main のエントリ（例: `"./document": "./src/document/index.ts"`）を両方保持する。どちらかを捨てると `Cannot find module` エラーが他パッケージで発生する。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->

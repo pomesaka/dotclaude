@@ -135,6 +135,8 @@ function submit() { setPreviews([]); /* revoke しない */ }
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 - **`mutationFn` で「成功したが特定の条件下ではエラー」を表現するときは `throw` する — `return { flag: true }` にすると `onSuccess` が走って誤った UI フィードバックが出る**: `useMutation` は `mutationFn` が値を返せば成功・例外を throw すれば失敗として扱う。「処理は完了したが重複・競合・拒否の理由でユーザーに失敗を伝えたい」ケースで `return { duplicate: true }` のように flag を返すと、`onSuccess` が呼ばれて「完了」アニメーションが走る（エラー UI に乗らない）。対処: `mutationFn` 内で `if (result.duplicate) throw new Error("同じ請求書がすでにアップロード済みです")` と throw する — `onError` / `mutation.error` に乗り、既存のエラー表示 UI がそのまま使える。判断基準: **ユーザーから見てエラー状態であれば `mutationFn` で throw する。呼び出し元で戻り値を分岐する設計にしない**。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+- **row 型が「DB 値 + 別ソースの導出」になった瞬間に optimistic update は原理的に書けなくなる — `onMutate`/`onError` を残さず `onSettled` で invalidate に切り替える**: 一覧/詳細の row 型に「DB から取った素の値」だけでなく「他のクエリ結果と合成して導出した状態フィールド」（例: `LineItemMatchRow.status` を `match.outcome` + 別テーブルの `resolution` から導出する）が入ると、楽観更新コールバックは mutation の入力だけからその合成状態を再構成できない。それでも `onMutate: (vars) => setQueryData(...)` を残すと、入力に含まれない他フィールドが古いまま反映され UI に不整合が出る（または書き手が「導出フィールドはどう更新するか」を考えあぐねて結局 invalidate に倒し、optimistic コードだけ dead code として残る）。**型を複合 derive に変えた PR でその場で楽観更新を除去すること**。`onSettled: () => queryClient.invalidateQueries(...)` だけにし、楽観の体験が必要ならサーバ側 mutation 完了時間そのものを短くするか、Server Action で最新 row 配列を返して `setQueryData` で差し替える（Route Handler 経由では invalidate しか選択肢がない）。判断基準: **「mutation の入力だけからこの row 全フィールドを再構成できるか？」NO なら optimistic は諦める**。実例: noah adachi の `LineItemMatchRow` に issue 254 で導出 `status` フィールドが入って以降、`flipResolution` の `onMutate`/`onError` が再構成不能のまま放置されていた（issue 268 で除去）。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 
 ---
 

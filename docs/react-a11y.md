@@ -223,6 +223,16 @@ const PHASE_MESSAGES: Partial<Record<Phase, string>> = {
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 - **ランドマーク設計は LLM レビュアー間で判断が揺れやすい**: `<section>` vs `role="region"` vs `<div>` の選択は複数の正当な答えが存在し、レビュアーラウンドをまたいで「追加→削除→再追加」という矛盾が起きうる。実装時点で確認する基準: そのエリアがページナビゲーション目的で独立したセクションなら `<section aria-label>`（AT がランドマークとして提示する）、UI グルーピング目的のみなら `<div>`（ランドマーク不要）。曖昧なら `<section>` にしておく方が過剰でも安全。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+- **key-value ペア（ファイル名・作成者・日時等）のメタ情報は `<dl>/<dt>/<dd>` で表現する**: `<span>ファイル名: foo.mp4</span>` のようなコロン区切り表示はスクリーンリーダーに「用語/説明」の関係を伝えない。`<dl>` (description list) / `<dt>` (term) / `<dd>` (detail) を使うことで AT がペアを構造として認識する。アイコンには `aria-hidden="true"` を付けて読み上げを抑止し、`<dt>` にラベルを書く。
+  ```tsx
+  <dl className="flex items-center gap-1.5 text-xs">
+    <FileAudio className="size-3.5 shrink-0" aria-hidden="true" />
+    <dt className="font-medium">ファイル名</dt>
+    <dd className="truncate">{fileName}</dd>
+  </dl>
+  ```
+  **判断基準**: UI に「〇〇: 値」という表示パターンがあれば `<dl>/<dt>/<dd>` 候補。単なる説明文（段落）なら `<p>` でよい。実例: issue 258 の `minutes-detail-view.tsx` でファイル名表示を `<span>ファイル名:</span>` から `<dl>/<dt>/<dd>` に変更（quality reviewer 指摘）。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 - **可視の警告テキストがある場合、`aria-label` に副作用テキストを重複させるより `aria-describedby` で参照する**: ボタンの隣に「この操作は〇〇をリセットします」という visible な警告段落がある場合、`aria-label="差し替える（〇〇がリセットされます）"` のように副作用テキストを aria-label に詰め込むのは WCAG anti-pattern。スクリーンリーダーが label と可視テキストを両方読み上げ、情報が重複する（二度読み）。対処: 警告段落に `id="warning-id"` を付け、ボタンに `aria-label="<動詞>"` + `aria-describedby="warning-id"` を設定する。label は短いアクション名・describedby は可視の補足テキストを参照する形が WCAG の推奨パターン。
   ```tsx
   <p id="replace-warning">操作の効果説明（可視テキスト）</p>
