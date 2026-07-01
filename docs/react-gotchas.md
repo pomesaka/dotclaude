@@ -213,6 +213,15 @@ void stream.startStream(gen)
 実例: `StagedUploadStatusCells` helper（switch-case で `extractionStatus` を分岐）抽出時に `CheckCircle2`/`RefreshCw` の import を追加し忘れ typecheck fail。親コンポーネントの import 宣言に追記して修正。
 <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 
+### セクション見出しに複数の interactive 要素（折りたたみボタン＋トグル等）が必要になったら、外側の `<button>` ごと `<div>` + 兄弟 `<button>` 群に再構成する
+
+「見出し全体をクリックで折りたたむ」ために見出し全体を `<button>` にした後、そこへ別の独立操作（フィルタトグル・件数バッジのクリック等）を追加しようとすると button-in-button になり不正 HTML になる（ブラウザは内側の button をテキストとして扱い、クリックが外側にバブルする）。
+
+対処: 見出しを `<div className="flex items-center gap-2">` に戻し、各操作（折りたたみ・トグル）を独立した兄弟 `<button>` として配置する。折りたたみボタンは `aria-expanded`/`aria-controls`、トグルボタンは `aria-pressed` を持つ。ラベル部分（クリック不要なテキスト）は非 button の `<div>`/`<span>` のままでよい。再構成時にタッチターゲット用の padding（`py-2.5` 等）を親 `<div>` に付けたままにするとヒット領域が縮む点に注意（各 interactive 要素側に付け直す）。
+
+実例: `InvoiceLifecycleTable` の見出し（元は「折りたたみ全体を1つの `<button>`」）に「要対応のみ」フィルタトグルを追加する際、`<div>` + 折りたたみ用アイコンボタン + トグルボタンの兄弟配置に再構成した（issue 971）。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-07 -->
+
 ---
 
 ## ブラウザ API / セキュリティ
@@ -415,6 +424,9 @@ const date = new Date(Number(y), Number(m) - 1, Number(d));  // 常にローカ�
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 
 - **`<Suspense>` は純粋 Client Component に効かない**: async Server Component か `use(promise)` を使う CC でのみ fallback が発火する。`useState` / `useRouter` だけの CC を `<Suspense>` で包んでも無意味。
+
+- **保存中に `<input disabled={isSaving}>` にすると、フォーカス中の要素が disabled になった瞬間ブラウザが native blur を発火させ、`onBlur` ハンドラの commit を再度呼んでしまう**: インライン編集 UI（クリック→input→blur/Enter で保存）で「保存中は input を触らせない」ために `disabled` を付けるのは自然だが、フォーカスを持つ要素が disabled になると強制的にフォーカスが外れ blur イベントが発火する。これは Escape キャンセルや保存成功時の `setIsEditing(false)`（input がアンマウントされる）でも同様に起きる。この「自己都合の blur」を「ユーザーがクリックで外に出た」通常の blur と区別しないと、保存中の commit() が再入し DB 書き込み・ログ追記が二重発生する。対処: `useRef` の再入ガード（`if (isSaving) return`）と、意図的に閉じる直前に立てる `suppressBlurRef`（`onBlur` 内で見て早期 return）の2点セットで防ぐ。判断基準: 「disabled や unmount を伴う状態変更の直後に blur ハンドラが自分の意図と無関係に発火しうるか」YES なら再入ガードが要る。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-07 -->
 
 - **Radix UI `DropdownMenu` を `Dialog` 内で使うと透明オーバーレイが Dialog を閉じる**: `DropdownMenu` はデフォルトでポインターイベントをブロックする透明オーバーレイを生成する。`Dialog` 内でドロップダウンを開いた後にモーダル内の別要素をクリックすると、クリックがオーバーレイに当たり Dialog の `onPointerDownOutside` が発火してモーダルが閉じる。対処: `<DropdownMenu modal={false}>` を指定する（オーバーレイ生成を抑制）。`onPointerDownOutside` にカスタムチェック（role="menu" など）を足す方法は根本解決にならない（透明なオーバーレイが role を持たないため）。WHY NOT `onPointerDownOutside` カスタム判定: イベントターゲットがオーバーレイの `<div>` になるため、DropdownMenu コンテンツ要素の `role` を確認しても常に「Dialog 外クリック」と判定される。
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->

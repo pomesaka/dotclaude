@@ -327,8 +327,22 @@ in-flight 中にスピナーカードをレンダリングする構造（上記�
 
 静的に常時表示されている要素（非表示の切り替えに CSS class だけ使う場合）は `aria-live="assertive"` を直接付ける方が確実。`role="alert"` は「DOM に存在しない → 挿入」の遷移で発火するため、最初から存在して `hidden` → `visible` に変わるケースは拾えない。
 
+**エラーでも「ページ初期ロード時点で DB から複数並びうる」表示は `role="alert"` にしない**: alert/status の判定軸は「エラーか進捗か」だけでなく「イベント駆動マウントか・初期描画に含まれうるか」。永続化された失敗状態（DB の failed 行など）をリスト内に描画するセルに `role="alert"` を付けると、ページを開くたびに全 failed 行が assertive に割り込み読み上げされてノイズになる — こちらは `role="status"` が正しい。同一画面で「ユーザー操作直後にのみ動的マウントされる transient なエラー（アップロード失敗など）= `role="alert"`」と「ロード時から存在しうる永続エラー表示 = `role="status"`」が並ぶ非対称は正当で、レビューで「揃えろ」と指摘されやすいため WHY / WHY NOT コメントで守る（実例: issue 965 の uploading 失敗セル alert / staging 抽出失敗セル status）。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-07 -->
+
 **装飾的なテキスト文字（✓・⚠）も `aria-hidden="true"` が必要**: SVG アイコンコンポーネントだけでなく、`✓` や `⚠` のような Unicode 文字もスクリーンリーダーが「チェックマーク」「感嘆符」として読み上げる。意味はその後のテキストが担うため `<span aria-hidden="true">✓</span>` で隠す（実例: issue 242 の `AlignBadge`）。
 <!-- importance: medium | mentions: 2 | first-seen: 2026-06 -->
 
 **Radix UI の `asChild` でインタラクティブなトリガーを作るときは必ず `<button>` でラップする**: `<Popover.Trigger asChild>` や `<DropdownMenu.Trigger asChild>` に `<span>` を渡すと Radix が `aria-haspopup`・`aria-expanded` を付与はするがキーボードフォーカスを保証しない（`<span>` は本来フォーカス不可）。「バッジをクリックしてメニューを開く」のような UX では、バッジが対応済みでも未対応でも `<button>` でラップしてから `asChild` に渡すこと。対応済みで disabled にしたい場合は `<button disabled>` にすれば Radix がそれを尊重する。実例: issue 111 の `ResolutionBadge` で `<span asChild>` から `<button asChild>` に変更（quality reviewer 指摘）。
 <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
+## サーバー由来リストに client-only の transient 行を混ぜるときは「表示層 union + 合成関数」
+
+アップロード中・送信中など「まだ DB に行がない一時状態」をサーバー由来のリスト（discriminated union）と同じテーブルに出したいとき、サーバー側の型・クエリに client-only メンバーを足さない。代わりに UI 投影層（`_lib/` 等）で:
+
+1. transient 行型（`origin: "uploading"` 等の判別子付き）を client-only で定義する
+2. 表示層 union（`type DisplayRow = DbRow | TransientRow`）を作り、テーブルはこれを受ける
+3. 合成関数（`mergeRows(dbRows, transientRows)`）を 1 箇所に定義し、**転生キー**（transient 行が永続化されたとき DB 行と一致する相関キー。例: S3 presign key）で dedup する — DB 側にはこのキーを 1 列足すだけでよい
+
+WHY: サーバー contract に client 状態が混ざると、クエリ層のテストに「DB に存在しない行」のケースが漏れ込み、SSR/CSR 境界でも「この行はどこから来たか」が追えなくなる。合成を UI 層 1 関数に閉じれば、dedup 規則の変更が 1 箇所で済み、transient → persisted 遷移の二重表示防止（refetch 完了を await してから transient を除去、とセット）も合成関数のコメントに集約できる。実例: noah issue 965 の `LifecycleDisplayRow` / `mergeUploadingRows`（pdfKey dedup）。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-07 -->
