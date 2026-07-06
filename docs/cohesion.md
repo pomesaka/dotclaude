@@ -133,6 +133,10 @@ A が B の型を必要とするが直接 import すると循環する、とい�
 
 判断基準: consumer が複数 or 非 React（callback で素直に書ける）なら callback でよい。**React の effect で購読を畳み込むなら `AsyncIterable` 一択**。逆に push→pull 橋渡しを避けたいなら、EventSource をやめて `fetch` + `ReadableStream`（ネイティブに async-iterable）にする手もあるが、SSE フレームの手パース + 再接続喪失と引き換え。
 
+### 共有 helper へ抽出したら設計コメント（WHY）は「移動」する — 抽出元にコピーを残さない
+<!-- importance: medium | mentions: 1 | first-seen: 2026-07 -->
+複数関数に共通するロジックを共有 helper に抽出するとき、抽出元の関数に WHY コメント（クエリ分割の理由・順序保証の設計等）を verbatim のまま残すと、同じ設計判断の説明が 2 箇所に並立する。片方だけ更新される drift が必ず起きる（コメントはコンパイラが重複検出しない）。**WHY は helper 側に 1 箇所だけ持たせ、抽出元には参照ポインタ（TS なら `{@link helperName}` + 「〜の方針は helper の WHY を参照」の 1 行）を残す**。抽出元固有の文脈（その関数だけの呼び出し条件等）だけは抽出元に残してよい。判断基準: 「このコメント段落は helper の実装を説明しているか、この関数固有の事情を説明しているか」— 前者は移動、後者は残置。
+
 ### Feature Envy（特性の横取り）
 自モジュールより他モジュールのデータを多用する関数。そのコードは本来あるべき場所に移動すべき。
 

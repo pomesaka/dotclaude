@@ -165,7 +165,8 @@ diff /tmp/main.md /tmp/branch.md
 ```
 
 差分がなければ main の内容で上書きして `jj squash` するだけで解決できる。
-<!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+**亜種**: 完全一致でなくても、branch 側の変更が「main 側で既に独立に取り込まれている変更」の部分集合（意図が同じでより広い変更に飲み込まれている）なら、同様に main 側をそのまま採用してよい。実例: ADeT PR #2511 で `boolPtr(true)` → `new(true)` という branch 側の小変更が、main 側で行われた `value.DataType` → `v2value.DataType` パッケージリネームに伴って既に同じ形になっていた。main 側を採用した結果、そのファイルは PR の diff から完全に消え（無関係な差分が減り）よりクリーンな diff になった。
+<!-- importance: medium | mentions: 2 | first-seen: 2026-05 -->
 
 ## divergent commit の解消
 

@@ -387,3 +387,9 @@ const date = new Date(Number(y), Number(m) - 1, Number(d));  // 常にローカ�
   2. `page.tsx` を non-async に
   3. フェッチを子 async SC に切り出す
   4. `<Suspense fallback={<Skeleton />}><DataFetcher /></Suspense>` で組み合わせる
+
+- **TanStack Query の `initialData` は「mount 時の queryKey」にしか対応しない — key が可変な hook では mount 時引数を `useRef` に固定して一致判定してから渡す**: SSR data を `initialData` で seed する hook の queryKey が state 由来（選択月・選択タブ等）で remount なしに切り替わる場合、`initialData` をそのまま渡すと「初期データと別の key のキャッシュを初期データで seed する」事故になる（切替先の画面に別データが一瞬〜永続で表示される。`staleTime: Infinity` だと refetch もされず固着）。「このコンポーネントは key が変わるとき remount される」という仮定に頼るのは危険 — soft navigation で React が同位置コンポーネントを remount する保証はない。対処: `const initialRef = useRef({ key, initialData })` で mount 時の組を固定し、`initialData: () => key === initialRef.current.key ? initialRef.current.initialData : undefined` と関数形式で一致判定する。remount の有無に依存せず「初回 mount の key だけ SSR data を再利用し、他は必ず fetch」が保証される。実例: noah issue 977 の `useMonthlyMatching`（月切替で queryKey が変わる一覧ページ）。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-07 -->
+
+- **`data === undefined` を「fetch 中」とだけ解釈すると fetch 失敗時に無限ローディングになる — undefined を消費する hook は `isError` / `refetch` も公開契約に含める**: useQuery の `data` は fetch 中も retry 尽きた失敗後も `undefined` のまま。呼び出し側が `data === undefined ? <Spinner /> : <Content />` と書くと、エラー時にスピナーが永久表示され再試行手段もない。データ取得 hook を設計する時点で「undefined は 2 状態（loading / error）を含む」ことをコメントで明示し、`isError` と `refetch` を戻り値に含めて呼び出し側がエラー分岐 + 再試行導線（`role="alert"` + 再試行ボタン）を描き分けられるようにする。判断基準: 「この hook の data が undefined のまま確定するパスがあるか」YES なら loading/error の描き分け材料をセットで公開する。実例: noah issue 977 Round 5 レビューで検出（月切替 fetch の失敗が無限スピナーになっていた）。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-07 -->

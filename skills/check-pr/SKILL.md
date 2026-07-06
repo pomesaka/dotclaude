@@ -66,3 +66,5 @@ jj diffu --from <base> --to <branch>
 
 - **複数のレビューコメントを反映する前にコメント間の依存性を整理する**: コメント A の変更がコメント B の内容に波及することがある（例: テーブル命名変更 → カラム名変更が連動）。サマリー出力時点でインラインコメントを全部読み切り、依存関係のあるコメントをグループ化してから修正に着手すると整合性を保ちやすい。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+- **`--from <base> --to <branch>` の diff が PR の説明と全く噛み合わないほど巨大なら、branch が stale（base からリベースされずに放置）な可能性を疑う**: `gh pr view <番号> --json mergeable` で `CONFLICTING` なら確定的にstale。この場合 `<base>`（例: main）を直接比較すると、branch 派生後に base 側へマージされた無関係なコミット群が全部ノイズとして混ざる。`jj log -r 'fork_point(<base> | <branch>)'` で真の分岐点コミットを特定し、そこから `jj diffu --from <fork_point> --to <branch>` を取ると PR の実スコープに一致したクリーンな diff が得られる。現在の状態セクションには `mergeable: CONFLICTING` を必ず明示し、「マージ前に rebase が必要」と伝える。実例: ADeT PR #2511 で `--from main` が無関係な差分込みで170KB超だったのに対し、fork point (`a453bb13`) からの diff は説明どおりの82ファイルに一致した。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-07 -->

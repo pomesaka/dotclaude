@@ -40,3 +40,13 @@ if (existing.length === 0) {
 - `sql(identifier)` は postgres.js のクライアント側ダブルクォートエスケープで GRANT/REVOKE の識別子には使える（ALTER DEFAULT PRIVILEGES の `TO ${sql(roleName)}` 等）
 - `sql.unsafe()` は parameterized ではないため、必ず PostgreSQL の `format()` や自前エスケープを通してから渡すこと
 <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+
+## ループクエリ（N+1）→ バルククエリ化で「結果完全不変」を担保する設計
+<!-- importance: medium | mentions: 1 | first-seen: 2026-07 -->
+
+per-key のループクエリ（`WHERE key = ?` を N 回）を 1 本のバルククエリ（`WHERE key IN (...)` / 上位スコープの `WHERE`）+ アプリ内グルーピングに置き換えるリファクタでは、「出力が 1 バイトも変わらない」ことを次の 2 点セットで保証する:
+
+1. **ORDER BY を（グルーピングキー, 元の per-key ソートキー）の複合にする**: 単一キー版が `WHERE key = ? ORDER BY sort_col` だったなら、バルク版は `ORDER BY key, sort_col` にする。グルーピングを出現順 `push` で行えば、グループ内の各配列は単一キー版と同順になることが SQL レベルで保証される（グルーピング後にアプリ側で再ソートする必要がなく、再ソート実装のバグ余地も消える）
+2. **既存テストの assertion を 1 文字も変更せず green にする**: 「テストも一緒に直した」場合は結果不変の証明にならない。assertion 無修正 green が回帰確認そのもの
+
+補足: グルーピングはIO-free の純関数（`groupXxxByKey(rows): Map<key, rows[]>`）として fetch から分離して export すると、DB なしの table driven test で並び・境界（空グループ・単一要素）を直接検証できる。

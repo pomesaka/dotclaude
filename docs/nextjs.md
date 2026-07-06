@@ -173,6 +173,15 @@ async SC でデータ取得 → `"use client"` Wrapper で `useCallback` の cal
 - **`sessionStorage` / `localStorage` は SSR 時に `window is not defined` でクラッシュする — `useEffect` 内で初期化する**: CC ファイルに `"use client"` があっても、Next.js App Router は SC fetcher ツリーで SSR を実行するため `useState` の初期化関数（`useState(() => sessionStorage.getItem("key"))`) も SSR で実行される。対処: `const [value, setValue] = useState<T | null>(null)` で null 初期値にして、`useEffect(() => { setValue(sessionStorage.getItem("key") ?? null) }, [])` で mount 後に読み込む。WHY useState 初期化関数では不可: 初期化関数は SSR で eager 実行されるが、`useEffect` は client-only（`window` が存在する環境）なのでクラッシュしない。
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 
+- **SSR で同じ重いフェッチが 2 経路から必要なとき「解決前の Promise を注入して共有」する — 逐次化も二重実行もしない**: page.tsx の `Promise.all` に載る 2 つの取得関数が内部で同じ重い計算（集計 assemble 等）を必要とする場合、素朴に並行実行すると同じ計算が 2 回走り、片方を await してから渡すと逐次化で遅くなる。対処: `const p = heavyFetch(key)` で **await せず** Promise を作り、片方の関数にオプション引数（`preloadedX: { key, promise }`）として注入して内部でそのまま await させ、もう片方は `Promise.all([fnA({preloadedX}), p])` で同じ Promise を await する。並行性を維持したまま計算は 1 回に畳まれる。注入側は key の一致判定をしてから使う（別 key の Promise を誤って再利用しない）。判断基準: 「2 つの SSR 取得関数が内部で同じ入力の同じ計算を含むか」YES なら Promise 共有。実例: noah issue 977 の `listUnfinishedMonths` への `preloadedMonth` 注入（当月フル assemble の二重実行を排除・domain review MEDIUM 指摘）。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-07 -->
+
+- **searchParams / route params 由来の日付キーは「形」だけでなく「暦の有効性」まで検証してから DB に渡す**: `/^\d{4}-\d{2}-01$/` のような形状 regex は "2026-13-01" を通し、Postgres の date 列比較で `date field value out of range` になって SSR / Server Action が 500 でクラッシュする（クエリ文字列の操作だけで誰でも 500 を作れる）。月部分は `(0[1-9]|1[0-2])`、日付全体なら実 Date への round-trip 検証まで入れる。検証関数は SC（page.tsx）と CC（URL / localStorage 復元）の両方が使うため `_lib/` に 1 箇所で定義して共用する（散らすと片方だけ緩い regex が残る）。判断基準: 「この外部入力文字列は DB の型付き列（date / uuid / int）に届くか」YES なら型のドメイン全体（暦・フォーマット）を境界で検証する。実例: noah issue 977 Round 5 の `isTargetMonthFirstDay` 集約。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-07 -->
+
+- **App Router の dynamic route params は percent-encoded のまま届く — 境界（page.tsx）で `decodeURIComponent` してから分岐する**: `/invoice/[id]` に `merge:C300` を含む URL でアクセスすると `params.id` は `merge%3AC300` のまま渡される（Next.js 15 実機確認・2026-07）。`:` / `/` 等を含む合成キーを route param に載せて `startsWith("merge:")` のような prefix 判定をすると、encoded 値がすり抜けて else 分岐（UUID クエリ等）に流れ、typecheck では検出できない実行時エラー（PostgresError: invalid input syntax for type uuid）になる。対処: params を読む最初の境界（page.tsx）で `decodeURIComponent(params.id)` してから分岐・下流に渡す。判断基準: route param に「英数字と `-` 以外を含みうる値」（合成キー・prefix 付き ID・日本語）を載せるなら必ず decode を挟む。同じ route に後から別 prefix を足すとき、既存 prefix も同じ潜在バグを持っていないか確認する（実例: noah issue 975 で `merge:` 追加時に既存 `ledger-only:` の同一バグを発見・治癒）。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-07 -->
+
 ## 禁止パターン
 
 - Pages Router の混在（App Router に統一）
