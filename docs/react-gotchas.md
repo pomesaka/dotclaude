@@ -18,47 +18,32 @@ useEffect(() => {
 ```
 <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
 
-### `setInterval` は `useEffect` cleanup で必ず停止する
+### ポーリングフックは再帰 `setTimeout` + `useEffect` cleanup で書く
 
-`setInterval` をカスタムフック内で使うとき、`clearInterval` を `useEffect` の cleanup に書かないとコンポーネントがアンマウントされた後もインターバルが動き続け、unmounted コンポーネントへの `setState` 呼び出しが発生する。React StrictMode の二重マウントでも二重 interval が起きる。
+`setInterval(async () => { await fetch(...) }, 2000)` は前の fetch が interval を超えても次が発火し、リクエストが並列に積み重なる。再帰 `setTimeout`（fetch 完了後に次を schedule）なら直列化される。さらに ref で管理する timer は必ず `useEffect` cleanup で `clearTimeout` する（WHY: unmount 後もタイマーが走ると unmounted コンポーネントへの `setState` が起きる。StrictMode の二重マウントでも二重起動する）。`isActiveRef` で unmount 後の再 schedule を防ぐ。
 
 ```ts
-// ❌ アンマウント後もポーリングが走り続ける
-function usePolling(jobId: string) {
-  const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
-  const stopPolling = useCallback(() => {
-    if (intervalRef.current !== undefined) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = undefined;
-    }
-  }, []);
-  const startPolling = useCallback(() => {
-    intervalRef.current = setInterval(async () => { ... }, 2500);
-  }, [stopPolling]);
-  // cleanup がないためページ離脱後も setState が走る
-  return { startPolling, stopPolling };
-}
-
-// ✅ useEffect cleanup で必ず stopPolling を呼ぶ
-function usePolling(jobId: string) {
-  const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
-  const stopPolling = useCallback(() => {
-    if (intervalRef.current !== undefined) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = undefined;
-    }
-  }, []);
-  // WHY useEffect cleanup: コンポーネントが unmount された後も setInterval が走り続けると
-  // unmounted コンポーネントへの setState が起きる。
-  useEffect(() => {
-    return () => stopPolling();
-  }, [stopPolling]);
-  return { stopPolling };
-}
+// ✅ 再帰 setTimeout: fetch 完了後に次を schedule → 直列化
+const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+const isActiveRef = useRef(false);
+const poll = useCallback(async (id: string) => {
+  const res = await fetch(`/api/jobs/${id}`);
+  const data = await res.json();
+  setJob(data);
+  if (data.step === "done" || data.step === "failed") { stop(); return; }
+  if (isActiveRef.current) timeoutRef.current = setTimeout(() => poll(id), INTERVAL_MS);
+}, [stop]);
+// WHY useEffect cleanup: clear* を別関数から呼ぶだけではページ離脱をカバーできない
+useEffect(() => {
+  return () => {
+    isActiveRef.current = false;
+    if (timeoutRef.current !== undefined) clearTimeout(timeoutRef.current);
+  };
+}, []);
 ```
 
-**判断基準**: `setInterval` / `setTimeout` を ref で管理するフックには **必ず** `useEffect(() => () => clear*(ref.current), [])` の cleanup を追加する。`clearInterval` を別の関数から呼ぶだけでは、ユーザーがページを離脱した場合をカバーできない。
-<!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+**判断基準**: `setInterval` / `setTimeout` を ref で管理するフックには **必ず** `useEffect(() => () => clear*(ref.current), [])` の cleanup を追加する。
+<!-- importance: high | mentions: 2 | first-seen: 2026-06 -->
 
 ### setState updater 内に副作用を書かない（StrictMode 二重実行）
 
@@ -129,14 +114,13 @@ function submit() { setPreviews([]); /* revoke しない */ }
 
 ### Mutation と非同期 UI 状態
 
-- **`mutate` 後に即 Dialog を閉じると `isPending` フィードバックが消える**: `onDelete(id)` の直後に `setDialogOpen(false)` を呼ぶと、削除処理が進行中にダイアログが消えて `isPending` ボタン状態をユーザーが見られなくなる。`useMutation` の `onSuccess` コールバックで閉じる設計にする。props 側でも `onDelete: (id: string, onSuccess: () => void) => void` のシグネチャにして、呼び出し元が完了タイミングを制御できるようにする。
-  <!-- importance: medium | mentions: 2 | first-seen: 2026-05 -->
-- **mutation の `data` を `useEffect` で監視して別の state に写すのはアンチパターン — `mutate(vars, { onSuccess })` でイベント駆動にする**: `const m = useMutation(...)` の結果を編集可能な下書きへ取り込むとき、`useEffect(() => { if (m.data) setDraft(m.data) }, [m.data])` と書きたくなるが、これは「成功イベント」を「data の変化」として間接観測する derived-state アンチパターン。`m.data` は再フェッチ・再マウント・キャッシュ更新で予期せず再評価されて effect が再発火しうるし、「成功したら 1 回だけ取り込む」という意図が読み取れない。正しくは呼び出し時に `m.mutate(vars, { onSuccess: (data) => setDraft(data) })` を渡す（成功ごとに正確に 1 回発火）。再実行（再生成）で下書きをスケルトンへ戻したいなら mutate 直前に `setDraft(null)` する副作用も同じイベント駆動の流れに収まる。判断基準: **mutation 結果から state を導出する処理は useEffect でなく onSuccess に置く**。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
-- **`mutationFn` で「成功したが特定の条件下ではエラー」を表現するときは `throw` する — `return { flag: true }` にすると `onSuccess` が走って誤った UI フィードバックが出る**: `useMutation` は `mutationFn` が値を返せば成功・例外を throw すれば失敗として扱う。「処理は完了したが重複・競合・拒否の理由でユーザーに失敗を伝えたい」ケースで `return { duplicate: true }` のように flag を返すと、`onSuccess` が呼ばれて「完了」アニメーションが走る（エラー UI に乗らない）。対処: `mutationFn` 内で `if (result.duplicate) throw new Error("同じ請求書がすでにアップロード済みです")` と throw する — `onError` / `mutation.error` に乗り、既存のエラー表示 UI がそのまま使える。判断基準: **ユーザーから見てエラー状態であれば `mutationFn` で throw する。呼び出し元で戻り値を分岐する設計にしない**。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
-- **row 型が「DB 値 + 別ソースの導出」になった瞬間に optimistic update は原理的に書けなくなる — `onMutate`/`onError` を残さず `onSettled` で invalidate に切り替える**: 一覧/詳細の row 型に「DB から取った素の値」だけでなく「他のクエリ結果と合成して導出した状態フィールド」（例: `LineItemMatchRow.status` を `match.outcome` + 別テーブルの `resolution` から導出する）が入ると、楽観更新コールバックは mutation の入力だけからその合成状態を再構成できない。それでも `onMutate: (vars) => setQueryData(...)` を残すと、入力に含まれない他フィールドが古いまま反映され UI に不整合が出る（または書き手が「導出フィールドはどう更新するか」を考えあぐねて結局 invalidate に倒し、optimistic コードだけ dead code として残る）。**型を複合 derive に変えた PR でその場で楽観更新を除去すること**。`onSettled: () => queryClient.invalidateQueries(...)` だけにし、楽観の体験が必要ならサーバ側 mutation 完了時間そのものを短くするか、Server Action で最新 row 配列を返して `setQueryData` で差し替える（Route Handler 経由では invalidate しか選択肢がない）。判断基準: **「mutation の入力だけからこの row 全フィールドを再構成できるか？」NO なら optimistic は諦める**。実例: noah adachi の `LineItemMatchRow` に issue 254 で導出 `status` フィールドが入って以降、`flipResolution` の `onMutate`/`onError` が再構成不能のまま放置されていた（issue 268 で除去）。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+**mutation の副作用・派生 state は「イベント駆動」で書く — data/useEffect の間接観測は誤発火する。** `data` の変化を `useEffect` で監視すると再フェッチ・再マウント・キャッシュ更新で予期せず再発火し、「成功したら 1 回」の意図が消える。
+
+1. **Dialog クローズ・下書き取り込みは `onSuccess`（`mutate` の第 2 引数）で行う** — 成功ごとに正確に 1 回発火する。`mutate` 直後の `setDialogOpen(false)` は処理進行中にダイアログが消え `isPending` フィードバックが見えなくなる。props 側も `onDelete: (id: string, onSuccess: () => void) => void` のシグネチャにして呼び出し元が完了タイミングを制御できるようにする。
+2. **ユーザーから見てエラーな状態は `mutationFn` 内で `throw` する** — `return { duplicate: true }` のような flag 返却だと `onSuccess` が走って「完了」フィードバックが出る（エラー UI に乗らない）。throw すれば `onError` / `mutation.error` に乗り既存のエラー表示 UI がそのまま使える。
+3. **row 型が「DB 値 + 他クエリからの導出」になったら optimistic update は原理的に再構成不能** — `onMutate`/`onError` を残さず `onSettled` で invalidate に切り替える（残すと導出フィールドが古いまま反映されるか、optimistic コードが dead code として残る）。判断: 「mutation の入力だけで row 全フィールドを再構成できるか」NO なら諦める。楽観の体験が必要ならサーバ側 mutation を速くするか、Server Action で最新 row 配列を返して `setQueryData` で差し替える。実例: noah `LineItemMatchRow` の導出 `status`（issue 254 で導入 → issue 268 で optimistic 除去）。
+
+<!-- importance: medium | mentions: 5 | first-seen: 2026-05 -->
 
 ---
 
@@ -271,26 +255,12 @@ const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
 ミュータブル ref の初期値は `null` より `undefined` を優先する（cleanup 条件のチェックが一貫する）。
 
-### React 19 の `FormEvent` deprecated と onSubmit ハンドラーの型付け
+### React 19 の `FormEvent` は deprecated だが移行しない
 
-React 19 で `FormEvent` が deprecated [6385] になった。代替を探すと落とし穴が多い。
+React 19 で `FormEvent<HTMLFormElement>` が deprecated [6385] になったが、代替には落とし穴が多い: DOM 型の `SubmitEvent` は合成イベント型と非互換（型エラー 2322）、`{ preventDefault(): void }` 引数型は型精度が落ちて「フォーム送信イベント」の意図が型システムから消える。
 
-```ts
-// NG: SubmitEvent (DOM型) は React 合成イベント型と互換なし → 型エラー 2322
-const handleSubmit = (e: SubmitEvent) => { e.preventDefault(); };
-
-// NG: 型精度後退。型システムから「フォーム送信イベント」の意図が消える
-const handleSubmit = (e: { preventDefault(): void }) => { e.preventDefault(); };
-
-// OK: FormEvent<HTMLFormElement> のまま（typecheck エラーではなく IDE 警告のみ）
-const handleSubmit = (e: FormEvent<HTMLFormElement>) => { e.preventDefault(); };
-
-// OK: 型推論に任せる（JSX の onSubmit ハンドラーとして型が推論される）
-const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => { e.preventDefault(); };
-```
-
-**判断基準**: `bun run typecheck` が通るなら deprecated 警告 [6385] は受け入れてよい。型精度を落とすより正確な型を維持する方が重要。
-<!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+**WHY 現状維持**: typecheck が通る限り [6385] は IDE 警告のみで、型精度を落とすより正確な型（`FormEvent<HTMLFormElement>` のまま、または JSX の onSubmit ハンドラーとして型推論に任せる）を保つ方が重要。`SyntheticEvent<HTMLFormElement>` への移行も可（`e.currentTarget` は維持される）だが必須ではない。
+<!-- importance: medium | mentions: 2 | first-seen: 2026-05 -->
 
 ### チェックボックスは `onClick` スタブ + `onChange={() => {}}` ではなく `onChange` のみで実装する
 
@@ -359,15 +329,7 @@ const date = new Date(Number(y), Number(m) - 1, Number(d));  // 常にローカ�
 
 ## React 19 新機能
 
-- **`React.FormEvent` は deprecated → `React.SyntheticEvent` を使う**: React 19 で `React.FormEvent<HTMLFormElement>` が deprecated になった。`<form onSubmit>` ハンドラの型は `React.SyntheticEvent<HTMLFormElement>` に移行する。`e.currentTarget` は引き続き利用可能。
-  ```tsx
-  // ❌ React 19 で deprecated
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) { ... }
-
-  // ✅
-  async function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) { ... }
-  ```
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+- **`FormEvent` の deprecated 対応**: → [型・フォーム](#型フォーム)節「React 19 の `FormEvent` は deprecated だが移行しない」を参照（移行必須ではない）。
 - **React 19 フォームの標準形は `useActionState` + `<form action={fn}>`**: `onSubmit` + 手動 `isLoading` より宣言的で Server Actions と互換性がある。
   ```tsx
   const [state, formAction] = useActionState(async (_prev, formData) => {
@@ -398,20 +360,6 @@ const date = new Date(Number(y), Number(m) - 1, Number(d));  // 常にローカ�
     }
   }
   ```
-  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
-- **async ポーリングに `setInterval` を使うと並列リクエストが積み重なる — 再帰 `setTimeout` を使う**: `setInterval(async () => { await fetch(...) }, 2000)` は前の fetch が 2s を超えても次の interval が発火し、リクエストが並列に積み重なる。再帰 `setTimeout`（fetch 完了後に `setTimeout(() => poll(id), interval)` でスケジュール）なら前の fetch が終わってから次をスケジュールするため直列化される。パターン:
-  ```ts
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isActiveRef = useRef(false);
-  const poll = useCallback(async (id: string) => {
-    const res = await fetch(`/api/jobs/${id}`);
-    const data = await res.json();
-    setJob(data);
-    if (data.step === "done" || data.step === "failed") { stop(); return; }
-    if (isActiveRef.current) timeoutRef.current = setTimeout(() => poll(id), INTERVAL_MS);
-  }, [stop]);
-  ```
-  `isActiveRef` で「アンマウント後のスケジュール」を防ぐ。useEffect のクリーンアップで `clearTimeout(timeoutRef.current)` を呼ぶ。
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 - **textarea の高さ自動調整は `useEffect([value])` でなくイベントハンドラで行う**: `el.style.height="auto"; el.style.height=scrollHeight+"px"` という DOM 同期を `useEffect(() => {...}, [value])` に書くと、effect 本体が `value` を参照しない（DOM ref しか読まない）ため biome `useExhaustiveDependencies` が「不要な依存」と誤検知してエラーになる。`onChange` 内で同期的にリサイズするのが正解。プログラムによる値クリア（送信後の `setValue("")`）は onChange を発火しないため、その箇所だけ明示的に `ref.style.height="auto"` で戻す。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->

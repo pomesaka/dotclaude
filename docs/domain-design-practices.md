@@ -18,8 +18,8 @@
 8. [横断モジュールへの入力境界パターン](#8-横断モジュールへの入力境界パターン)
 9. [現代の実践的アプローチ](#9-現代の実践的アプローチ2024-2026)
 10. [スキルを磨くには](#10-スキルを磨くには)
-11. [AI Agent の設計原則](#11-ai-agent-の設計原則llm-backed-関数の責務分離)
 11. [参考文献・リソース](#11-参考文献リソース)
+12. [AI Agent の設計原則](#12-ai-agent-の設計原則llm-backed-関数の責務分離)
 
 ---
 
@@ -270,10 +270,7 @@ aggregator の docstring や型定義に「source A のための Map」と「sou
 
 ### 発展: target 記述子に「解決可能性クラス」を持たせる
 
-境界で正規化した `TargetDescriptor` を設計するとき、kind の選択肢は「どう解決するか」の宣言にもなる。
-解決可能性は呼び出し種別ごとに根本的に異なるため、これを第一級にすると aggregator の実装が明確になる。
-
-軸は **「ターゲットのドメイン固有の識別子を、consumer が（正規化して）名指せるか」**。
+境界で正規化した `TargetDescriptor` の kind は「どう解決するか」の宣言そのもの。解決可能性は呼び出し種別ごとに根本的に異なるため第一級にすると aggregator が明確になる。軸は **「ターゲットのドメイン固有識別子を consumer が正規化して名指せるか」**。
 
 | クラス | 典型例 | 解決手段 |
 |--------|--------|---------|
@@ -282,16 +279,7 @@ aggregator の docstring や型定義に「source A のための Map」と「sou
 | **Pattern** | HTTP endpoint | URL 文字列 ↔ ルートパターンで近似照合（**不可避**） |
 | **External** | SDK 呼び出し | コードベース外 → ローカル spec item に解決しない |
 
-**落とし穴1: 単一ツール/ORM の表現をドメイン概念と取り違える。** 「Prisma の model 宣言を consumer と
-provider が共有しているから DB は Identity（共有コード宣言）だ」と分類したくなるが、それは Prisma codegen
-固有の事情。RDB の本質は (schema, table name, columns) であり、model はその view にすぎない。SQL DDL
-管理なら共有宣言など無く、結局 (schema, table name) 照合になる。**ターゲットの識別子は「いちばん下の
-ドメイン層」で定義せよ** — ORM やフレームワークの表現に引きずられない。
-
-**落とし穴2: 「全種別を共有宣言（go-to-definition で到達する Identity）で解ける」という誘惑。** これが
-成立するのは単一スタック（Prisma codegen / tRPC など型を共有する仕組み）だけ。HTTP は
-`fetch('/api/users/123')` から `/api/users/[id]` ルート定義への go-to-definition が存在しないため
-Pattern 照合が本質的に不可避。「全部統一して美しく」と進めると前提が破綻する。
+**落とし穴: 単一スタック固有の表現をドメイン概念と取り違える。** ターゲット識別子は「いちばん下のドメイン層」で定義せよ（RDB の本質は (schema, table name)、Prisma model はその view にすぎない）。系として「全種別を共有宣言（go-to-definition で到達する Identity）で解ける」誘惑があるが、成立するのは型を共有する単一スタック（Prisma codegen / tRPC 等）だけ。HTTP は `fetch('/api/users/123')` からルート定義への go-to-definition が無く Pattern 照合が本質的に不可避 — 「全部統一して美しく」で前提が破綻する。
 
 **判断手順**: ①ターゲットのドメイン固有識別子は何か（RDB なら schema+table、API なら route、GraphQL なら
 field 名）を**ツール非依存で**定義する → ② consumer がその識別子を正規化して名指せるか／近似しかできないか
@@ -322,7 +310,7 @@ Bounded Context はマイクロサービスのサービス境界を定義する�
 
 ---
 
-## 9. スキルを磨くには
+## 10. スキルを磨くには
 
 ### 実践的な習得法
 
@@ -350,7 +338,7 @@ Bounded Context はマイクロサービスのサービス境界を定義する�
 
 ---
 
-## 10. 参考文献・リソース
+## 11. 参考文献・リソース
 
 ### 必読書
 
@@ -393,7 +381,7 @@ Bounded Context はマイクロサービスのサービス境界を定義する�
 
 ---
 
-## 11. AI Agent の設計原則（LLM-backed 関数の責務分離）
+## 12. AI Agent の設計原則（LLM-backed 関数の責務分離）
 
 AI を内部実装に持つ agent を設計する際も、ドメイン責務の分離原則は同様に適用される。
 
@@ -420,7 +408,7 @@ AI を内部実装に持つ agent を設計する際も、ドメイン責務の�
 
 LLM 抽出の recall-based eval（GT の一部サンプルを抽出結果に greedy マッチング）で、あるフィールド X を対応づけキー（fallback）として使うと、X のスコア採点が trivially true になる（自己確認バイアス）。
 
-- **問題の構造**: GT 行の primary key（`productCode` 等）が null のとき、fallback として `amount` で抽出行を探す。この時点で選ばれた抽出行は必ず `amount` が GT と一致している（一致しているから選ばれた）。この行に対して「`amountMatched += 1`」を加えると「選んだ理由=一致してた」を再度カウントする自己確認になり、amount 精度スコアが水増しされる。
+- **問題の構造**: fallback キー（例: primary key が null のとき `amount`）でマッチした抽出行は、定義上そのフィールドが GT と一致している（一致したから選ばれた）。その行で `amountMatched += 1` すると「選んだ理由=一致」を再カウントする自己確認になりスコアが水増しされる。
 - **対処**: `foundBy[Field]: boolean` フラグを追加し、キーとして使ったフィールドは同一行のスコア採点対象から外す。`productCode` で見つけた行は全フィールドを採点してよい（キーは独立）が、`amount` で見つけた行は `amountMatched` を採点しない。
 - **一般原則**: 「このフィールドは対応づけキーとして使っているか？」を全評価フィールドについて確認する。採点対象フィールドとマッチングキーは独立していなければならない。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->

@@ -235,27 +235,13 @@ function handle(item: Item) {
 
 discriminated union ブランチ内に `??` や `||` フォールバックがあったら、それが意図的かを確認する。多くの場合は型を絞り込む前の名残（または型変更後の修正漏れ）。
 
-### `noUncheckedIndexedAccess` で正規表現マッチの戻り値が `string | undefined` になる
+### `noUncheckedIndexedAccess` 下では index アクセスが常に `T | undefined`
 
-`noUncheckedIndexedAccess: true`（strict モード相当）が有効なプロジェクトでは `match[1]` の型が `string | undefined` になる。
+`noUncheckedIndexedAccess: true`（strict 相当）下では配列 / `match[n]` / `Record[key]` の index アクセスが常に `T | undefined`。理由: TS は「変数の型」のみ narrow し「index 演算子の結果型」は narrow しない — match を if guard しても、type predicate で key を絞っても index 結果は undefined を含む。対処: `?.` + `?? ""` / `?? false` で fail-closed に倒す（`!` アサートは禁止かつ noUncheckedIndexedAccess の目的と相反する）。
 
-```typescript
-// ❌ match が非 null でも match[1] は string | undefined — コンパイルエラー
-const label = text.match(/\[要記入: (.+)\]/)?.[0];
-const value: string = label; // NG
-
-// ❌ match を先に guard しても match[1] は undefined の可能性が残る
-const m = text.match(pattern);
-if (m) {
-  const val: string = m[1]; // NG: `string | undefined`
-}
-
-// ✅ オプショナルチェーン + nullish coalescing でまとめて対処
-const label = text.match(/\[要記入: (.+)\]/)?.[1] ?? "";
-```
-
-判断基準: `tsconfig.json` に `"noUncheckedIndexedAccess": true` が入っていたら（または `"strict": true`）、配列・match 戻り値へのインデックスアクセスは全て `T | undefined` になる。
-<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+- regex 例: NG `const m = text.match(p); if (m) { const v: string = m[1]; }`（guard 後も `string | undefined`）／OK `const label = text.match(p)?.[1] ?? "";`
+- type predicate 例: NG `isKnownRole(user.role)` で narrow した後の `roles[user.role].allowed`（index 結果は `RoleLike | undefined` のまま）／OK `roles[user.role]?.allowed ?? false`
+<!-- importance: medium | mentions: 2 | first-seen: 2026-06 -->
 
 ### 条件型と generic の組み合わせ落とし穴
 
@@ -568,7 +554,7 @@ for (const match of text.matchAll(pattern)) {
 }
 ```
 
-`match[1]` は `string | undefined` に型推論される（正規表現が全体マッチしている限り実行時は常に `string` だが TypeScript はそこまで推論しない）。非 null アサーション（`match[1]!`）は `as` キャストと同様に禁止された場合は `if (label !== undefined)` ガードで代替する。
+（`match[1]` が `string | undefined` になる理由と `!` 禁止時の if guard 代替は noUncheckedIndexedAccess 節を参照）
 <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 
 ### `AbortError` 判定は `signal.aborted` で
@@ -606,29 +592,14 @@ for (const match of text.matchAll(pattern)) {
 - **`get` トラップだけの Proxy ラッパーは consumer の `"x" in obj` チェックを破る**: 遅延初期化 Proxy（`new Proxy({} as T, { get: ... })`）は、`has` トラップ未実装だと `in` 演算子が target（空オブジェクト）を見て常に false を返す。ライブラリは duck-typing 分岐に `in` を使うことがあり（例: better-auth `toNextJsHandler` の `"handler" in auth ? auth.handler(req) : auth(req)`）、false 側に倒れて「auth is not a function」のような不可解な実行時エラーになる。typecheck は通る（型上は T のまま）ため静的に検出できない。対処: 遅延 Proxy を書くときは `get` に加えて `has: (_t, p) => p in resolve()`（必要なら `ownKeys`/`getOwnPropertyDescriptor` も）を実装し、トラップを resolve 済み実体に委譲する。判断基準: 「この Proxy をライブラリ関数に渡すか？」→ YES なら get 以外のトラップも必須と考える。
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 
-- **`switch` の `default` ブロックに `value satisfies never;` を書いて exhaustive check を強制する**: `$type<"a" | "b">()` で narrowed な値を switch するとき、`default` は型上到達不能。`value satisfies never;` を先頭行に置くと TypeScript がコンパイル時にそれを検証し、union に新しい variant が追加された場合に「型が `never` に代入できない」エラーで検出できる。その後の `console.warn` + フォールバック return はランタイム防衛（DB に予期外の値が混入したとき）:
-  ```typescript
-  default: {
-    row.inputMode satisfies never;   // compile-time exhaustive check
-    console.warn(`unknown inputMode "${row.inputMode}", falling back`);
-    return { ...base, inputMode: "text", inputText: "" };
-  }
-  ```
-  WHY NOT `throw new Error(...)` のみ: DB から来る値は実際に unexpected なものが混入し得る。throw はサービス全体が crash するため console.warn + フォールバックで継続を選ぶのが domain store の慣例。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
-  **亜種: `map` / `reduce` / `flatMap` のコールバック内 switch でも exhaustive default が必要 — Biome `useIterableCallbackReturn` が default を要求する**: 配列メソッドのコールバック内で switch を書くと「全 case が return しても TypeScript は callback の戻り値型を `undefined` を含む union と推論する」ため Biome `useIterableCallbackReturn` が default を要求する。対処は単独 switch と同じ: `default: { value satisfies never; throw new Error(...); }`（値が DB 由来でなく**自前で組み立てた結果値**＝ never 到達が真に不可能なケース）または `default: { value satisfies never; return <fallback>; }`（DB 由来 narrowing）。コールバックの戻り値が `T | null` のような nullable な union のときは `default: return null` でも Biome は満たすが、せっかくの exhaustive check 機会を失うので `value satisfies never;` を1行入れるのが推奨。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+- **union を switch する `default` に `value satisfies never;` を置いて exhaustive check を強制する**: variant 追加時に「型が `never` に代入できない」コンパイルエラーで検出できる。後続の `console.warn` + フォールバック return は DB 由来の予期外値へのランタイム防衛（WHY NOT throw のみ: throw はサービス全体が crash するため domain store は継続を選ぶ）。値が DB 由来でなく自前で組み立てた結果値（never 到達が真に不可能）なら `satisfies never;` + throw でよい。亜種: `map`/`reduce`/`flatMap` のコールバック内 switch は全 case が return しても TS が戻り値型に `undefined` を含めて推論するため Biome `useIterableCallbackReturn` が default を要求する — `default: return null` でも Biome は満たすが exhaustive check 機会を失うので、同じく `value satisfies never;` を 1 行入れる。
+  <!-- importance: medium | mentions: 2 | first-seen: 2026-06 -->
 
 - **`?.` は already `undefined` を返す — `?. ?? undefined` は冗長**: `input.file?.name` はチェーンが短絡したとき `undefined` を返す。`input.file?.name ?? undefined` は「undefined を undefined で置き換える」だけで意味がない。detect: `rg '\?\.\w.*\?\? undefined'`。
   <!-- importance: low | mentions: 1 | first-seen: 2026-06 -->
 
-- **Biome が未使用変数を `_` prefix に rename しても TypeScript TS6133 は残る**: Biome の `noUnusedVariables` ルールはハンドラ関数をリネームして `_toggleSelect` のような `_` prefix 形式にするが、TypeScript の `noUnusedLocals`（TS6133）は `_` prefix を特別扱いしない。結果として `bun run typecheck` がエラーを吐き続ける。対処: 使われなくなった関数は削除する。「`_` prefix = 無視」はコメントアウトに相当し、削除の方が明確。Biome の rename が出た時点で「この関数を本当に使うつもりか」を問い直すトリガーとして扱う。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
-
-- **Biome の `noUnusedImports` が複数 Edit 呼び出し間で import を削除する**: PostToolUse hook が Edit ごとに走り、import を追加した直後（まだ使用箇所を書いていない）に Biome がその import を「未使用」として即削除する。次の Edit で使用箇所を追加しようとすると「import が消えている」状態になる。対処: **import の追加と使用箇所の追加を 1 つの Edit ブロックで必ず同時に行う**。import だけ先に追加する分割 Edit は避ける。今回の事例: `selectVendorCandidateAction` に `updateInvoiceVendorResolution` を追加しようとして import だけ先に Edit したところ 3 回連続 Biome に削除された。1 つの Edit で import + 関数本体変更を同時に含めることで解消。
-  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
-
-- **`noUncheckedIndexedAccess` は type predicate による narrow の後でも index 式の型は `T | undefined` のまま**: `isKnownRole(user.role)` のような type predicate で `user.role` を `keyof Roles & string` に narrow しても、`roles[user.role]` のような index アクセスの型は依然 `RoleLike | undefined`。TypeScript は type predicate が「変数の型を変える」だけで「index 演算子全般の結果型」を変えない仕様のため。対処: `?.` で undefined アクセスを回避し、`?? false` 等で undefined を fail-closed な値に倒す（単純に `!` でアサートしない — `noUncheckedIndexedAccess` の目的と相反する）。
+- **Biome auto-fix は中間 Edit 状態を誤検知する — Edit をまたいで壊れる**: ① `noUnusedVariables` の `_` prefix rename は TS6133（`noUnusedLocals` は `_` prefix を特別扱いしない）を消さない → 使われなくなった関数は rename でなく削除する（rename はコメントアウト相当。rename が出たら「本当に使うつもりか」を問い直す）。② `noUnusedImports` は「import 追加直後・使用箇所未記述」の中間状態を未使用として即削除する（PostToolUse hook が Edit ごとに走るため。import だけ先に Edit すると連続で消される）→ import 追加と使用箇所は必ず 1 つの Edit で同時に書く。
+  <!-- importance: high | mentions: 2 | first-seen: 2026-06 -->
 
 - **`z.discriminatedUnion` は `ZodObject[]` を要求するため `z.refine()` と組み合わせられない**: `.refine()` を呼ぶと `ZodObject` → `ZodEffects` に変換されるため `z.discriminatedUnion("action", [schema.refine(...), ...])` は TypeScript エラーになる。代替: `z.union([schema.refine(...), otherSchema])` を使う。`z.discriminatedUnion` の「action フィールドで早期終了」メリットは union が 2〜3 択の規模では体感差がないため `z.union` で十分。今回の事例: `action="resolve"` のスキーマに `z.refine((d) => d.kind !== "discount" || d.amount !== null)` を追加した結果 discriminatedUnion が落ちた。
   <!-- importance: medium | mentions: 2 | first-seen: 2026-06 -->

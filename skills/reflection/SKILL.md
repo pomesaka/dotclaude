@@ -159,9 +159,9 @@ meta-rule: <WHY-first で書かれた 1-2 文の higher-order principle>
 
 ユーザーが承認した原則について以下を実行:
 
-#### 6-a. archive ファイルへの退避
+#### 6-a. archive ファイルへの退避（archive-split の原則のみ）
 
-元の具体例チェーンを **1 ファイルに集約して** archive に退避する（1 reflection run = 1 archive ファイル）。
+書き戻し方針が **archive-split**（原則だけ残して unique 情報 — 亜種・issue 番号・再現条件 — を live doc から出す）の原則についてのみ、元の具体例チェーンを **1 ファイルに集約して** archive に退避する（1 reflection run = 1 archive ファイル）。**inline-merge**（統合後も unique 情報が live doc に残る・消えるのは重複や矛盾の片割れだけ）の原則は archive 不要 — 6-a をスキップして 6-b へ（区別の詳細は Gotchas 参照）。run 内の全原則が inline-merge なら archive ファイル自体を作らない。
 
 **archive パス**: `<primary-doc の親ディレクトリ>/archive/<元のファイル名>-YYYY-MM-DD.md`
 
@@ -280,7 +280,7 @@ archive 生成:
 - **X 統合の判断基準**: 「表層のトピックが違っても、深層の失敗モード（rg 全件確認をサボる・placeholder を掃除しない・drift 検出をサボる など）が同一か？」YES なら X 候補、NO なら L 候補。曖昧なら **AskUserQuestion で「これは同じ根本原因ですか？」を必ず聞く**（LLM 単独で無理に横断化すると各文脈のニュアンスが消える）。
 - **入力を全部一気に投げない**: 元論文が 100 メモリに限定しているのには理由がある。conventions.md（2596 行）+ CLAUDE.md（数百行）を一括で LLM に渡すと 3 問が総花的になり圧縮機会が見えなくなる。Phase 2 で「見出し + ブロック先頭数行」だけ抽出し、Phase 4 で本文を Read する。
 - **live doc から具体例を全消しできない、というルールを持たない**: 過去の設計では「代表例 1-2 件は残す」としていたが、これは圧縮の天井を作る。archive に退避するのでトレーサビリティは保たれる。**live doc は原則のみ、実例は archive に集約** が原則。
-- **archive を作らずに削除しない**: 具体例チェーンを消しっぱなしにすると人間の trace が不可能になる。必ず archive に退避してから削除する。
+- **archive が必要なのは archive-split のみ — inline-merge は archive 不要**: archive の存在意義は「live doc から消えた **unique 情報**（亜種・issue 番号・再現条件）の trace 可能性」。**archive-split** = 原則 1 行だけ残して実例チェーンを外に出す → unique 情報が live doc から消えるので archive 必須。**inline-merge** = 統合後も WHY・issue 参照・再現条件が live doc に残る編集 → 消えるのは重複コピー・矛盾の片割れ・❌コードの逆写しなど定義上の冗長物なので、archive するとそれ自体が矛盾（冗長物の保管庫になる）。履歴は VCS に任せる。**この区別の規律**: inline-merge と呼べる条件は「unique 情報が live doc に残っていること」— それを満たさない削除をしたくなったら、それは inline-merge ではなく archive-split を選ぶ（2026-07 の docs/ 圧縮 run で境界が曖昧なまま実行し、後追い archive を作りかけて撤回した実例）。
 - **archive リンクを絶対パスで書かない**: `archive/<元のファイル名>-YYYY-MM-DD.md#N-<slug>` の相対パス表記にする（primary-doc と同じディレクトリの archive/ を指す）。絶対パスにするとリポジトリ移動時に壊れる。
 - **primary-doc が symlink 経由でアクセスされる場合、archive も symlink で辿れるようにする — 初回セットアップを忘れると相対リンクが解決しない**: `~/.claude/CLAUDE.md` のように primary-doc が実体（例: `~/github.com/pomesaka/dotclaude/CLAUDE.md`）への symlink 経由で読まれるとき、live doc 内の相対リンク `archive/xxx.md` は「symlink 経由で読んだ場合の解決先」（`~/.claude/archive/xxx.md`）を指す。archive 実体を `<実体リポジトリ>/archive/` に置いただけでは symlink 側から解決できない。初回だけ `ln -s <実体>/archive <symlink 親>/archive` を実行して、両方のパスから同じ archive を辿れるようにする。2 回目以降の run では既存 symlink を使うので不要。
 - **archive は 1 reflection run = 1 ファイルに集約する**: 原則ごとに別ファイルにすると archive ディレクトリが乱雑になり、後から「あの月に何を圧縮したか」を追いにくい。1 run で処理した複数原則は 1 ファイル内でセクション分けする。同日再実行時は `-01`, `-02` サフィックスで区別。

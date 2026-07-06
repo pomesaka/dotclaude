@@ -11,7 +11,7 @@
 | `noRedundantRoles` | `<ol role="list">` | `<ol>`（role 省略） |
 | `noNoninteractiveTabindex` | `<span tabIndex={0}>` / `role="tabpanel" tabIndex={0}` | `<button type="button">` に置き換える（`<button>` はデフォルトで keyboard-focusable）。WAI-ARIA tabpanel パターンが必要な場合のみ `// biome-ignore` |
 | `useSemanticElements` (group) | `<div role="group" aria-label>` | フォームのグループなら `<fieldset>` + `<legend className="sr-only">`。**フォーム以外（データテーブルの列グループ等）では `<fieldset>` は意味的に不適切** → `<section aria-label="...">` を使う（section は landmark role を持ち aria-label が有効に機能する）。`<fieldset>` の `aria-label` は付けない（`<legend>` で代替） |
-| `useSemanticElements` (radio) | `<button role="radio" aria-checked>` | `<button aria-pressed>` （toggle button パターン） |
+| `useSemanticElements` (radio) | `<button role="radio" aria-checked>` | 単一選択グループは native `<input type="radio" className="sr-only">`＋`<label>`（詳細は本文）。`aria-pressed` は複数選択トグル用なので単一選択に使わない |
 | `noRedundantRoles` (list) | `<ul role="list">` | `<ul>`（role 省略。`list-none` + `aria-label` で意味論を担保） |
 | `noStaticElementInteractions` | `<div onClick>` / **`<div onMouseEnter>` / `<div onMouseLeave>`** | ハンドラを `<button>` 等の interactive 要素へ移す |
 
@@ -29,9 +29,9 @@
 
 ### 条件付き `role` + `aria-*` は Biome が静的に弾く
 
-`role={cond ? "tabpanel" : undefined}` と `aria-labelledby={cond ? id : undefined}` を同じ要素に並べると、Biome の `useAriaPropsSupportedByRole` が「role のない div に aria-labelledby がある」と判定してエラーにする（条件が同一であっても静的解析では安全性を証明できない）。
+`role={cond ? "tabpanel" : undefined}` と `aria-labelledby={cond ? id : undefined}` を同じ要素に並べると、Biome の `useAriaPropsSupportedByRole` が「role のない div に aria-labelledby がある」と判定してエラーにする（条件が同一であっても静的解析では安全性を証明できない）。値の三項（`aria-labelledby={cond ? "id-a" : "id-b"}`）も同様に静的に拒否される。
 
-修正パターン: 要素ごと三項で分岐する。
+修正パターン: 要素ごと三項で分岐し、それぞれに固定の文字列を渡す。
 
 ```tsx
 // NG
@@ -50,6 +50,16 @@
 <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
 
 ## aria-live region
+
+**動的に DOM 挿入される要素（ローディングカード・条件付きエラー div）は live region role を付ける** — 挿入時にリーダーが読み上げるため。`role="alert"`（= assertive）はエラー・操作ロック・バリデーション失敗など即時割り込み、`role="status"`（= polite）はローディング・進捗と、ページ初期ロード時から並びうる永続エラー（DB の failed 行等 — 毎回 assertive 割り込みはノイズ）に使う。装飾アイコン・Unicode 文字（✓・⚠）は `aria-hidden="true"`（テキストが意味を担うので二重読み上げ回避）、live region に `aria-label` は付けない（内容とラベルの二重読み上げ）。初期表示要素の hidden→visible は role では拾えないので `aria-live` を直接付ける。同一画面で「操作直後の transient エラー = alert / ロード時から存在しうる永続エラー = status」の非対称は正当 — レビューで「揃えろ」と指摘されやすいため WHY / WHY NOT コメントで守る（実例: issue 965 の uploading 失敗セル = alert / staging 抽出失敗セル = status）。
+```tsx
+// ✅ role="alert" — 条件付きマウントで DOM 挿入された瞬間に割り込み読み上げ
+{isMultiInvoice && <div role="alert" className="rounded-lg bg-destructive/10 ...">
+  <AlertTriangle aria-hidden="true" />
+  複数請求書が紐付いています。
+</div>}
+```
+<!-- importance: medium | mentions: 4 | first-seen: 2026-06 -->
 
 **常時 DOM に存在させる**: `{condition && <div aria-live>}` のように条件付きマウントすると NVDA 等の AT が登録できない。常時置いて content を切り替える。
 
@@ -70,29 +80,7 @@ const PHASE_MESSAGES: Partial<Record<Phase, string>> = {
 
 出力テキスト本体を live region に流してはいけない（AT が差分ごとに全文読み上げを試みる）。
 
-**Skeleton と aria-live の分離**: `role="status"` 内に `<Skeleton>` を動的追加すると各バーが読み上げられる。テキストアナウンスと視覚的 Skeleton を分離する:
-```tsx
-<div role="status">
-  <p className="sr-only">読み込み中</p>
-  <div aria-hidden="true">  {/* Skeleton 群は aria-hidden で隠す */}
-    <Skeleton />
-  </div>
-</div>
-```
-
-**`aria-busy` は role を持つ要素に**: `<div>`（暗黙 role: generic）の `aria-busy` はサポート外の AT がある。`<section>`・`<main>`・`<article>` 等のランドマーク要素に付ける。`aria-busy={isLoading || undefined}` とすると false 時に属性が DOM から消える。
-<!-- importance: medium | mentions: 2 | first-seen: 2026-05 -->
-
-**スケルトン内のインタラクティブ要素に `inert` を使う**: `pointer-events-none` + `aria-hidden` だけではキーボードフォーカスが通り抜けてしまう。React 19 では `inert` を boolean prop として使える:
-```tsx
-<div className="pointer-events-none" aria-hidden="true" inert>
-  {/* フォーム・ボタン等のスケルトン */}
-</div>
-```
-`inert` はポインタ・キーボード・AT の全アクセスを遮断する。`pointer-events-none` と `aria-hidden` は冗長になるが意図を明示するため残してよい。
-<!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
-
-**`aria-live` をインタラクティブ要素（`<button>` 等）の内部に置いてはいけない**: AT がインタラクティブ要素内の live region を正しく処理しないことがある。コピー完了通知やフォーム送信結果などは、ボタンの**外側**に `sr-only` span を置き、そちらでアナウンスする。
+**live region は「単一メッセージの独立 sr-only span」に隔離する**（WHY: `role="status"` / `aria-live` をコンテナや interactive 要素に付けると AT が変化のたびに内部全体の再読み上げを試みる）。3 つの適用: ① Skeleton 群は `aria-hidden="true"` で隠し、アナウンステキストは別の sr-only 要素に置く、② ボタンのコピー完了通知等はボタンの**外**の sr-only span でアナウンスする（AT がインタラクティブ要素内の live region を無視することがある）、③ 動的ステップリストは list container に `role="status"` を付けず、running 中のステップだけを sr-only span でアナウンスする。
 ```tsx
 // ❌ ボタン内の aria-live は AT が無視することがある
 <button onClick={handleCopy}>
@@ -106,20 +94,18 @@ const PHASE_MESSAGES: Partial<Record<Phase, string>> = {
 </span>
 <button onClick={handleCopy}>コピー</button>
 ```
-<!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
+<!-- importance: high | mentions: 3 | first-seen: 2026-05 -->
 
-**動的ステップリスト全体を live region に入れない**: `role="status"` をリストコンテナに付けると AT がリスト変化のたびに全ステップを読み上げようとする。現在実行中のステップのみを `sr-only` span でアナウンスする:
+**`aria-busy` は role を持つ要素に**: `<div>`（暗黙 role: generic）の `aria-busy` はサポート外の AT がある。`<section>`・`<main>`・`<article>` 等のランドマーク要素に付ける。`aria-busy={isLoading || undefined}` とすると false 時に属性が DOM から消える。
+<!-- importance: medium | mentions: 2 | first-seen: 2026-05 -->
+
+**スケルトン内のインタラクティブ要素に `inert` を使う**: `pointer-events-none` + `aria-hidden` だけではキーボードフォーカスが通り抜けてしまう。React 19 では `inert` を boolean prop として使える:
 ```tsx
-{/* sr-only span だけが live region — リストコンテナには付けない */}
-<span role="status" aria-live="polite" aria-atomic="true" className="sr-only">
-  {steps.find((s) => s.status === "running")?.label
-    ? `${steps.find((s) => s.status === "running")?.label} を処理中`
-    : ""}
-</span>
-<div className="border border-border">{/* ← role="status" は付けない */}
-  {steps.map(step => <StepRow key={step.id} step={step} />)}
+<div className="pointer-events-none" aria-hidden="true" inert>
+  {/* フォーム・ボタン等のスケルトン */}
 </div>
 ```
+`inert` はポインタ・キーボード・AT の全アクセスを遮断する。`pointer-events-none` と `aria-hidden` は冗長になるが意図を明示するため残してよい。
 <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
 
 ## その他の ARIA パターン
@@ -145,9 +131,10 @@ const PHASE_MESSAGES: Partial<Record<Phase, string>> = {
   </PopoverTrigger>
   ```
   <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
+- **Radix UI の `asChild` でインタラクティブなトリガーを作るときは必ず `<button>` でラップする**: `<Popover.Trigger asChild>` や `<DropdownMenu.Trigger asChild>` に `<span>` を渡すと Radix が `aria-haspopup`・`aria-expanded` を付与はするがキーボードフォーカスを保証しない（`<span>` は本来フォーカス不可）。「バッジをクリックしてメニューを開く」のような UX では、バッジが対応済みでも未対応でも `<button>` でラップしてから `asChild` に渡すこと。対応済みで disabled にしたい場合は `<button disabled>` にすれば Radix がそれを尊重する。実例: issue 111 の `ResolutionBadge` で `<span asChild>` から `<button asChild>` に変更（quality reviewer 指摘）。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 - **カードリンクの accessible name**: `<Link aria-labelledby={headingId}>` + `<h3 id={headingId}>` で読み上げ内容を見出しに絞る
 - **`<fieldset aria-label>` + `<legend>` は二重アクセシブル名**: `<legend className="sr-only">` だけ使い `aria-label` は付けない
-- **WCAG 2.5.3 Label in Name**: visible text と `aria-label` のミスマッチは違反。accessible name には visible text を含める
 - **`role="status"` は動的コンテナのみ**: 静的な空状態 `<div>` に付けない（「ここは更新されるエリア」と宣言することになる）
 - **タブは `aria-current="page"` ではなく `aria-selected`**: `aria-current="page"` はページネーション・サイトマップで「現在のページ」を示す。タブコンテキストでは WAI-ARIA Tabs パターン（`<div role="tablist">` + `<button role="tab" aria-selected={...}>`）または単に `aria-selected={isActive}` を使う
   <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
@@ -178,16 +165,6 @@ const PHASE_MESSAGES: Partial<Record<Phase, string>> = {
   </Link>
   ```
   <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
-- **Biome の `useAriaPropsSupportedByRole` が条件付き aria props を静的に拒否**: `aria-labelledby={condition ? "id-a" : "id-b"}` のような式を Biome が静的解析で拒否する。対処: JSX ternary で2つのコンポーネントに分岐させ、それぞれに固定の文字列を渡す。
-  ```tsx
-  // ❌ Biome に弾かれる
-  <div role="tabpanel" aria-labelledby={`tab-${activeTab}`} />
-  // ✅ JSX ternary で分岐
-  {activeTab === "a"
-    ? <div role="tabpanel" aria-labelledby="tab-a" />
-    : <div role="tabpanel" aria-labelledby="tab-b" />}
-  ```
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
 - **`role="link"` on `<div>` も Biome `useSemanticElements` が拒否**: disabled なナビゲーション項目を `<div role="link" aria-disabled>` で表現するとBiome エラー。`<button type="button" disabled>` が正しい代替（ナビ操作ではなくアクションとして扱い、 disabled でインタラクション不可を表現）。`<a>` を使いたい場合は `href` 省略 + `aria-disabled` が必要だがBiome の `useSemanticElements` が `href` なし `<a>` に対して `<span>` 推奨を出すことがある。`<button disabled>` が最も安全。
   <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
 - **`aria-required` は `radiogroup` に付けられない**: WAI-ARIA 1.2 の `radiogroup` ロールの許可属性に `aria-required` は含まれない。「このフィールドは必須」を伝えたい場合は各 `<input type="radio">` に `required` 属性を付けるか、ブラウザの form バリデーションに任せる。Biome はこれを静的に検出しないことがあるが、AT（スクリーンリーダー）は無視するため実害も伝達もない — ならば付けない方が正確。
@@ -205,8 +182,8 @@ const PHASE_MESSAGES: Partial<Record<Phase, string>> = {
   </label>
   ```
   <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
-- **`<section aria-label>` を `<div>` に変えるとランドマーク情報が消える**: `<section>` は暗黙的に `role="region"` を持つためスクリーンリーダーがランドマークとして認識する。`<div>` に変更すると `aria-label` が残っていても機能しない（plain `<div>` に `aria-label` を付けても AT は無視する）。`<div>` に移行する場合は `role="region" aria-label="..."` を明示すること。逆に「ランドマーク過剰」と感じるなら `<section>` ごと削除し `aria-label` も削除するのが一貫している。**判断基準**: 独立した機能単位（フォームエリア・ユーザーセクション等）は `<section>` または `<div role="region">` でランドマーク化する。装飾的グルーピングにはランドマーク不要。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+- **ランドマーク（`<section>`＝暗黙 `role="region"`）は独立した機能単位（フォームエリア・ユーザーセクション等）にのみ付ける。装飾的グルーピングは素の `<div>`。曖昧なら `<section>` 寄せが安全**（WHY: 素の `<div>` は `aria-label` を付けても AT が無視する／`<section>` vs `role="region"` vs `<div>` の選択は複数の正当な答えがありレビュアー間で追加↔削除が揺れやすいので基準を固定する）。`<div>` へ移す場合は `role="region" aria-label="..."` を明示。「ランドマーク過剰」と感じるなら `<section>` ごと削除し `aria-label` も削除するのが一貫している。
+  <!-- importance: medium | mentions: 2 | first-seen: 2026-06 -->
 - **カスタムダイアログ（`<dialog>` / Radix UI 非使用）はフォーカス管理を手動で行う**: ネイティブ `<dialog>` や Radix `Dialog` を使わないカスタムオーバーレイは開時のフォーカス移動・Escape キーを自前で実装する。`tabIndex={-1}` を付けた内側コンテナに `useRef` でフォーカスを当て (`dialogRef.current?.focus()`)、外側コンテナに `onKeyDown` で Escape を捕捉する。
   ```tsx
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -220,8 +197,6 @@ const PHASE_MESSAGES: Partial<Record<Phase, string>> = {
   </div>
   ```
   `focus:outline-none` を忘れるとフォーカスリングが意図しない場所に出る。Radix/headlessui が使えるならそちらが正解（フォーカストラップも含む）。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
-- **ランドマーク設計は LLM レビュアー間で判断が揺れやすい**: `<section>` vs `role="region"` vs `<div>` の選択は複数の正当な答えが存在し、レビュアーラウンドをまたいで「追加→削除→再追加」という矛盾が起きうる。実装時点で確認する基準: そのエリアがページナビゲーション目的で独立したセクションなら `<section aria-label>`（AT がランドマークとして提示する）、UI グルーピング目的のみなら `<div>`（ランドマーク不要）。曖昧なら `<section>` にしておく方が過剰でも安全。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 - **key-value ペア（ファイル名・作成者・日時等）のメタ情報は `<dl>/<dt>/<dd>` で表現する**: `<span>ファイル名: foo.mp4</span>` のようなコロン区切り表示はスクリーンリーダーに「用語/説明」の関係を伝えない。`<dl>` (description list) / `<dt>` (term) / `<dd>` (detail) を使うことで AT がペアを構造として認識する。アイコンには `aria-hidden="true"` を付けて読み上げを抑止し、`<dt>` にラベルを書く。
   ```tsx

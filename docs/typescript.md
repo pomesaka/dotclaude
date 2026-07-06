@@ -37,7 +37,7 @@
   if (!value) return fallback;
   // この時点で value は non-null
   ```
-  例: `Map.get(key)!` パターン → Map iteration で直接値を取得、またはループ終了時点で値が保証される構造に変更
+  例: `Map.get(key)!` → iteration で直接値取得、または値が保証される構造に変更
 - **`as const` 配列とユニオン型の二重管理を避ける**: `VariableType = "a" | "b" | "c"` と `VALID_VALUES: readonly VariableType[] = ["a","b","c"]` を別々に定義すると型と配列がずれるリスクがある。`as const` 配列を先に定義して型を導出する:
   ```typescript
   // ❌ 型と配列の二重管理（拡張時に片方を忘れがち）
@@ -69,30 +69,30 @@
 - **導出可能なフィールドを型に持たせない**: 別フィールドから常に計算できる値（例: `url` から `new URL(url).hostname` で得られる `domain`）は型に含めず表示層で導出する。型に入れると、データを組み立てる呼び出し側が一貫性を維持する責務を持つことになり、不整合が生じやすい。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
 
-### `mode` フィールドがある型は discriminated union にする
+## 条件付き optional は discriminated union にする
 
-`inputMode`・`type`・`status` などのモードフィールドがある型で、モードによって持つフィールドが変わるなら optional ではなく discriminated union で表現する。
+フィールドの存在が別フィールド（`mode`/`type`/`status`）の値に依存するなら optional でなく discriminated union にする。WHY: optional だと discriminant を確認せずアクセスでき、不変条件が型に入らない（ランタイムガードとそのテストが必要になる。型保証に昇格すればガードとそのテストが両方消える）。
 
 ```typescript
-// ❌ Bad: inputMode によって inputText が有効かどうか型で分からない
-type SummarizeHistoryItem = {
-  inputMode: "text" | "file";
-  inputText?: string;      // text のときのみ有効
-  fileType?: SummarizeFileType; // file のときのみ有効
+// ❌ Bad: step を確認しなくても minutes にアクセスできてしまう
+type MinutesJob = {
+  step: "queued" | "done" | "failed";
+  minutes?: Minutes;  // step === "done" のときのみ存在、という不変条件が型に入らない
+  error?: string;
 };
 
-// ✅ Good: inputMode でブランチし、各フィールドの有無を型で強制
-type SummarizeHistoryItem = {
+// ✅ Good: Base & union で不変条件を型レベルで保証（共通フィールドは Base に）
+type MinutesJob = {
   id: string;
-  summary: string;
 } & (
-  | { inputMode: "text"; inputText: string }
-  | { inputMode: "file"; fileType?: SummarizeFileType }
+  | { step: "queued" }
+  | { step: "done"; minutes: Minutes }     // minutes は required
+  | { step: "failed"; error: string }      // error は required
 );
-
-// 利用側: 型の絞り込みが必要
-item.inputMode === "file" ? item.fileType : undefined
 ```
+
+**判断基準**: 「`status === X` を確認してからしかアクセスしない」フィールドは variant 専用、「discriminant チェック前にアクセスしうる（`useEffect` 依存配列・computed value の計算）」または「どのケースでも任意」なら base type に残す。実例: `MinutesDetail` で `summary`/`decisions` は view の計算・`useEffect` から参照するため base、`fileName` は `failed` 確認後のみ参照するため variant 専用（issue 258）。
+<!-- importance: medium | mentions: 3 | first-seen: 2026-05 -->
 
 ## discriminated union Result 型に型と同名の companion object でコンストラクタを付ける
 
@@ -214,30 +214,6 @@ const label = LABELS[status]; // フォールバック不要（exhaustive が保
 ```
 <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 
-## 「別フィールドの値が条件の optional」は discriminated union に
-
-あるフィールドの存在が別フィールドの値に依存する場合（`step === "done"` のとき `minutes` が存在する等）は、optional フィールドではなく discriminated union で型を表現する。
-
-```typescript
-// NG: optional のままでは step を確認しなくても minutes にアクセスできてしまう
-interface MinutesJob {
-  step: "queued" | "done" | "failed";
-  minutes?: Minutes;  // step === "done" のときのみ存在、という不変条件が型に入らない
-  error?: string;
-}
-
-// OK: step ごとに型を分岐させて不変条件を型レベルで保証
-type MinutesJob =
-  | { step: "queued" }
-  | { step: "done"; minutes: Minutes }     // minutes は required
-  | { step: "failed"; error: string };     // error は required
-```
-
-**判断基準**: 「このフィールドが存在するのは、別フィールドが〇〇の場合のみ」と言えるなら discriminated union にする。optional は「どのケースでも任意」のときだけ使う。
-
-**副次効果**: 「失敗時でも summary を渡せてしまう」のようなランタイムガード（`if (status === 'done' && summary)`）が不要になり、その動作をテストしていたケースも消える。型保証に昇格した分、コードとテストが両方シンプルになる。
-<!-- importance: medium | mentions: 2 | first-seen: 2026-05 -->
-
 ## モジュール境界を越える型は `ReturnType<F>` より明示 `interface` に
 
 `ReturnType<typeof someInternalFn>` で型を派生させると「実装型」として機能する。関数内部でのみ使う型なら許容できるが、他モジュールへ export したり公開 API の引数に使う型には使わない。
@@ -281,22 +257,7 @@ export type NewAgentActionRow = typeof agentActions.$inferInsert // schema
 
 判断基準は「参照される広さ」。ドメイン型は orchestrator・agents・UI から広く import されるため canonical 名を保つ方が長期的に変更コストが低い。Row 型は repository 実装内部で完結することが多く、リネームしても影響範囲が狭い。
 
-合わせて **discriminated union の literal 型（`Kind` enum など）はドメイン層に置く**。
-
-- **discriminated union でステータス別フィールドを型保証する — ただし「ビュー外で参照するフィールド」は base type に残す**: `status: "done" | "failed"` のような union 型で「`failed` のときだけ存在するフィールド」（例: `fileName`）は `done` variant から除外してよい。しかし view コードが status チェック外でフィールドにアクセスする場合（`useEffect`・computed value の計算等）、そのフィールドは base type（全 variant に共通の型）に置く必要がある。
-  ```ts
-  // NG: summary が done にしか無く、useEffect で status チェック外から参照されると型エラー
-  type Done = { status: "done"; summary: string; fileName?: never };
-  type Failed = { status: "failed"; summary?: never; fileName: string | null };
-
-  // OK: summary は両方から使うので base に、fileName は failed 専用なので variant に
-  type Base = { summary: string; decisions: string[] }; // 両方で使うフィールド
-  type MinutesDetail =
-    | (Base & { status: "done" })
-    | (Base & { status: "failed"; fileName: string | null });
-  ```
-  判断基準: 「このフィールドは `status === X` を確認してからしかアクセスしない」→ variant 専用。「`status` のチェック前にアクセスしうる（`useEffect` 依存配列・計算 etc.）」→ base type。実例: issue 258 の `MinutesDetail` で `summary`/`decisions`/`utterances` は view の `allSpeakers` 計算・`useEffect` 依存から参照するため base に残し、`fileName` は `status === "failed"` チェック後のみ参照するため `failed` variant 専用にした。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->infra(schema) が `import type { Kind } from "../domain/types"` で参照し、必要なら `export type { Kind }` で re-export する。逆向き（schema が enum を所有、domain が import）にすると Clean Architecture の依存方向（infra → domain）に反する。
+合わせて **discriminated union の literal 型（`Kind` enum など）はドメイン層に置く**。infra(schema) が `import type { Kind } from "../domain/types"` で参照し、必要なら `export type { Kind }` で re-export する。逆向き（schema が enum を所有、domain が import）にすると Clean Architecture の依存方向（infra → domain）に反する。
 
 ## モジュール間の循環依存を断つ注入パターン
 
@@ -364,5 +325,5 @@ const label = RESOLUTION_LABEL[method](amount);
 **適用基準**: 「大多数の key は引数不要だが、特定の key だけ引数が必要」と感じたとき。引数を `_` で無視する key が増えても呼び出し側の統一性を保てる。`Record<K, V>` と `satisfies` で key 網羅チェックも兼ねる。実例: issue 252 の `RESOLUTION_LABEL`（holdover/expense は amount 不要だが統一して `(amount: number | null) => string` にした）。
 <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 
-- **正規化を要する検索/比較関数は raw 入力を受けて関数内部で正規化する defensive 契約にする**: `matches(item, query: string)` のように引数を「未加工の生の文字列」で受け取り、内部で `normalize(query)` を呼ぶ。`matches(item, normalizedQuery: string)` のように caller 側で事前正規化を期待する契約は、将来の追加 caller が「ここは生でいいか正規化済みか」を毎回判断することになり、normalize 忘れが silent miss（検索ヒット 0 件・比較が常に false など runtime error にならない無音バグ）を生む。一度公開した API 契約は変更コストが高いため、最初から defensive に「caller は何も気にしなくてよい・関数が責任を持って正規化する」形にする。NG: `matchesVendorSearch(vendor, normalizedQuery)` を caller に正規化させる ／ OK: `matchesVendorSearch(vendor, rawQuery)` を関数内部で `normalizeVendorName(rawQuery)` する。**判断基準**: 「この関数の引数を間違った形（生 / 正規化済み）で渡したとき、コンパイルエラーになるか？」NO（`string` 同士で型が同じ）なら defensive 契約にする。型で区別できるなら（branded type 等）caller 契約でもよい。実例: noah issue 263 の Round 1 review で `matchesVendorSearch` の引数名と中身が乖離し検出。
+- **検索/比較関数は raw 入力を受け内部で正規化する defensive 契約にする**: WHY: caller に正規化を期待すると `string` 同士で型が同じため normalize 忘れがコンパイルを通り silent miss（ヒット 0 件・常に false）になる。判断基準: 引数を生/正規化済みで取り違えてコンパイルエラーになるか？ NO なら defensive、branded type 等で型区別できるなら caller 契約可。NG: `matchesVendorSearch(v, normalizedQuery)` ／ OK: 内部で `normalizeVendorName(rawQuery)`（issue 263）。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->

@@ -34,8 +34,8 @@ TypeScript の観点に加え、以下の観点でレビューする。
   if (!data) return <Error />          // データ取得失敗
   ```
 - **View が "smart" だと感じたら状態を吸い上げる**: `useState`・`useMutation`・非同期ロジックを View が持っていたらカスタムフックに移す
-- **discriminated union の片方にしか必要ないフックはコンポーネントを分割する**: `useCopyFeedback("")` のように "wrong" なブランチでも空値でフックを呼んでしまうのは設計臭。hooks-at-top-level 制約でインラインの条件付き呼び出しはできないため、コンポーネントを `PendingXxx` / `DoneXxx` 等に分割し、フックを必要なコンポーネントにのみ閉じ込める。判断基準: "このフックはあるブランチでは実際に使われているか？" → 使われないなら分割せよ。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+- **hook を「一部のブランチ / early-return 後」でしか呼べないときはコンポーネントを分割して hook を必要な側に閉じ込める** — hooks-at-top-level 制約でインラインの条件付き呼び出しも early-return 後の呼び出しも lint 違反（`useHookAtTopLevel`）になるため。外側が early-return / 分岐を担い、内側（`XxxInner` / `PendingXxx`）が hook を呼ぶ。`useCopyFeedback("")` のように使わないブランチで空値のままフックを呼ぶのも同じ設計臭。判断基準: 「このフックは全ブランチで実際に使われるか？」→ NO なら分割。
+  <!-- importance: medium | mentions: 2 | first-seen: 2026-05 -->
 - **フックは early return より前に**: `useCallback`・`useState` 等を条件分岐の early return より後に置くと `useHookAtTopLevel` lint エラーになる。early return が必要な場合でも全フックをコンポーネントトップに集約してから分岐する
   <!-- importance: high | mentions: 2 | first-seen: 2026-05 -->
 - **stale closure**: conditional な `setState` は functional update で書く（`setJobName(prev => prev || file.name)`）
@@ -51,11 +51,6 @@ TypeScript の観点に加え、以下の観点でレビューする。
   ```
 - **`useState(initialValue)` は初回マウント時のみ適用される — sessionStorage / 非同期初期値を渡す場合は hasMounted パターン**: `useState(props.initialValue)` はコンポーネントの最初のレンダーにしか適用されない。親から `useEffect` 経由で非同期に計算した初期値を `setResume(value)` しても、子コンポーネントの `useState` は再度初期化されない。対処: 子コンポーネントを「初期値が確定してから初めてレンダーする」ように `hasMounted` フラグで制御する。
   ```tsx
-  // ❌ useEffect で resume を取得 → DocumentNewView の useState は既に "" で初期化済み
-  const [resume, setResume] = useState(null);
-  useEffect(() => { setResume(consumeResumeInput()); }, []);
-  return <DocumentNewView initialTemplateId={resume?.templateId} />;
-
   // ✅ hasMounted が true になるまで描画をスキップ → mount 時に resume が確定している
   const [resume, setResume] = useState(null);
   const [hasMounted, setHasMounted] = useState(false);
@@ -65,26 +60,6 @@ TypeScript の観点に加え、以下の観点でレビューする。
   ```
   判断基準: "子コンポーネントが `useState(props.xxx ?? default)` の形で props を初期値に使っているか？" → 使っているなら hasMounted パターンが必要。
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
-- **early return の後で hook を呼べない → コンポーネントを分割する**: コンポーネントが早期 return（空状態・ローディング等）した後に hook を呼ぶ必要があるとき、React の「hook は条件分岐内・early return 後に呼べない」ルールに違反する。対処: コンポーネントを 2 層に分割する — 外側（`OuterComponent`）が early return を担い、内側（`InnerComponent`）が hook を呼ぶ。外側は early return を通過したときだけ内側をレンダーする。
-  ```tsx
-  // ❌ early return 後に useXxxPoll を呼べない（React ルール違反）
-  function InvoicePage({ months }: Props) {
-    if (months.length === 0) return <InvoiceEmptyState />;
-    const { job } = useInvoiceMatchingPoll(jobId); // Hook after conditional return
-    ...
-  }
-
-  // ✅ 外側が early return、内側が hook を呼ぶ
-  function InvoicePage({ months }: Props) {
-    if (months.length === 0) return <InvoiceEmptyState />;
-    return <InvoicePageInner months={months} />;
-  }
-  function InvoicePageInner({ months }: Props) {
-    const { job } = useInvoiceMatchingPoll(jobId); // OK: early return なし
-    ...
-  }
-  ```
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 - **async fetch → EventSource の2ステップは単一 `useEffect` に統合する**: fetch が resolve した後に別の effect が再実行されることはない（deps が変化しない限り）。fetch と EventSource を別 effect に分けると、fetch が完了しても EventSource effect が起動せず永遠に EventSource が開かない。正しい設計: 単一 effect 内で `const run = async () => { const data = await fetch(...); if (data.status === "done") return; es = new EventSource(...); }` として sequential に記述し、cleanup で `cancelled = true; es?.close()` を返す。
   ```ts
   useEffect(() => {
@@ -281,60 +256,7 @@ in-flight 中に送信トリガー（ボタン・ドロップゾーン等）を 
 
 判断基準: 「同一フォームが複数の entry point（ボタン・ドロップ・キーボードショートカット等）を持つか？」YES なら全 entry point で disabled を揃えるコストが高いのでレンダリング除去一択。
 
-## 動的に挿入されるローディングカードには `role="status"` + `aria-hidden` が必要
-
-in-flight 中にスピナーカードをレンダリングする構造（上記「レンダリング除去」パターン）では、カードが**動的に DOM に挿入される**ため、スクリーンリーダーは mount 時の読み上げを行う。しかし `role="status"` がないと live region として扱われず、状態変化が通知されないリーダー実装もある。
-
-```tsx
-// ❌ role なし — 一部リーダーで読み上げが起きない
-<div className="flex items-center gap-3">
-  <RefreshCw className="animate-spin" />
-  <p>取り込み中…</p>
-</div>
-
-// ✅ role="status" + aria-hidden でリーダーに正しく通知
-<div role="status" aria-live="polite" className="flex items-center gap-3">
-  <RefreshCw aria-hidden="true" className="animate-spin" />
-  <p>取り込み中…</p>
-</div>
-```
-
-- `role="status"` は `aria-live="polite"` を暗黙に含むが、明示すると意図が読みやすい
-- 装飾的なアイコン（スピナー・チェックマーク等）は `aria-hidden="true"` でリーダーから隠す。テキストが意味を担うため二重読み上げが起きない
-- **`aria-label` は付けない**: `role="status"` の live region に `aria-label` を付けると内容とラベルを二重読み上げするリーダーがある（「ステータス: 取り込み中… 取り込み中…」のようになる）
-<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
-
-## 条件付きマウントのアラート div には `role="alert"` が必要
-
-`isError && <div>...</div>` や `isMultiInvoice && mode === "view" && <div>...</div>` のように**条件分岐によって動的にマウントされるエラー・警告 div** は `role="alert"` を付ける。`role="alert"` は `aria-live="assertive"` を暗黙に含むため、DOM に挿入された瞬間にスクリーンリーダーが割り込み読み上げを行い、ユーザーに警告を届けられる。
-
-`role="status"`（polite — 現在の読み上げを中断しない）との使い分け:
-- **`role="alert"`**: エラー・操作ロック警告・入力バリデーション失敗 — 即座に伝える必要がある
-- **`role="status"`**: ローディング・進捗 — 流れを妨げない程度に伝える
-
-```tsx
-// ❌ role なし — 条件付きマウントはスクリーンリーダーに通知されない
-{isMultiInvoice && <div className="rounded-lg bg-destructive/10 ...">
-  複数請求書が紐付いています。
-</div>}
-
-// ✅ role="alert" — マウント時に即時読み上げ
-{isMultiInvoice && <div role="alert" className="rounded-lg bg-destructive/10 ...">
-  <AlertTriangle aria-hidden="true" />
-  複数請求書が紐付いています。
-</div>}
-```
-
-静的に常時表示されている要素（非表示の切り替えに CSS class だけ使う場合）は `aria-live="assertive"` を直接付ける方が確実。`role="alert"` は「DOM に存在しない → 挿入」の遷移で発火するため、最初から存在して `hidden` → `visible` に変わるケースは拾えない。
-
-**エラーでも「ページ初期ロード時点で DB から複数並びうる」表示は `role="alert"` にしない**: alert/status の判定軸は「エラーか進捗か」だけでなく「イベント駆動マウントか・初期描画に含まれうるか」。永続化された失敗状態（DB の failed 行など）をリスト内に描画するセルに `role="alert"` を付けると、ページを開くたびに全 failed 行が assertive に割り込み読み上げされてノイズになる — こちらは `role="status"` が正しい。同一画面で「ユーザー操作直後にのみ動的マウントされる transient なエラー（アップロード失敗など）= `role="alert"`」と「ロード時から存在しうる永続エラー表示 = `role="status"`」が並ぶ非対称は正当で、レビューで「揃えろ」と指摘されやすいため WHY / WHY NOT コメントで守る（実例: issue 965 の uploading 失敗セル alert / staging 抽出失敗セル status）。
-<!-- importance: medium | mentions: 1 | first-seen: 2026-07 -->
-
-**装飾的なテキスト文字（✓・⚠）も `aria-hidden="true"` が必要**: SVG アイコンコンポーネントだけでなく、`✓` や `⚠` のような Unicode 文字もスクリーンリーダーが「チェックマーク」「感嘆符」として読み上げる。意味はその後のテキストが担うため `<span aria-hidden="true">✓</span>` で隠す（実例: issue 242 の `AlignBadge`）。
-<!-- importance: medium | mentions: 2 | first-seen: 2026-06 -->
-
-**Radix UI の `asChild` でインタラクティブなトリガーを作るときは必ず `<button>` でラップする**: `<Popover.Trigger asChild>` や `<DropdownMenu.Trigger asChild>` に `<span>` を渡すと Radix が `aria-haspopup`・`aria-expanded` を付与はするがキーボードフォーカスを保証しない（`<span>` は本来フォーカス不可）。「バッジをクリックしてメニューを開く」のような UX では、バッジが対応済みでも未対応でも `<button>` でラップしてから `asChild` に渡すこと。対応済みで disabled にしたい場合は `<button disabled>` にすれば Radix がそれを尊重する。実例: issue 111 の `ResolutionBadge` で `<span asChild>` から `<button asChild>` に変更（quality reviewer 指摘）。
-<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+動的マウント要素の live region role・装飾要素の aria-hidden → `react-a11y.md`
 
 ## サーバー由来リストに client-only の transient 行を混ぜるときは「表示層 union + 合成関数」
 
