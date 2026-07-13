@@ -34,6 +34,8 @@ TypeScript の観点に加え、以下の観点でレビューする。
   if (!data) return <Error />          // データ取得失敗
   ```
 - **View が "smart" だと感じたら状態を吸い上げる**: `useState`・`useMutation`・非同期ロジックを View が持っていたらカスタムフックに移す
+- **モーダル / ダイアログ内の保存は「成功時のみ閉じる」— fire-and-forget で即閉じしない**: 保存 callback を `void onSave(...)` + 即 `setOpen(false)` で書くと、保存失敗（バリデーション 4xx・競合 409・ネットワーク断）時にユーザーの入力が失われ、エラーも表示する場所がない。正しい形: ①保存 props / hook は `Promise` を返す契約にする（`mutateAsync` ベース）②モーダルは `await` して成功時のみ閉じる ③失敗時は入力を保持したままモーダル内にエラー文言を表示する（`role="alert"`）。判断基準: 「この操作は失敗しうるか？失敗時にユーザーは入力し直しか？」— 再入力コストがあるなら必ずこの形。実例: noah issue 1013 の対応モーダル（レビュー指摘で fire-and-forget → async 化・PR #348）。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-07 -->
 - **hook を「一部のブランチ / early-return 後」でしか呼べないときはコンポーネントを分割して hook を必要な側に閉じ込める** — hooks-at-top-level 制約でインラインの条件付き呼び出しも early-return 後の呼び出しも lint 違反（`useHookAtTopLevel`）になるため。外側が early-return / 分岐を担い、内側（`XxxInner` / `PendingXxx`）が hook を呼ぶ。`useCopyFeedback("")` のように使わないブランチで空値のままフックを呼ぶのも同じ設計臭。判断基準: 「このフックは全ブランチで実際に使われるか？」→ NO なら分割。
   <!-- importance: medium | mentions: 2 | first-seen: 2026-05 -->
 - **フックは early return より前に**: `useCallback`・`useState` 等を条件分岐の early return より後に置くと `useHookAtTopLevel` lint エラーになる。early return が必要な場合でも全フックをコンポーネントトップに集約してから分岐する
@@ -267,4 +269,9 @@ in-flight 中に送信トリガー（ボタン・ドロップゾーン等）を 
 3. 合成関数（`mergeRows(dbRows, transientRows)`）を 1 箇所に定義し、**転生キー**（transient 行が永続化されたとき DB 行と一致する相関キー。例: S3 presign key）で dedup する — DB 側にはこのキーを 1 列足すだけでよい
 
 WHY: サーバー contract に client 状態が混ざると、クエリ層のテストに「DB に存在しない行」のケースが漏れ込み、SSR/CSR 境界でも「この行はどこから来たか」が追えなくなる。合成を UI 層 1 関数に閉じれば、dedup 規則の変更が 1 箇所で済み、transient → persisted 遷移の二重表示防止（refetch 完了を await してから transient を除去、とセット）も合成関数のコメントに集約できる。実例: noah issue 965 の `LifecycleDisplayRow` / `mergeUploadingRows`（pdfKey dedup）。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-07 -->
+
+## 全要素共通の既定を持つ UI 状態は「既定から外れた要素の Set」で持つ（既定側を列挙しない）
+
+アコーディオン等で「既定は全て閉じる」を `collapsedIds` を全 id で初期化して表現すると、refetch・ページング・mutation でデータに新要素が増えたとき、Set には初期化時点の id しか無いため**新要素だけ開いて出る**（逆の「既定全開」を `expandedIds` 全 id 初期化で作れば新要素だけ閉じて出る）。既定側は Set の**不在**で表す — 既定全閉なら `expandedIds`（空 Set 初期化）、既定全開なら `collapsedIds`（空 Set 初期化）。新要素はどの Set にも入っていない状態で現れるので、自動的に既定に従う。判断基準: 「データが増えたとき新要素はどちらの状態で現れるべきか？」— その状態を Set の不在側に置く。実例: noah invoice 一覧のグループアコーディオンを既定全閉に変えた際、`collapsedGroupIds` → `expandedGroupIds` に反転（issue 1008）。
 <!-- importance: medium | mentions: 1 | first-seen: 2026-07 -->

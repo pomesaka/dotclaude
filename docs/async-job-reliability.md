@@ -52,6 +52,8 @@ claim できなかった（= 既に誰かが running にした / 終端済み）
 
 - **接続・認証のキャッシュは失敗をキャッシュしない**: cold start で DB 接続や secret 解決を一度だけ行い warm で使い回す設計は定石だが、初期化 Promise を rejected のままキャッシュすると、一時障害でそのプロセス（warm インスタンス）が永続的に失敗し続ける。失敗時はキャッシュを破棄し、次回 cold path で再試行できるようにする。
 
+- **完了通知 handler で「初回成功時の cleanup」が共有リソースを消すなら、後続通知は terminal state 検出で早期 skip する**: 完了 webhook（POST /jobs/xxx/complete 等）の初回配信で「入力の一時オブジェクトを DELETE する」「一時ファイルを消す」「lock を解放する」等の cleanup を行うと、同じ通知が at-least-once で再配信されたとき、body の bucket/key で再 GET しようとして「消えた object」で 500 になり、原則2 の claim ロジックだけでは「running → failed」への状態退行（本当は成功していたジョブが Failed に上書きされる）を防げないことがある。対処: 完了 handler の最初で job.status を見て `Done` / `Failed` (terminal) なら `slog.Warn("duplicate ... completion for terminal job; skipping")` して early return する。cleanup が消すリソースを再度読みに行かないようにするのが安全側。判断基準:「この完了通知は 2 回目に発火したとき何かリソースを取得するか？ そのリソースは初回で消えるか？」両方 YES なら terminal 早期 skip を入れる。実例: analyze-spec の完了通知で `DeleteObject` を post-tx に出した副作用として、後続通知が同じ key の GetObject で失敗し Done→Failed になる regression を idempotency guard で防いだ（PR #2587 Round 3 reviewer 指摘）。
+
 ## チェックリスト
 
 - [ ] 処理プロセスが無通知で死ぬ前提か？ Yes なら以下を確認
@@ -61,3 +63,4 @@ claim できなかった（= 既に誰かが running にした / 終端済み）
 - [ ] claim 不成立時、未終端を「成功扱い」にしていないか
 - [ ] cold start 初期化の失敗をキャッシュしていないか
 - [ ] pull 型回収を選ぶなら、expiresAt の基準に実行基盤の強制終了上限を使い誤判定を消しているか
+- [ ] 完了通知 handler の初回 cleanup が消すリソースを、後続通知が再取得しようとして regression しないか（terminal 早期 skip を入れているか）

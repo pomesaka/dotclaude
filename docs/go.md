@@ -46,8 +46,23 @@
 - **Tx モック + repo モックの組み合わせでテストする場合、Tx がエラーを返しても repo mock の return を設定していると後続 Call が失敗する**: `firstCallFailTx` のように「最初の Transaction だけ失敗、以降は fn を実行」というフェイクを作るとき、`jobRepo.CreateReturn.Error` を別途設定すると 2 回目以降の `fn` 内でも失敗してしまう。Tx レベルで失敗させる場合は repo mock の return を触らない（default = nil error のまま）。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 
+- **テスト用 fake を新規定義する前にパッケージ内の既存 fake を `rg 'struct\{\}' <pkg dir>` / `rg -i 'fake' <pkg dir>` で確認する**: Go のテストヘルパーはパッケージスコープ共有なので、別テストファイル（例: `start_analyze_pr_webhook_test.go` の `fakeTx`）に同目的の fake が既にあることが多い。確認せず `txFake` 等を新規定義すると同一パッケージに重複型が生まれ、レビューで DRY 違反として指摘される。実例: ADeT PR #2625 Round 5 で `retry_analyze_test.go` の `txFake` が既存 `fakeTx` と重複 → 削除して再利用（2026-07）。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-07 -->
+
 - **`FindBySystemID` / `FindByXxx` が `*T` を返す場合、error = nil でも nil チェックが必要**: `src, err := repo.FindBySystemID(...)` が `nil, nil` を返す（行が存在しない）ケースがある。`if err != nil` ガードだけでは不十分で、直後に `if src == nil` を追加しないとデリファレンス時にパニックする。best-effort 関数（エラーを飲む関数）でも同様。データ整合性を前提に nil チェックを省いた実装がレビューで繰り返し指摘される。
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 
 - **テーブル駆動テストで「出力に含まれないこと」も検証する**: 条件分岐で status に応じて出力が切り替わる関数（例: done/failed で異なるメッセージ）のテストでは、`wantContains` で正の確認をするだけでなく `wantNotContains` で否定確認も行う。例: failed ケースで `summary` が無視されることを `!strings.Contains(got, *summary)` で明示的にアサート。条件の符号が反転しても正の確認だけでは通過してしまうことがある。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
+- **巨大 payload の JSON decode は `io.ReadAll` + `json.Unmarshal` でなく jsonv2 `json.UnmarshalRead(r, &v)` で streaming する**: S3 body・HTTP response・大きいファイル等を `io.ReadAll` で一旦バイト列にしてから `json.Unmarshal` すると payload 全体をメモリに載せる。jsonv2 (`encoding/json/v2`) の `UnmarshalRead(io.Reader, any)` は Reader から直接 token を消費するので peak memory が下がる。判断基準:「この payload が数十 MB オーダーになりうるか？」YES なら streaming に倒す。判定ロジックが要る場合（envelope vs raw のような複数 format 分岐）は `bufio.Reader.Peek` + `jsontext.NewDecoder` で先頭トークンだけ覗いて振り分けるが、format を 1 つに絞れるなら分岐ごと削るほうが常に単純（→ CLAUDE.md 「リファクタ時に既存 fallback を機械的に維持しない」）。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-07 -->
+
+- **`task lint` / `go vet` が「no space left on device」で落ちたら `~/Library/Caches/go-build` を疑う — `go clean -cache` で解消する**: Go build cache は上限なしで成長し（実測 52GB・ディスク 97% 到達）、コンパイル自体が書き込みエラーで失敗する。コードの問題と誤認して個別 package のエラーを追い始めると時間を溶かす。`df -h` でディスク残量 → `du -sh ~/Library/Caches/go-build` でキャッシュサイズを確認し、`go clean -cache` で一括削除する（次回ビルドが遅くなる以外の副作用なし）。実例: ADeT PR #2631 の lint 検証中に発生（2026-07）。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-07 -->
+
+- **custom error 型を「返す側」と「`errors.As` で分類する側」で値/ポインタを揃える — ずれるとコンパイルは通り分類だけ静かに外れる**: 分類が `errors.As(err, &target)` / `errors.AsType[*DomainError]` のようにポインタ型を target にしているとき、`return &DomainError{...}` は一致するが `return DomainError{...}`（値）は一致しない（`Error()` がポインタレシーバなら値型はそもそも `error` を満たさないが、値レシーバだと**両方 `error` を満たしてしまい**コンパイルが通る）。結果、意図した種別に分類されず「予期せぬエラー」扱いで 500 になる等の無音の誤動作になる。判断基準:「このパッケージの分類ヘルパーは `*T` と `T` のどちらを target にしているか」を実装で確認し、生成側を揃える。同一ファイル内に値返しと ポインタ返しが混在していたら片方はほぼバグ（`rg 'return .*\bDomainError\{' <pkg>` で棚卸し）。**レビュアーに指摘されても鵜呑みにせず**、使い捨てのテストで実際に `errors.As` を走らせて挙動を実測してから直す（言語仕様の断言は一次情報で確認する）。実例: ADeT PR #2655 で handler の値返し `domain.DomainError{...}` が認証エラーとして分類されていなかった（2026-07）。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-07 -->
+
+- **DB tx（`tx.Transaction` / `db.WithContext(ctx).Transaction`）の中で外部 I/O を呼ばない — HTTP・S3・comment API 等は post-tx に出す**: tx 内で `httpClient.Do` / `s3.GetObject` / `s3.DeleteObject` / GitHub PR comment 更新等を行うと、network latency の間 DB の行ロック（`SELECT ... FOR UPDATE` や書き込みロック）を保持し続け、同一行を触る他 tx が待たされる。判断基準:「この呼び出しは network を経由するか？ 経由するなら tx の中で本当に必要か？」原則 tx は「DB 状態の atomic な遷移」だけを含める。ベストエフォート系（後始末系・通知系）は tx 抜けた後で `if err := ...; err != nil { slog.Warn(...) }` で失敗を握って先へ進む。判定に困る例: tx 内で GetObject して decode → apply の場合、apply 自体を tx で保護したいなら「先に GetObject + decode を tx 外で終わらせ、reconciled state を握って tx に入り書き込みだけ tx 内で行う」に組み替える。実例: analyze-spec 完了処理で tx 内の `DeleteObject`（一時 object 削除）と GitHub PR comment 更新を post-tx へ移した（PR #2587 Round 2 reviewer 指摘）。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-07 -->

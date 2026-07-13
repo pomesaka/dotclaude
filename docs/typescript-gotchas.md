@@ -303,6 +303,29 @@ const segments = rawSegments.map((s) => {
 判断基準: 内部データ（型安全なコードが返す値）なら `filter` で ok。外部境界（API・LLM・ユーザー入力）なら `map + throw`。
 <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
 
+### 有界ループの「全パス return/throw」は CFA が証明できない（TS2366）— リトライループは `for (;;)` で書く
+
+`for (let i = 0; i <= retries; i++)` の全 iteration が return か throw で終わっても、TS の制御フロー解析はループが最低 1 回回ることを証明できず、ループ後に到達しうると判定する（TS2366: Function lacks ending return statement）。これを黙らせるための末尾 `throw lastError` は `let lastError` との二重管理になり、しかも負の `retries` で `throw undefined` になる実バグを抱える（`tsc --strict` で検証済み・2026-07）。条件なしの `for (;;)` は「ループ後」が存在しないため CFA が clean に通り、`let` も末尾 throw も消える。
+
+```typescript
+// NG: 末尾 throw が TS 要求 + throw undefined の罠
+let lastError: unknown;
+for (let attempt = 0; attempt <= retries; attempt++) {
+  try { return await fn(); }
+  catch (error) { lastError = error; if (attempt === retries) throw error; }
+}
+throw lastError; // retries < 0 で throw undefined
+
+// OK: 出口は return と throw の 2 つだけ。let 不要
+for (let attempt = 0; ; attempt++) {
+  try { return await fn(); }
+  catch (error) { if (attempt >= retries) throw error; }
+}
+```
+
+停止性がループヘッダから catch 内のガードに移るので、attempt 回数を pin するテスト（retries=0 で 1 回・負値で 1 回）で保証を代替する。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-07 -->
+
 ---
 
 ## 設計・実装 Gotchas

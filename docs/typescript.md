@@ -48,8 +48,8 @@
   export const VARIABLE_TYPES = ["text", "number", "date"] as const;
   export type VariableType = (typeof VARIABLE_TYPES)[number];
   ```
-  特に **zod を併用する場合は値配列必須**: `z.enum(VARIABLE_TYPES)` のように渡せる。型のみ export だと `z.enum` に渡せず（型消去）、結局 zod schema 内に値を直書きすることになり真実が分散する。値配列を真の単一情報源にする。
-  <!-- importance: medium | mentions: 2 | first-seen: 2026-05 -->
+  特に **zod を併用する場合は値配列必須**: `z.enum(VARIABLE_TYPES)` のように渡せる。型のみ export だと `z.enum` に渡せず（型消去）、結局 zod schema 内に値を直書きすることになり真実が分散する。値配列を真の単一情報源にする。UI の選択肢リスト（ラジオ・セレクト）も同じ値配列から `.map` で導出する — UI 側に選択肢を直書きすると「型は増えたが UI に出ない」無音の欠落が起きる（実例: noah issue 1013 で `RESOLUTION_METHODS` を z.enum / UI ラジオ / 型の単一ソースに統一）。
+  <!-- importance: medium | mentions: 3 | first-seen: 2026-05 -->
 - `class`: **原則使わない**。オブジェクトリテラル・関数・型で表現する
   ```typescript
   // ❌ 避ける
