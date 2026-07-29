@@ -4,9 +4,6 @@ description: DDDのドメインモデリングを実施し、ユビキタス言�
 when_to_use: 「ドメインモデリングしよう」「業務概念を整理したい」「DDD設計したい」「用語を整理してモデルに落としたい」「新規ドメイン設計 / 既存の大幅再設計を確定して記録まで一気にやりたい」と言われたとき。提案・調査止まりでよい場合は review-domain、複雑さ起点の診断は diagnose-complexity を使う。このスキルは**設計を確定してADR+用語集に書き下ろすところまで**をスコープにする。
 argument-hint: "[対象ドメイン/機能領域]"
 allowed-tools: Read, Write, Edit, Grep, Glob, Bash(cat *), Bash(fd *), Bash(find *), Bash(rg *), Bash(jj diffu *), Bash(ls *), AskUserQuestion
-context: fork
-agent: general-purpose
-model: opus
 ---
 
 # ドメインモデリング

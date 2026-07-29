@@ -115,6 +115,22 @@ jj status                # 変更ファイル一覧
 jj squash                # WCの変更を親コミットにまとめる
 ```
 
+## `jj diff -- <path>` のパスに `(` `)` が入ると fileset parse error
+<!-- importance: medium | mentions: 1 | first-seen: 2026-07 -->
+
+jj の `--` 以降は git と違い**単なるパスではなく fileset 式**として構文解析される。Next.js の route group（`app/(app)/...`）のように括弧を含むパスをそのまま渡すと `Failed to parse fileset: Syntax error` で落ちる（パスが存在しないわけではないので原因が分かりにくい）。
+
+対処: パス全体を fileset の文字列リテラルとして二重引用する。
+
+```bash
+# NG
+jj diff -r @ -- apps/adachi/app/(app)/invoice/_components/x.tsx
+# OK（シングルクォートの中にダブルクォート）
+jj diff -r @ -- '"apps/adachi/app/(app)/invoice/_components/x.tsx"'
+```
+
+スペース・`|`・`&` 等の fileset 演算子文字を含むパスでも同じ。**迷ったら常に二重引用でよい**（通常パスでも動く）。
+
 ## ファイルリネーム
 
 jj には `git mv` 相当のコマンドがない。  

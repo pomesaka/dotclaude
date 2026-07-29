@@ -275,3 +275,10 @@ WHY: サーバー contract に client 状態が混ざると、クエリ層のテ
 
 アコーディオン等で「既定は全て閉じる」を `collapsedIds` を全 id で初期化して表現すると、refetch・ページング・mutation でデータに新要素が増えたとき、Set には初期化時点の id しか無いため**新要素だけ開いて出る**（逆の「既定全開」を `expandedIds` 全 id 初期化で作れば新要素だけ閉じて出る）。既定側は Set の**不在**で表す — 既定全閉なら `expandedIds`（空 Set 初期化）、既定全開なら `collapsedIds`（空 Set 初期化）。新要素はどの Set にも入っていない状態で現れるので、自動的に既定に従う。判断基準: 「データが増えたとき新要素はどちらの状態で現れるべきか？」— その状態を Set の不在側に置く。実例: noah invoice 一覧のグループアコーディオンを既定全閉に変えた際、`collapsedGroupIds` → `expandedGroupIds` に反転（issue 1008）。
 <!-- importance: medium | mentions: 1 | first-seen: 2026-07 -->
+
+## 操作エラーの表示寿命は「データの identity」でなく「エラーが前提にしていた内容」でスコープする
+
+行単位の操作（承認・削除・打ち切り）が失敗したときのエラーメッセージを `useState` に置くと、いつ消すかが問題になる。素直な `useEffect(() => setError(null), [items])`（データが変われば消す）は**必ず壊れる**: mutation は成功・失敗どちらでも `onSettled` で refetch / `router.refresh()` するのが普通なので、失敗した本人の refetch が新しい `items` を作り、ユーザーが読む前に自分のエラーを消す。症状は「押したのに何も起きない」で、エラーが出ていないので原因の手がかりも残らない。
+
+正しいスコープは**内容ベース**: エラーに「どの行に対する操作か」と「そのとき対象行がどの状態だったか」を持たせ、描画時に現在のデータと突き合わせて「まだ同じ前提が成り立つか」で表示可否を決める（対象行が消えた・状態が変わった → 用済み）。この判定は純関数（`visibleError(error, items)`）にできるので、寿命の規則をテストで固定できる。判断基準: 「このエラーは何が変わったら意味を失うか？」— その"何"を state に持たせる。実例: noah issue 1012 の帳端操作エラー（`{ holdoverResolutionId, statusKind, message }` + `visibleHoldoverActionError`・PR #352）。
+<!-- importance: high | mentions: 1 | first-seen: 2026-07 -->

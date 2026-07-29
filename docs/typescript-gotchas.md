@@ -612,6 +612,9 @@ for (const match of text.matchAll(pattern)) {
   注意: `import type { SomeType } from "./dep"` でモジュールが差し替えられていてもランタイム import は発生しないため `MockConfig` の定義ソースとして使える。`as const` テーブルでも型引数を揃えておくと `extend`・`spread` 時に明示キャスト不要になる。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 
+- **`bun:test` の `mock.module` はテストファイルを跨いで残留する — 実装をテストしたいなら依存注入で seam を作る**: bun test は複数テストファイルを同一プロセスで走らせるため、あるファイルの `mock.module("./dep", ...)` が**別のテストファイル**にも効き、モック対象モジュール自身のテスト（`dep.test.ts`）が実装の代わりにモックを掴んで壊れる。壊れるのは自分のテストでなく既存の他ファイルなので、フルスイートを回すまで気づかない。対処: モジュール差し替えでなく、テスト対象関数に依存を引数注入する（`fn(config, deps = { git, gh })` のようなデフォルト引数 seam）。判断基準: 「mock したいモジュールに自分のテストファイルがあるか？」YES なら mock.module は使わない。実例: ADeT-AI PR #741 で `mock.module('.../git')` が `git.test.ts`/`gh.test.ts` の 23 件を壊し、`SetupDeps` 引数注入に切り替えた（2026-08）。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-08 -->
+
 - **`get` トラップだけの Proxy ラッパーは consumer の `"x" in obj` チェックを破る**: 遅延初期化 Proxy（`new Proxy({} as T, { get: ... })`）は、`has` トラップ未実装だと `in` 演算子が target（空オブジェクト）を見て常に false を返す。ライブラリは duck-typing 分岐に `in` を使うことがあり（例: better-auth `toNextJsHandler` の `"handler" in auth ? auth.handler(req) : auth(req)`）、false 側に倒れて「auth is not a function」のような不可解な実行時エラーになる。typecheck は通る（型上は T のまま）ため静的に検出できない。対処: 遅延 Proxy を書くときは `get` に加えて `has: (_t, p) => p in resolve()`（必要なら `ownKeys`/`getOwnPropertyDescriptor` も）を実装し、トラップを resolve 済み実体に委譲する。判断基準: 「この Proxy をライブラリ関数に渡すか？」→ YES なら get 以外のトラップも必須と考える。
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 
