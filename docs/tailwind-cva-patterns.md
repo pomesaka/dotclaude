@@ -42,8 +42,10 @@ compoundVariants: [
 
 - CVA + Tailwind v4 の組み合わせ全般
 - 特に `theme` × `variant` の 2 軸で bg が変化するボタン・カードコンポーネント
+- **CVA を使っていない素の文字列連結も同じ**: `const SELECTED = \`${BASE} border-green bg-green-soft\`` のように「ベース定数を展開してから状態クラスを足す」書き方は、ベースが `border-line bg-white` を持っていれば上書きに失敗する。競合するのは `bg-*` に限らず**同一 CSS プロパティを出すユーティリティすべて**（`border-*` / `text-*` / `ring-*`）
+- **無音で失敗するので目視でも見つからない**: `ring-*` のような別プロパティだけが効いて「うっすら変わる」ため、選択状態が弱いだけに見える。疑ったら `getComputedStyle(el).borderColor` を実測する。恒久対処はベース定数から色を抜き、状態ごとに排他で足す
 
-<!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
+<!-- importance: high | mentions: 2 | first-seen: 2026-05 -->
 
 ---
 

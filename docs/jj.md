@@ -84,14 +84,32 @@ jj git push --bookmark <name>
 gh pr create --head <name> --base main
 ```
 
+## jj workspace で `gh` が `fatal: not a git repository` になる場合は `--repo owner/name` を明示する
+<!-- importance: medium | mentions: 1 | first-seen: 2026-09 -->
+
+`.jj/repo` が別パス（例: `~/github.com/<owner>/<repo>/.jj/repo`）の git store を指す構成（claude-deck workspace 等）では、作業ディレクトリに `.git/` が存在しないため `gh` の自動検出が失敗する（`cat .jj/repo` で実体パスを確認できる）。対処は `cd` で実体へ移動することではなく、`gh` の全コマンドに `--repo <owner>/<repo>` を明示すること（`gh pr list --repo owner/name ...` / `gh pr edit <N> --repo owner/name ...` / `gh pr view <N> --repo owner/name ...`）。1 回のセッション内で `gh` を複数回呼ぶなら毎回付け忘れないよう注意する。
+
 ## PR を push した後、別件を始める前に `jj new` する
-<!-- importance: high | mentions: 2 | first-seen: 2026-06 -->
+<!-- importance: high | mentions: 3 | first-seen: 2026-06 -->
 
 jj では **working copy (`@`) 自体が PR のコミット**。push 後にそのまま無関係なファイルを編集すると、変更が**同じ push 済みコミットに amend され**、別の関心事が 1 つの PR に混ざる（次に `jj git push` した瞬間に紛れ込む）。push 直後・別件着手前に `jj new`（または `jj new -m "..."`）で新しい WC を切ること。**特に claude-deck workspace では jj コマンドを打つたびに on-disk 編集が `@` へ自動スナップショットされる**ので、新規作業の着手前に `jj log` で「`@` が push 済み PR コミットでないこと」を必ず確認する。
 
 逆に「同じ PR を追記更新する」のが目的なら amend で正しい（`/update-pr` のケース）。**今の `@` が push 済み PR コミットか、新規作業用かを着手前に意識する**のがポイント。
 
 **もう汚染してしまったときの復旧**: `jj new`（空の子 `@` を作る）→ `jj squash --from <PRコミット> --into @ <別件のファイルパス…>` で別件の変更だけを子コミットへ抜き出す。PR コミットは元の内容（= origin と一致）に戻る。削除ファイルに対する `No matching entries for paths` 警告は rename 検出が処理するので無害。さらに `task ...:gen` 等で**無関係な生成物 drift**（`*_diff.gen.go` 等）が混ざっていたら `jj restore --from <bookmark>@origin <paths>` で push 済み状態に戻し、コミットを目的の差分だけに絞る。
+
+**汚染が「PR と同じファイルの大規模書き換え」（リファクタ等）だった場合は path 指定の squash / restore が使えない** — 同じファイルに PR の変更と別件の変更が同居しているので、パス単位で動かすと PR 側の変更まで巻き添えになる。この場合は**差分を patch に書き出して原本から作り直す**:
+
+```bash
+jj diff --from '<bookmark>@origin' --to @ --git > /tmp/split.patch   # 別件の増分だけを取り出す
+jj new <origin-rev> -m "<別件のコミットメッセージ>"                   # origin の実コミットを親にした子を作る
+git apply /tmp/split.patch                                            # 子に別件だけを適用
+jj bookmark set <bookmark> -r <origin-rev> --allow-backwards          # bookmark を origin の実コミットへ戻す
+jj abandon <汚染されたコミット>                                        # 書き換え版を捨てる
+jj diff --from '<bookmark>@origin' --to <bookmark> --stat             # 0 files であることを確認
+```
+
+`jj new` の宛先に**origin の実コミット**を指定するのが肝（書き換え版を親にすると stacked PR が CONFLICTING になる。上の「④分離後の子を…」と同じ理由）。なお Claude Code の auto-mode classifier は `jj restore` を破壊的操作として block することがあるので、その意味でもこの経路が使える。
 
 ## `jj log` DAG の視覚的近接は親子関係を意味しない
 <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
@@ -114,6 +132,11 @@ jj diffu                 # upstream（@-）との差分
 jj status                # 変更ファイル一覧
 jj squash                # WCの変更を親コミットにまとめる
 ```
+
+## `jj diffu -r 'A..B'` は真の A→B 差分にならないことがある — `jj diff --from A --to B` を使う
+<!-- importance: medium | mentions: 1 | first-seen: 2026-09 -->
+
+`update-pr` フローで「前回 push からの差分」を見るのに `jj diffu -r '<bookmark>@origin..@'` を使うと、divergent（同じ change ID がローカルと origin で異なるコミットを指す = amend 直後）な状態では range revset が意図通り 2 点間の diff にならず、その change が持つ変更全体（機能追加時点からの全差分）が出てしまうことがある。「前回 push 分に対してこんなに差分があるはずがない」と違和感を覚えたら、`jj diff --from '<bookmark>@origin' --to @ --stat` に切り替えて正しい増分を確認する。
 
 ## `jj diff -- <path>` のパスに `(` `)` が入ると fileset parse error
 <!-- importance: medium | mentions: 1 | first-seen: 2026-07 -->

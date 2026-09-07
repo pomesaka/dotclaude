@@ -1,7 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "env": {
-    "CLAUDE_CODE_DISABLE_1M_CONTEXT": "1",
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
     "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
     "OTEL_METRICS_EXPORTER": "otlp",
@@ -65,19 +64,6 @@
       "/Users/pomesaka/github.com/pomesaka/dotclaude"
     ]
   },
-  "model": "claude-fable-5",
-  "hooks": {
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "/Users/pomesaka/github.com/pomesaka/dotclaude/skills/hiroyuki/hook.sh"
-          }
-        ]
-      }
-    ]
-  },
   "worktree": {
     "bgIsolation": "none"
   },
@@ -100,12 +86,19 @@
     }
   },
   "effortLevel": "high",
+  "modelSettings": {
+    "claude-fable-5": {
+      "effortLevel": "medium"
+    }
+  },
   "skipWorkflowUsageWarning": true,
   "theme": "dark",
   "teammateMode": "in-process",
+  "remoteControlAtStartup": false,
   "agentPushNotifEnabled": true,
   "skipAutoPermissionPrompt": true,
   "feedbackSurveyState": {
     "lastShownTime": 1754021250248
-  }
+  },
+  "model": "opus"
 }

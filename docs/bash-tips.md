@@ -45,6 +45,11 @@ gsed -i 's/FooSession\b/FooJob/g' file.ts
 
 `sed -i.bak 's/.../.../' file` の形式は両方で動く（バックアップが `.bak` で残るので `rm *.bak` を忘れずに）。
 
+## macOS には GNU `timeout` が標準で無い
+<!-- importance: low | mentions: 1 | first-seen: 2026-09 -->
+
+`timeout 15 <command>` は Linux では動くが、macOS では `zsh: command not found: timeout` で即座に失敗する（coreutils 由来のコマンドで、macOS の BSD ベースには含まれない）。ログの tail や監視用コマンドを短時間だけ流したいときは、`Bash` の `run_in_background: true` で起動し、必要な出力が出たら `TaskStop` で止める形にする。`brew install coreutils` を入れれば `gtimeout` として使えるが、環境に依存させない方が確実。
+
 ## Docker entrypoint で env を unset するときの罠
 
 `RUN printf '#!/bin/sh\nunset VAR_A VAR_B ...\nexec "$@"\n'` のような entrypoint は、「何を無効化したいか」の目的が異なる変数を一行に混ぜると、後から変数を追加するときに意図しない unset を巻き込む。

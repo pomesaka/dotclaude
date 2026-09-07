@@ -142,6 +142,27 @@ max-w-lg   ← グリッド不要
 
 **このバグの検証は「実際にスクロールする要素」基準で測る**。app-shell は `window`/`documentElement` でなく内部の `<main overflow-y-auto>` がスクロールするため、`window.scrollY` / `documentElement.scrollHeight` 基準の計測は実態と乖離して**誤った PASS を出す**（実際にハマった）。コンテンツが途切れる/白画面のバグは、コンテンツ要素から**祖先チェーンを辿り**各 ancestor の `height` / `overflowY` / `scrollHeight` / `clientHeight` を出力する。`scrollHeight == clientHeight`（スクロール不能）なのに子が overflow している ancestor が clamp 位置。修正後は「実スクロールコンテナの `scrollHeight > clientHeight`」「最下部へスクロール後に末尾要素が viewport 内」を確認する。
 
+### grid sibling の「高さが揃っていない」報告は、まず両方の box height を計測してから調べる
+
+<!-- importance: medium | mentions: 1 | first-seen: 2026-09 -->
+
+`grid` の子要素は既定で `align-items: stretch` が効き、枠（border box）は兄弟と同じ高さになる。ユーザーがスクリーンショット付きで「カードの高さが違う」と報告しても、**枠自体は既に揃っていて中身の配置だけが違って見えている**ケースがある: 片方のカードは中身（凡例・リスト等）の行数が少なく、上詰めのまま終わって下部に空白ができるため、枠の高さが同じでも視覚的に「短い」と感じる。
+
+対処前に `getBoundingClientRect().height` 等で両方の実際の box height を計測し、枠が揃っているかを切り分ける。揃っていれば直すのは枠のレイアウトではなく中身の配置（縦方向 `flex-col` にして中身側に `flex-1` + `content-center` を付け、余白を上下中央に寄せる等）。
+
+```tsx
+// 誤診断: 枠を揃えようとして grid 側をいじる（既に stretch で揃っている）
+<div className="grid gap-4 sm:grid-cols-2">
+  <section className="rounded-lg border p-4">...</section>
+</div>
+
+// 正: 枠は揃っている前提で、中身側の余白配分を直す
+<section className="flex flex-col rounded-lg border p-4">
+  <h2>...</h2>
+  <div className="flex flex-1 content-center items-center gap-4">...</div>
+</section>
+```
+
 ---
 
 ## PDF 印刷対応（Tailwind `print:` バリアント）
