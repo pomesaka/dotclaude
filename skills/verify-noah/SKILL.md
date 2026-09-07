@@ -71,11 +71,9 @@ push される中身を汚さないための工程。**Step 4 の前に済ませ
 - **証跡の後始末は PR 更新より前**: `/verify` → `/update-pr` を素で繋ぐと、`.playwright-cli/` と
   CWD 直下の snapshot/screenshot が working copy に入ったまま push される。jj は `@` を bookmark コミットへ
   無音で amend するため、PR に検証ゴミが混ざったことに push 後まで気づけない。Step 3 を飛ばさない
-- **スクショは PR ボディでなくコメントに載る**: `upload-screenshots` は `gh pr comment` で投稿する。
-  ボディ内に `![](URL)` で埋め込みたい場合は Step 5 を先に実行して URL を得てから Step 4 に渡す
-  （このスキルの既定順ではボディに URL は入らない）
-- **`upload-screenshots` は `${CLAUDE_SKILL_DIR}/upload.sh` を使う**: `Skill()` 経由で呼べばそのスキル自身の
-  ディレクトリに解決される。手で `upload.sh` のパスを組み立てて Bash から叩くと解決先がずれる
+- **スクショは PR ボディでなくコメントに載る**: `upload-screenshots` は既定で `gh pr comment --attach` で
+  投稿する。ボディ内に埋め込みたい場合は、Step 4 の時点で本文にローカルパス参照（`![説明](./path.png)`）を
+  書いておき、Step 5 で同じパスを `--attach` に渡す（`gh` がその参照をアップロード後の URL に書き換える）
 - **`disable-model-invocation: true` は他スキルからの `Skill("verify-noah")` も封じる**: 副作用
   （dev server 起動・PR 更新・GitHub へのアセット投稿）があるため自動発火は塞いでいる。
   チェーンの起点は常にユーザーの `/verify-noah`
@@ -103,3 +101,30 @@ push される中身を汚さないための工程。**Step 4 の前に済ませ
 - **fixture の `ledger_line_items` は `content_hash` NOT NULL（0041 以降）**: 旧 seed SQL
   （seed-992 等）を流用すると NOT NULL 違反で落ちる。行ごとに一意なダミー文字列で埋めれば十分
   （TS/SQL の md5 契約は照合 rewire 用で、fixture 表示・承認検証には効かない）
+- **「入口に戻った」で検証を終えない — 目的の結果が出るところまで進める**: 「再照合対象に戻る」「キューに載る」
+  「ボタンが押せるようになる」は**修正が意図した経路に乗ったこと**の証跡でしかなく、**その経路が目的の結果を出す**
+  証跡ではない。入口までで止めると「pending には戻るが、照合しても差異が消えない」型の欠陥がそのまま PR に残る。
+  判断: 受け入れ基準が「〜が解消される」と書いてあるなら、解消した状態のスクショが撮れるまでが検証。途中で
+  外部依存（LLM・外部 API・SSO）に阻まれたら、**PR 更新を止めてでも**依存を解消してから続きを撮る
+  （「状態遷移までは確認した」と書いて出すのは、レビュアーに残りを押し付けることになる）。
+  実例: issue 1016 で `over_billed` → `pending` までで止めかけ、SSO 再ログイン後に照合まで走らせて
+  「差額 ±¥0 の matched に置き換わる」まで確認した（2026-07-31）
+  <!-- importance: high | mentions: 1 | first-seen: 2026-07 -->
+- **LLM ジョブ（照合・議事録・リサーチ）まで走らせる検証は、着手前に `aws sso login --profile noah` を済ませる**:
+  Bedrock 呼び出しは SSO セッションが切れていると失敗する。fixture 作成・CSV アップロード・状態遷移の確認まで
+  進めてからジョブで詰まると、セッションを跨いで検証状態を作り直すことになる（SSO ログインは対話的なので
+  claude は自分で打てず、ユーザーに `! aws sso login --profile noah` を依頼する必要がある）。
+  Step 0 で「観測ポイントに LLM ジョブの結果が含まれるか」を判定し、含まれるなら Step 1 の前に依頼する
+  <!-- importance: high | mentions: 1 | first-seen: 2026-07 -->
+- **fixture がジョブの対象に入らないときは status 列でなく対象クエリの WHERE 句を全部読む**: ジョブの対象抽出は
+  status 以外の暗黙条件を持つ（`listPendingInvoicesByTargetMonth` は `matchingStatus='pending'` に加えて
+  `pdfKey IS NOT NULL`）。条件を満たさない fixture は**エラーにならず 0 件で正常終了する**ため、UI 上は
+  「照合待ち」に見えるのにジョブが何もしない無音の空振りになる。fixture を書く前に対象クエリを Read して
+  WHERE 句を全部列挙する。同型で、DB 文字列 → union 型の変換関数（`toInvoiceLineType` 等）も想定外の値を
+  `console.warn` + 既定値で握るので、fixture の enum 相当カラムは実装が受理するリテラルを確認して埋める。
+  **亜種: ジョブが参照する「マスタ」側にも前提クエリがある** — 対象行を SQL で seed しても、マスタ取得クエリが
+  別の前提（「当月の最新アップロードが存在すること」等）を満たさず空を返すとジョブは 0 件で正常終了する。
+  この手のマスタは **UI から実ファイルを取り込んで作る**のが確実（seed だけで組むと前提を踏み外したことに
+  気づけないうえ、取り込み経路そのものの検証も落ちる）。実例: issue 968 検証で `listVendorCandidates` が
+  `latestUploadId` 非 null を要求しており、元帳 CSV を画面からアップロードして初めて名寄せジョブが動いた
+  <!-- importance: medium | mentions: 2 | first-seen: 2026-07 -->

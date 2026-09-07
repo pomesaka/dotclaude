@@ -123,5 +123,5 @@ echo "$PR_URL"
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 - **`PR_URL=$(gh pr create ... --body "$(cat <<'EOF' ...)")` の heredoc 入れ子は zsh で parse error になることがある**: テンプレート通りのコマンド置換 + heredoc 入れ子が `parse error near 'PR_URL=$(gh pr creat...'` で落ちるケースがある（Claude Code の Bash ツール経由・zsh 環境で確認 2026-06-10）。対処: PR ボディを先に `cat > /tmp/pr_body.txt << 'EOF'` で一時ファイルに書き出し、`gh pr create --body "$(cat /tmp/pr_body.txt)"` の 2 段に分ける。最初から 2 段方式で書けばリトライが不要。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
-- **実機検証のエビデンス（スクショ・録画・実行ログ）が手元にあれば PR に含める**: /verify 等で動作検証した結果のスクリーンショットが /tmp 等に残っている場合、`upload-screenshots` スキル（ドラフトリリースのアセット方式）でアップロードし、PR ボディの「動作検証」セクションに `![説明](URL)` で埋め込む。画像の下に「何を確認した画像か」の注記（観測ポイント）を添える。レビュアーが手元で再現しなくても検証結果を確認できる状態にするのが目的。テキストの検証結果（レスポンスボディ・カウント等）も同セクションに書く。
+- **実機検証のエビデンス（スクショ・録画・実行ログ）が手元にあれば PR に含める**: /verify 等で動作検証した結果のスクリーンショットが /tmp 等に残っている場合、`upload-screenshots` スキルで PR ボディの「動作検証」セクションに埋め込む。画像の下に「何を確認した画像か」の注記（観測ポイント）を添える。レビュアーが手元で再現しなくても検証結果を確認できる状態にするのが目的。テキストの検証結果（レスポンスボディ・カウント等）も同セクションに書く。
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
