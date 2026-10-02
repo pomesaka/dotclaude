@@ -28,7 +28,7 @@ model: sonnet
 
 ### Step 1: 差分分析（スキルロード時に取得済みのデータを使う）
 
-以下の観点で比較する:
+以下の観点で比較する。
 
 **CLAUDE.md の品質**
 - 行数は200行以下か（目標60行）
@@ -37,7 +37,7 @@ model: sonnet
 
 **スキルの品質**
 - `description` フィールドがモデルのトリガー条件として書かれているか（ユーザー向け説明になっていないか）
-- Gotchas セクション（落とし穴・失敗パターン）があるか
+- Gotchas セクション（見落としやすい点・失敗パターン）があるか
 - Progressive Disclosure（references/ や examples/ の活用）ができているか
 - Agent Skill（`user-invocable: false`）と User Skill の使い分けができているか
 
@@ -48,7 +48,7 @@ model: sonnet
 
 ### Step 2: 提案レポートを出力
 
-以下の形式で報告する:
+以下の形式で報告する。
 
 ```
 ## ベストプラクティス環境チェック結果

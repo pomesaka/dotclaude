@@ -23,7 +23,7 @@ model: haiku
 
 ### Step 1: 対象の特定
 
-ARGUMENTSからIssue/PR番号を取得する。未指定の場合は現在のブックマークからPRを探す:
+ARGUMENTSからIssue/PR番号を取得する。未指定の場合は現在のブックマークからPRを探す。
 
 ```bash
 jj bookmark list
@@ -44,7 +44,7 @@ gh pr comment <NUMBER> --attach './screenshot1.png#ログイン後の画面' --a
 
 ### Step 3: 既存コメントへの追記（必要な場合）
 
-`--edit-last --attach ...` で自分の最後のコメントに追記できる（`gh pr comment --help` に両フラグの記載あり。組み合わせの実地動作はこのスキルでは未検証 — 失敗したら新規コメント投稿にフォールバックする）。
+`--edit-last --attach ...` で自分の最後のコメントに追記できる（`gh pr comment --help` に両フラグの記載あり。組み合わせの実地動作はこのスキルでは未検証。失敗したら新規コメント投稿にフォールバックする）。
 
 ## Gotchas
 

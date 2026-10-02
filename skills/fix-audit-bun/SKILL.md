@@ -24,7 +24,7 @@ bun audit --audit-level=high
 
 ## Step 2: 脆弱性の修正
 
-検出された脆弱性に対して、以下の方針で修正を行う:
+検出された脆弱性に対して、以下の方針で修正を行う。
 
 1. **直接依存の場合**: `package.json` のバージョンを更新し `bun install` を実行
 2. **間接依存の場合**: 直接依存のパッケージを更新して解消を試みる
@@ -34,7 +34,7 @@ bun audit --audit-level=high
 
 ## Step 3: revisionの説明を設定してPR作成
 
-修正内容に基づいて `jj desc` で説明を設定し、`/create-pr` でPRを作成する:
+修正内容に基づいて `jj desc` で説明を設定し、`/create-pr` でPRを作成する。
 
 ```bash
 jj desc -m "$(cat <<'EOF'

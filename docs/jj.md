@@ -18,10 +18,10 @@ jj new -m "message"        # 説明付きで新しいWCを作成
 jj commit -m "message"     # describe -m + new と同等（作業を確定して次へ進む）
 ```
 
-**重要**: `jj new -m "message"` は「次の作業」の説明であり、**現在の `@` にメッセージをつけるわけではない**。
+**重要**: `jj new -m "message"` は「次の作業」の説明であり、現在の `@` にメッセージをつけるわけではない。
 現在の `@` に説明をつけるには `jj describe -m "message"` を使う。
 
-**典型的なワークフロー**:
+**典型的なワークフロー**
 ```bash
 # ファイルを編集（自動でスナップショット）
 jj commit -m "Add feature X"     # 現在の @ に説明をつけて新しい空の @ を作成
@@ -46,7 +46,7 @@ jj git fetch                       # リモートの変更を取得
 jj git push --bookmark <name>      # ブックマークをpush
 ```
 
-**新規リポジトリのセットアップ**:
+**新規リポジトリのセットアップ**
 ```bash
 jj git init --colocate
 jj git remote add origin git@github.com:user/repo.git
@@ -57,7 +57,7 @@ jj bookmark track main --remote=origin
 jj git push --bookmark main
 ```
 
-**既存のリモートブランチにpushするとき**、リモートに同名ブックマークが既にある場合は先に `fetch` してから `bookmark track` が必要:
+**既存のリモートブランチにpushするとき**、リモートに同名ブックマークが既にある場合は先に `fetch` してから `bookmark track` が必要。
 ```bash
 jj git fetch
 jj bookmark track main --remote=origin
@@ -92,13 +92,13 @@ gh pr create --head <name> --base main
 ## PR を push した後、別件を始める前に `jj new` する
 <!-- importance: high | mentions: 3 | first-seen: 2026-06 -->
 
-jj では **working copy (`@`) 自体が PR のコミット**。push 後にそのまま無関係なファイルを編集すると、変更が**同じ push 済みコミットに amend され**、別の関心事が 1 つの PR に混ざる（次に `jj git push` した瞬間に紛れ込む）。push 直後・別件着手前に `jj new`（または `jj new -m "..."`）で新しい WC を切ること。**特に claude-deck workspace では jj コマンドを打つたびに on-disk 編集が `@` へ自動スナップショットされる**ので、新規作業の着手前に `jj log` で「`@` が push 済み PR コミットでないこと」を必ず確認する。
+jj では working copy (`@`) 自体が PR のコミット。push 後にそのまま無関係なファイルを編集すると、変更が同じ push 済みコミットに amend され、別の関心事が 1 つの PR に混ざる（次に `jj git push` した時点で紛れ込む）。push 直後・別件着手前に `jj new`（または `jj new -m "..."`）で新しい WC を切ること。特に claude-deck workspace では jj コマンドを打つたびに on-disk 編集が `@` へ自動スナップショットされるので、新規作業の着手前に `jj log` で「`@` が push 済み PR コミットでないこと」を必ず確認する。
 
-逆に「同じ PR を追記更新する」のが目的なら amend で正しい（`/update-pr` のケース）。**今の `@` が push 済み PR コミットか、新規作業用かを着手前に意識する**のがポイント。
+逆に「同じ PR を追記更新する」のが目的なら amend で正しい（`/update-pr` のケース）。今の `@` が push 済み PR コミットか、新規作業用かを着手前に意識するのがポイント。
 
-**もう汚染してしまったときの復旧**: `jj new`（空の子 `@` を作る）→ `jj squash --from <PRコミット> --into @ <別件のファイルパス…>` で別件の変更だけを子コミットへ抜き出す。PR コミットは元の内容（= origin と一致）に戻る。削除ファイルに対する `No matching entries for paths` 警告は rename 検出が処理するので無害。さらに `task ...:gen` 等で**無関係な生成物 drift**（`*_diff.gen.go` 等）が混ざっていたら `jj restore --from <bookmark>@origin <paths>` で push 済み状態に戻し、コミットを目的の差分だけに絞る。
+**もう汚染してしまったときの復旧**: `jj new`（空の子 `@` を作る）→ `jj squash --from <PRコミット> --into @ <別件のファイルパス…>` で別件の変更だけを子コミットへ抜き出す。PR コミットは元の内容（= origin と一致）に戻る。削除ファイルに対する `No matching entries for paths` 警告は rename 検出が処理するので無害。さらに `task ...:gen` 等で無関係な生成物 drift（`*_diff.gen.go` 等）が混ざっていたら `jj restore --from <bookmark>@origin <paths>` で push 済み状態に戻し、コミットを目的の差分だけに絞る。
 
-**汚染が「PR と同じファイルの大規模書き換え」（リファクタ等）だった場合は path 指定の squash / restore が使えない** — 同じファイルに PR の変更と別件の変更が同居しているので、パス単位で動かすと PR 側の変更まで巻き添えになる。この場合は**差分を patch に書き出して原本から作り直す**:
+**汚染が「PR と同じファイルの大規模書き換え」（リファクタ等）だった場合は path 指定の squash / restore が使えない**。同じファイルに PR の変更と別件の変更が同居しているので、パス単位で動かすと PR 側の変更まで巻き添えになる。この場合は差分を patch に書き出して原本から作り直す。
 
 ```bash
 jj diff --from '<bookmark>@origin' --to @ --git > /tmp/split.patch   # 別件の増分だけを取り出す
@@ -109,7 +109,7 @@ jj abandon <汚染されたコミット>                                        
 jj diff --from '<bookmark>@origin' --to <bookmark> --stat             # 0 files であることを確認
 ```
 
-`jj new` の宛先に**origin の実コミット**を指定するのが肝（書き換え版を親にすると stacked PR が CONFLICTING になる。上の「④分離後の子を…」と同じ理由）。なお Claude Code の auto-mode classifier は `jj restore` を破壊的操作として block することがあるので、その意味でもこの経路が使える。
+`jj new` の宛先にorigin の実コミットを指定するのが肝（書き換え版を親にすると stacked PR が CONFLICTING になる。上の「④分離後の子を…」と同じ理由）。なお Claude Code の auto-mode classifier は `jj restore` を破壊的操作として block することがあるので、その意味でもこの経路が使える。
 
 ## `jj log` DAG の視覚的近接は親子関係を意味しない
 <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
@@ -141,7 +141,7 @@ jj squash                # WCの変更を親コミットにまとめる
 ## `jj diff -- <path>` のパスに `(` `)` が入ると fileset parse error
 <!-- importance: medium | mentions: 1 | first-seen: 2026-07 -->
 
-jj の `--` 以降は git と違い**単なるパスではなく fileset 式**として構文解析される。Next.js の route group（`app/(app)/...`）のように括弧を含むパスをそのまま渡すと `Failed to parse fileset: Syntax error` で落ちる（パスが存在しないわけではないので原因が分かりにくい）。
+jj の `--` 以降は git と違い単なるパスではなく fileset 式として構文解析される。Next.js の route group（`app/(app)/...`）のように括弧を含むパスをそのまま渡すと `Failed to parse fileset: Syntax error` で落ちる（パスが存在しないわけではないので原因が分かりにくい）。
 
 対処: パス全体を fileset の文字列リテラルとして二重引用する。
 
@@ -152,7 +152,7 @@ jj diff -r @ -- apps/adachi/app/(app)/invoice/_components/x.tsx
 jj diff -r @ -- '"apps/adachi/app/(app)/invoice/_components/x.tsx"'
 ```
 
-スペース・`|`・`&` 等の fileset 演算子文字を含むパスでも同じ。**迷ったら常に二重引用でよい**（通常パスでも動く）。
+スペース・`|`・`&` 等の fileset 演算子文字を含むパスでも同じ。迷ったら常に二重引用でよい（通常パスでも動く）。
 
 ## ファイルリネーム
 
@@ -171,12 +171,12 @@ jj file untrack <path>
 
 で追跡から外す。`jj status` で消えたことを確認してから push すること。
 
-**`jj file untrack` は "ignored files" のみ対象 — `.gitignore` 追記を先に行う**: `jj file untrack` を実行すると `error: ... is not ignored` が出て失敗する。手順は ① `.gitignore` にパターンを追加 → ② `jj file untrack` の順でないと動かない。`.DS_Store` 等を後から除外したいときも同様。
+**`jj file untrack` は "ignored files" のみ対象。`.gitignore` 追記を先に行う**: `jj file untrack` を実行すると `error: ... is not ignored` が出て失敗する。手順は ① `.gitignore` にパターンを追加 → ② `jj file untrack` の順でないと動かない。`.DS_Store` 等を後から除外したいときも同様。
 <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 
 ## `jj new <branch>` でクリーンブランチを作る際にディスクファイルが branch 状態に戻る
 
-`jj new main` を実行するとディスク上のファイルは main の状態に戻る（作業コピーが main の子になるため）。既存ブランチから**特定ファイルだけを取り出したいとき**は以下のパターンを使う:
+`jj new main` を実行するとディスク上のファイルは main の状態に戻る（作業コピーが main の子になるため）。既存ブランチから特定ファイルだけを取り出したいときは以下のパターンを使う。
 
 ```bash
 # 1. クリーンなベースを作る（ファイルは main 状態に戻る）
@@ -191,7 +191,7 @@ jj restore --from <旧ブランチの revision> -- <file1> <file2> ...
 
 ## rebase conflict の両側が同一内容に収束している場合
 
-`jj resolve --list` が "2-sided conflict including 1 deletion" を示しても、main 側とブランチ側の最終内容が**同一**に収束していることがある（例: 両者が独立して同じリファクタリングを行った場合）。マニュアルマージに入る前に差分確認を先に行うと無駄な作業を省ける。
+`jj resolve --list` が "2-sided conflict including 1 deletion" を示しても、main 側とブランチ側の最終内容が同一に収束していることがある（例: 両者が独立して同じリファクタリングを行った場合）。マニュアルマージに入る前に差分確認を先に行うと無駄な作業を省ける。
 
 ```bash
 # conflict ファイルの branch 側コンテンツ行番号を確認

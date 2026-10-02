@@ -270,23 +270,23 @@ playwright-cli close
 
 ## Gotchas
 
-- **アクセシビリティ検証は `snapshot` の ARIA ツリーで足り、足りないときは `run-code` + CDP を使う（`page.accessibility.snapshot()` は現行 playwright に存在しない）**: `playwright-cli snapshot` が出す YAML は role と accessible name を持つので、「ボタンの名前が行ごとに区別できるか」「live region が `status` / `alert` として出ているか」はこれだけで確認できる。ツリーから落ちている要素（`ignored` 扱いか、単に名前が無いのか）まで見たいときは `playwright-cli run-code "async page => { const s = await page.context().newCDPSession(page); await s.send('Accessibility.enable'); return (await s.send('Accessibility.getFullAXTree')).nodes; }"` を使う。`page.accessibility.snapshot()` は削除済みで `TypeError: Cannot read properties of undefined` になるので呼ばない。出力は巨大なので `rg '"role"|"name"' <保存先>` で絞る（**`rg -v '^\s*[]{}[]'` のような否定フィルタは文字クラスが閉じずに regex parse error になる** — 残したい行を正のパターンで指定する）。
+- **アクセシビリティ検証は `snapshot` の ARIA ツリーで足り、足りないときは `run-code` + CDP を使う（`page.accessibility.snapshot()` は現行 playwright に存在しない）**: `playwright-cli snapshot` が出す YAML は role と accessible name を持つので、「ボタンの名前が行ごとに区別できるか」「live region が `status` / `alert` として出ているか」はこれだけで確認できる。ツリーから落ちている要素（`ignored` 扱いか、単に名前が無いのか）まで見たいときは `playwright-cli run-code "async page => { const s = await page.context().newCDPSession(page); await s.send('Accessibility.enable'); return (await s.send('Accessibility.getFullAXTree')).nodes; }"` を使う。`page.accessibility.snapshot()` は削除済みで `TypeError: Cannot read properties of undefined` になるので呼ばない。出力は巨大なので `rg '"role"|"name"' <保存先>` で絞る（**`rg -v '^\s*[]{}[]'` のような否定フィルタは文字クラスが閉じずに regex parse error になる**。残したい行を正のパターンで指定する）。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-09 -->
 
 - **`--filename=` スナップショットはカレントディレクトリに保存される**: `playwright-cli snapshot --filename=iter01.yaml` はそのまま CWD に保存される。リポジトリ内のディレクトリで実行すると jj/git に追跡され PR に混入する。必ず `~/.claude/tmp/` などの絶対パスを指定すること。例: `playwright-cli screenshot --filename=/Users/username/.claude/tmp/snap.png`
   <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
 
-- **セッション全体の `.playwright-cli/` ディレクトリもリポジトリ内に生成される — `.gitignore` に追加する**: `playwright-cli open` を起動すると CWD に `.playwright-cli/` ディレクトリが生成されてコンソールログ・ページスナップショットが蓄積される。`--filename=` で個別ファイルを外に出しても、セッション記録ファイル（`console-*.log`・`page-*.yml`）は常に `.playwright-cli/` に残る。リポジトリで playwright-cli を使う前に `.gitignore` に `.playwright-cli/` が含まれているか確認し、なければ追加する。既に snapshot が working copy に入った場合は `jj file untrack ".playwright-cli/*"` で除外する（`.gitignore` 更新だけでは追跡済みファイルは消えない）。
+- **セッション全体の `.playwright-cli/` ディレクトリもリポジトリ内に生成される。`.gitignore` に追加する**: `playwright-cli open` を起動すると CWD に `.playwright-cli/` ディレクトリが生成されてコンソールログ・ページスナップショットが蓄積される。`--filename=` で個別ファイルを外に出しても、セッション記録ファイル（`console-*.log`・`page-*.yml`）は常に `.playwright-cli/` に残る。リポジトリで playwright-cli を使う前に `.gitignore` に `.playwright-cli/` が含まれているか確認し、なければ追加する。既に snapshot が working copy に入った場合は `jj file untrack ".playwright-cli/*"` で除外する（`.gitignore` 更新だけでは追跡済みファイルは消えない）。
   <!-- importance: high | mentions: 2 | first-seen: 2026-06 -->
 
-- **`default` セッションはマシン上の全 Claude セッションで共有される — 検証では必ず `-s=<名前>` を付ける**: 別セッションが同じ `default` ブラウザで `goto` すると、自分の操作の途中で URL が別ポート（別ワークスペースの dev サーバー）に変わり、「自分の変更が効いていない」ように見える。対処: `playwright-cli -s=<workspace名> open ...` で始め、以降のコマンドにも毎回 `-s=` を付ける。症状が出たら `playwright-cli -s=<名前> eval "location.href"` でまず URL を確認する。
-- **名前付きセッションは必ず `open` で始める — dev サーバーが動いていても `goto` 単体は失敗する**: `playwright-cli -s=<名前> goto <url>` は `The browser '<名前>' is not open, please run open first` で落ちる（`-s=` の名前はブラウザの実体を指しており、`open` がその起動を兼ねるため）。`open <url>` が `goto` も兼ねるので、最初の 1 コマンドを `open <url>` にすればコマンドが 1 往復減る。
+- **`default` セッションはマシン上の全 Claude セッションで共有される。検証では必ず `-s=<名前>` を付ける**: 別セッションが同じ `default` ブラウザで `goto` すると、自分の操作の途中で URL が別ポート（別ワークスペースの dev サーバー）に変わり、「自分の変更が効いていない」ように見える。対処: `playwright-cli -s=<workspace名> open ...` で始め、以降のコマンドにも毎回 `-s=` を付ける。症状が出たら `playwright-cli -s=<名前> eval "location.href"` でまず URL を確認する。
+- **名前付きセッションは必ず `open` で始める。dev サーバーが動いていても `goto` 単体は失敗する**: `playwright-cli -s=<名前> goto <url>` は `The browser '<名前>' is not open, please run open first` で落ちる（`-s=` の名前はブラウザの実体を指しており、`open` がその起動を兼ねるため）。`open <url>` が `goto` も兼ねるので、最初の 1 コマンドを `open <url>` にすればコマンドが 1 往復減る。
   <!-- importance: high | mentions: 1 | first-seen: 2026-09 -->
 
-- **ファイル選択まわり: `upload` はワークスペース配下のファイルしか受け付けず、失敗するとファイルチューザーの状態が消える**: スクラッチパッドや `/tmp` のファイルを渡すと "outside allowed roots" で拒否される。拒否された後に同じパスを直しても、ファイルチューザーの待ち状態は失われているので**チューザーを開く操作からやり直す**必要がある（モーダル内なら再度開く）。置き場は gitignore 済みの `.playwright-cli/` が安全。また、`sr-only` で隠した `<input type="file">` を `click` するとラベルがクリックを奪ってタイムアウトする — 可視の `<label>` の ref を `click` する。
+- **ファイル選択まわり: `upload` はワークスペース配下のファイルしか受け付けず、失敗するとファイルチューザーの状態が消える**: スクラッチパッドや `/tmp` のファイルを渡すと "outside allowed roots" で拒否される。拒否された後に同じパスを直しても、ファイルチューザーの待ち状態は失われているので**チューザーを開く操作からやり直す**必要がある（モーダル内なら再度開く）。置き場は gitignore 済みの `.playwright-cli/` が安全。また、`sr-only` で隠した `<input type="file">` を `click` するとラベルがクリックを奪ってタイムアウトする。可視の `<label>` の ref を `click` する。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-09 -->
 
-- **「同じ要素の中身が変わったのか、要素ごと差し替わったのか」はスナップショットでは区別できない — 変化前に `eval` で目印を付ける**: ARIA スナップショットもスクショも最終状態の文字しか見せない。live region（`role="status"` は既存要素の中身の変化しか読まれない）や React の key 付け替えの検証では、`playwright-cli -s=<名前> eval "document.querySelector('[role=status]').dataset.probe = '0'"` → 状態を変える操作 → `eval "document.querySelector('[role=status]').outerHTML"` で `data-probe="0"` が文字入りの要素に残っているかを見る。残っていれば同一ノード。
+- **「同じ要素の中身が変わったのか、要素ごと差し替わったのか」はスナップショットでは区別できない。変化前に `eval` で目印を付ける**: ARIA スナップショットもスクショも最終状態の文字しか見せない。live region（`role="status"` は既存要素の中身の変化しか読まれない）や React の key 付け替えの検証では、`playwright-cli -s=<名前> eval "document.querySelector('[role=status]').dataset.probe = '0'"` → 状態を変える操作 → `eval "document.querySelector('[role=status]').outerHTML"` で `data-probe="0"` が文字入りの要素に残っているかを見る。残っていれば同一ノード。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-09 -->
 
 ## Specific tasks

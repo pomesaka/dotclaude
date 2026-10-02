@@ -34,7 +34,7 @@ curl -s "https://api.github.com/repos/anthropics/claude-code/releases?per_page=2
 
 `AskUserQuestion` でバージョンを選択してもらう。
 
-提示フォーマット（新しい順）:
+提示フォーマット（新しい順）は次のとおり。
 - 各バージョンのタグ名と `body` の先頭 300 文字を表示
 - 選択肢: 新バージョン一覧 ＋ 「スキップ（何もしない）」
 
@@ -42,13 +42,13 @@ curl -s "https://api.github.com/repos/anthropics/claude-code/releases?per_page=2
 
 ## Step 4: 指定バージョンをインストール
 
-選択されたバージョン番号（例: `1.3.0`、`v` なし）を使ってインストールする:
+選択されたバージョン番号（例: `1.3.0`、`v` なし）を使ってインストールする。
 
 ```bash
 curl -fsSL https://claude.ai/install.sh | bash -s <選択バージョン>
 ```
 
-インストール後に現在バージョンを確認して報告する:
+インストール後に現在バージョンを確認して報告する。
 
 ```bash
 claude --version

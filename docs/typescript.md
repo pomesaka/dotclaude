@@ -1,12 +1,12 @@
 # TypeScript レビュー観点
 
-> **TL;DR**: `export default` 禁止（named export のみ）・`as` キャスト原則禁止・`any` 禁止・`class` 原則禁止。discriminated union で null 安全に型を表現。Biome を linter として使用。Zod でランタイムバリデーション境界を構築。実装中の落とし穴・コンパイラ挙動 → `typescript-gotchas.md`
+> **TL;DR**: `export default` 禁止（named export のみ）・`as` キャスト原則禁止・`any` 禁止・`class` 原則禁止。discriminated union で null 安全に型を表現。Biome を linter として使用。Zod でランタイムバリデーション境界を構築。実装中の見落としやすい点・コンパイラ挙動 → `typescript-gotchas.md`
 
 プロジェクト固有の規約（CLAUDE.md等）に加え、以下の観点でレビューする。
 
 ## エクスポート規約
 
-- `export default` は**原則禁止**。named export を使う
+- `export default` は原則禁止。named export を使う
   - 例外: Next.js App Router の `page.tsx` / `layout.tsx` / `loading.tsx` / `error.tsx` などフレームワークが default export を要求するファイルのみ許可
   ```typescript
   // ❌ Bad
@@ -18,7 +18,7 @@
 
 ## 禁止パターン
 
-- `as` キャスト: **原則禁止**。やむを得ず使う場合は必ず WHY コメントで妥当性を説明すること
+- `as` キャスト: 原則禁止。やむを得ず使う場合は必ず WHY コメントで妥当性を説明すること
   ```typescript
   // ❌ Bad
   const value = data as SomeType;
@@ -38,7 +38,7 @@
   // この時点で value は non-null
   ```
   例: `Map.get(key)!` → iteration で直接値取得、または値が保証される構造に変更
-- **`as const` 配列とユニオン型の二重管理を避ける**: `VariableType = "a" | "b" | "c"` と `VALID_VALUES: readonly VariableType[] = ["a","b","c"]` を別々に定義すると型と配列がずれるリスクがある。`as const` 配列を先に定義して型を導出する:
+- **`as const` 配列とユニオン型の二重管理を避ける**: `VariableType = "a" | "b" | "c"` と `VALID_VALUES: readonly VariableType[] = ["a","b","c"]` を別々に定義すると型と配列がずれるリスクがある。`as const` 配列を先に定義して型を導出する。
   ```typescript
   // ❌ 型と配列の二重管理（拡張時に片方を忘れがち）
   export type VariableType = "text" | "number" | "date";
@@ -48,9 +48,9 @@
   export const VARIABLE_TYPES = ["text", "number", "date"] as const;
   export type VariableType = (typeof VARIABLE_TYPES)[number];
   ```
-  特に **zod を併用する場合は値配列必須**: `z.enum(VARIABLE_TYPES)` のように渡せる。型のみ export だと `z.enum` に渡せず（型消去）、結局 zod schema 内に値を直書きすることになり真実が分散する。値配列を真の単一情報源にする。UI の選択肢リスト（ラジオ・セレクト）も同じ値配列から `.map` で導出する — UI 側に選択肢を直書きすると「型は増えたが UI に出ない」無音の欠落が起きる（実例: noah issue 1013 で `RESOLUTION_METHODS` を z.enum / UI ラジオ / 型の単一ソースに統一）。
+  特に zod を併用する場合は値配列必須: `z.enum(VARIABLE_TYPES)` のように渡せる。型のみ export だと `z.enum` に渡せず（型消去）、結局 zod schema 内に値を直書きすることになり真実が分散する。値配列を真の単一情報源にする。UI の選択肢リスト（ラジオ・セレクト）も同じ値配列から `.map` で導出する。UI 側に選択肢を直書きすると「型は増えたが UI に出ない」欠落がエラーを出さずに起きる（実例: noah issue 1013 で `RESOLUTION_METHODS` を z.enum / UI ラジオ / 型の単一ソースに統一）。
   <!-- importance: medium | mentions: 3 | first-seen: 2026-05 -->
-- `class`: **原則使わない**。オブジェクトリテラル・関数・型で表現する
+- `class`: 原則使わない。オブジェクトリテラル・関数・型で表現する
   ```typescript
   // ❌ 避ける
   class UserService { ... }
@@ -117,7 +117,7 @@ return KickResult.ok(jobId);
 
 ## 依存性注入: カリー化ファクトリパターン
 
-クラスは使わずに **`createFoo(deps): Foo`** のカリー化ファクトリで表現する。deps（DB・クライアント・設定）はリクエストをまたいで安定しており、クロージャで束縛することで呼び出し側は `foo.send(input)` だけになる。テストでは spy を注入し、不要な deps は省略できる。
+クラスは使わずに `createFoo(deps): Foo` のカリー化ファクトリで表現する。deps（DB・クライアント・設定）はリクエストをまたいで安定しており、クロージャで束縛することで呼び出し側は `foo.send(input)` だけになる。テストでは spy を注入し、不要な deps は省略できる。
 
 ```typescript
 // ❌ deps と input を引数リストに並べる
@@ -242,7 +242,7 @@ type Diff = (prev: ProjectSpec, cur: ProjectSpec) => SpecDiff; // 実装側が�
 
 Drizzle の `typeof table.$inferSelect` や Prisma の generated 型が、ドメイン層で定義した interface と同名になることがある。例: `agentActions` テーブルから `AgentAction = typeof agentActions.$inferSelect` を出すと、ドメイン側の `interface AgentAction { ... }` と衝突する。
 
-対処は「**ドメインが canonical な名前を保持し、インフラ側に `Row` / `NewRow` サフィックスを付ける**」。
+対処は「ドメインが canonical な名前を保持し、インフラ側に `Row` / `NewRow` サフィックスを付ける」。
 
 ```ts
 // NG: ドメイン側に Domain サフィックス、インフラ側が裸の名前
@@ -257,7 +257,7 @@ export type NewAgentActionRow = typeof agentActions.$inferInsert // schema
 
 判断基準は「参照される広さ」。ドメイン型は orchestrator・agents・UI から広く import されるため canonical 名を保つ方が長期的に変更コストが低い。Row 型は repository 実装内部で完結することが多く、リネームしても影響範囲が狭い。
 
-合わせて **discriminated union の literal 型（`Kind` enum など）はドメイン層に置く**。infra(schema) が `import type { Kind } from "../domain/types"` で参照し、必要なら `export type { Kind }` で re-export する。逆向き（schema が enum を所有、domain が import）にすると Clean Architecture の依存方向（infra → domain）に反する。
+合わせて discriminated union の literal 型（`Kind` enum など）はドメイン層に置く。infra(schema) が `import type { Kind } from "../domain/types"` で参照し、必要なら `export type { Kind }` で re-export する。逆向き（schema が enum を所有、domain が import）にすると Clean Architecture の依存方向（infra → domain）に反する。
 
 ## モジュール間の循環依存を断つ注入パターン
 
@@ -301,7 +301,7 @@ const saveDiscount = (outcome: UnresolvedOutcome | undefined) => {
 
 ## 定数マップは `Record<K, (arg) => string>` で関数型を統一する
 
-値によって引数シグネチャが変わる定数マップ（ラベル生成関数等）は、全 key で同じ関数型にそろえる。一部の key だけ引数ありにすると呼び出し側で分岐が発生し、key が増えるたびに呼び出しパターンが増殖する。
+値によって引数シグネチャが変わる定数マップ（ラベル生成関数等）は、全 key で同じ関数型にそろえる。一部の key だけ引数ありにすると呼び出し側で分岐が発生し、key が増えるたびに呼び出しパターンが増える。
 
 ```typescript
 // ❌ discount だけ amount あり → 呼び出し側で分岐が必要

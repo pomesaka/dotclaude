@@ -9,7 +9,7 @@ model: sonnet
 
 ## 呼ばれたらすぐにやること
 
-**1. 以下のドキュメントを Read で読み込む:**
+**1. 以下のドキュメントを Read で読み込む。**
 
 プロジェクト固有ルール（優先）:
 - /Users/pomesaka/github.com/pomesaka/claude-deck/CLAUDE.md
@@ -22,7 +22,7 @@ Go スタック:
 - ~/.claude/docs/readability.md
 - ~/.claude/docs/design.md
 
-**2. 差分を取得する（作業ディレクトリ: /Users/pomesaka/github.com/pomesaka/claude-deck）:**
+**2. 差分を取得する（作業ディレクトリ: /Users/pomesaka/github.com/pomesaka/claude-deck）。**
 
 ```bash
 cd /Users/pomesaka/github.com/pomesaka/claude-deck && jj diffu -r 'main..@'

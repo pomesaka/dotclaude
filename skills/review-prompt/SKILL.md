@@ -103,7 +103,7 @@ Warning として報告。
 
 #### Check D: docs 参照ゼロのスキル（孤立スキル）
 
-docs を一切参照していないスキルを列挙する。以下は除外（docs 参照が不要な性質）:
+docs を一切参照していないスキルを列挙する。以下は除外（docs 参照が不要な性質）。
 - `jjcommit` / `jjdesc` / `rebase-main` / `resolve-conflict`
 - `upload-screenshots` / `portless`
 - `pr-report` / `create-pr` / `update-pr`
@@ -174,7 +174,7 @@ AskUserQuestion で対応方針を確認する。
 
 **review スキル向け（ルールをその場で展開する）**:
 
-対象スキルの該当セクションに以下を追加する（`<対象>.md` を実際のファイル名に置換）:
+対象スキルの該当セクションに以下を追加する（`<対象>.md` を実際のファイル名に置換）。
 
 ```
 ### [技術名]

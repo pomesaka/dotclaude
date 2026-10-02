@@ -24,7 +24,7 @@ model: sonnet
 
 ### 1a. reviewer を起動
 
-Agent ツールで `reviewer-{project}` subagent を起動する:
+Agent ツールで `reviewer-{project}` subagent を起動する。
 - `subagent_type`: `"reviewer-{project}"`
 - `prompt`: `"ラウンドN のレビューをしてください。"`
 
@@ -47,7 +47,7 @@ Agent ツールで `reviewer-{project}` subagent を起動する:
 
 Coordinatorが指摘を全て修正する。Nitも可能な範囲で一緒に修正する。
 
-修正後はlintで確認:
+修正後はlintで確認する。
 ```bash
 {lint_command}
 ```

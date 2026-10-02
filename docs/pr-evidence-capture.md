@@ -19,7 +19,7 @@ dev サーバーを起動せずに、PR の「動作確認」に貼る信頼で�
 
 ## Node ESM: `node_modules` はスクリプト自身のパス基準で解決される — CWD ではない
 
-`node script.mjs` を実行するとき、`import` の解決は **プロセスの CWD ではなく、import 元ファイル（script.mjs 自身)が置かれているディレクトリ**を基準に `node_modules` を辿る。`cd <node_modules を持つディレクトリ> && node /別の場所/script.mjs` のように CWD だけ合わせても `ERR_MODULE_NOT_FOUND` になる。
+`node script.mjs` を実行するとき、`import` の解決はプロセスの CWD ではなく、import 元ファイル（script.mjs 自身)が置かれているディレクトリを基準に `node_modules` を辿る。`cd <node_modules を持つディレクトリ> && node /別の場所/script.mjs` のように CWD だけ合わせても `ERR_MODULE_NOT_FOUND` になる。
 
 **対処**: 一時的な検証スクリプトを書くときは、実行対象の `.mjs`/`.ts` ファイル自体を `node_modules` を持つディレクトリ（または `package.json` があるディレクトリ）の中にコピー/作成してから実行する。
 

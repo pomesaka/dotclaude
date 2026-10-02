@@ -2,7 +2,7 @@
 
 > **TL;DR**: Cloudflare の操作は wrangler でなく `cf` を使う。結果は JSON で読み、送る前に `--dry-run` で確かめる。`--force` はユーザーの確認なしに付けない。シークレットの登録とログの tail だけは wrangler で補う。ベータなので、コマンドは記憶で組まず、`cf cli search` と公式ドキュメントで確かめてから打つ。
 
-2026-09-28 にベータ公開（[Changelog](https://developers.cloudflare.com/changelog/post/2026-09-28-cloudflare-cli-beta/)）。以下は 2026-09-30 に公式ドキュメント（[エージェント向けの使い方](https://developers.cloudflare.com/cf/agents/)・[wrangler からの対応表](https://developers.cloudflare.com/cf/wrangler/reference/)）で確認した内容。**安定版までにコマンド・設定・ビルド出力が変わりうる**と明記されているので、食い違ったらドキュメントを正とする。
+2026-09-28 にベータ公開（[Changelog](https://developers.cloudflare.com/changelog/post/2026-09-28-cloudflare-cli-beta/)）。以下は 2026-09-30 に公式ドキュメント（[エージェント向けの使い方](https://developers.cloudflare.com/cf/agents/)・[wrangler からの対応表](https://developers.cloudflare.com/cf/wrangler/reference/)）で確認した内容。安定版までにコマンド・設定・ビルド出力が変わりうると明記されているので、食い違ったらドキュメントを正とする。
 
 ## 基本
 

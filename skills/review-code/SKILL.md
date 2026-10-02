@@ -103,4 +103,4 @@ jj diffu -r 'main..@' 2>/dev/null
 
 ## Gotchas
 
-- **`context: fork` から `--background` プロセスは生存できない**: fork サブエージェントが `--background` で外部プロセス（difit など）を起動しても、サブエージェント終了時に claude-deck がプロセスグループごと kill するため、起動したプロセスは道連れになって死ぬ。長生きするプロセスが必要な場合は main agent コンテキスト（`context: fork` なし）から起動する必要がある。
+- **`context: fork` から `--background` プロセスは生存できない**: fork サブエージェントが `--background` で外部プロセス（difit など）を起動しても、サブエージェント終了時に claude-deck がプロセスグループごと kill するため、起動したプロセスも一緒に終了する。長く動かし続けるプロセスが必要な場合は main agent コンテキスト（`context: fork` なし）から起動する必要がある。

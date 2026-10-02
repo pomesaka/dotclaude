@@ -11,7 +11,7 @@ The user wants to create or review a Product Requirements Document (PRD).
 
 ## モード判定
 
-ユーザーの発言から以下を判定する:
+ユーザーの発言から以下を判定する。
 
 - **作成モード**: 「書いて」「作って」「作成して」など → Step 1: 要件ヒアリング
 - **レビューモード**: 「レビューして」「確認して」「フィードバック」など → Step 2: PRDレビュー
@@ -23,7 +23,7 @@ The user wants to create or review a Product Requirements Document (PRD).
 
 ### 1-1. ヒアリング
 
-`AskUserQuestion` で以下を確認する（まとめて一度に聞く）:
+`AskUserQuestion` で以下を確認する（まとめて一度に聞く）。
 
 - **対象**: 何を作る？（機能 / プロダクト / MVP / 改善）
 - **問題**: 誰のどんな問題を解くか
@@ -34,7 +34,7 @@ The user wants to create or review a Product Requirements Document (PRD).
 
 ### 1-2. PRD 構成
 
-以下の構成で Markdown PRD を生成する:
+以下の構成で Markdown PRD を生成する。
 
 ```markdown
 # [プロダクト/機能名] PRD
@@ -129,7 +129,7 @@ The user wants to create or review a Product Requirements Document (PRD).
 
 ### 2-2. レビュー基準
 
-以下の観点で評価し、各項目を ✅ / ⚠️ / ❌ でスコアする:
+以下の観点で評価し、各項目を OK / 注意 / NG でスコアする。
 
 | 観点 | チェック内容 |
 |------|------------|

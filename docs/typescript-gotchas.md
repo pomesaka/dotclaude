@@ -1,12 +1,12 @@
 # TypeScript 落とし穴・コンパイラ挙動メモ
 
-> **TL;DR**: 実装中に踏む TypeScript 固有の罠と回避策。カテゴリ: [as禁止下の型付け代替](#as-キャスト禁止下の代替パターン)・[コンパイラの罠](#コンパイラの罠)（narrowing・satisfies・条件型）・[Zod/バリデーション](#zod-バリデーション)・[環境・ツール固有](#環境ツール固有)（Bun・import.meta・g-flag RegExp）。基本規約・設計パターン → `typescript.md`
+> **TL;DR**: 実装中に出会う TypeScript 固有の見落としやすい点と回避策。カテゴリ: [as禁止下の型付け代替](#as-キャスト禁止下の代替パターン)・[コンパイラの罠](#コンパイラの罠)（narrowing・satisfies・条件型）・[Zod/バリデーション](#zod-バリデーション)・[環境・ツール固有](#環境ツール固有)（Bun・import.meta・g-flag RegExp）。基本規約・設計パターン → `typescript.md`
 
 ## `as` キャスト禁止下の代替パターン
 
 ### `fetch` レスポンスは `z.discriminatedUnion` で検証する
 
-`Response.json()` の戻り値は `unknown`。`as { ok: boolean; data: T }` で型付けすると不正レスポンスがランタイムで silently 通過し、サーバー contract 違反を検出できない。`z.discriminatedUnion("ok", [success, error])` で envelope を検証し、success バリアントには `data: dataSchema` を渡せば内側 payload も自動検証されて `as` 不要・型安全（"as キャスト禁止" 環境での標準 fetch ヘルパパターン）。
+`Response.json()` の戻り値は `unknown`。`as { ok: boolean; data: T }` で型付けすると不正レスポンスがランタイムでエラーを出さずに通過し、サーバー contract 違反を検出できない。`z.discriminatedUnion("ok", [success, error])` で envelope を検証する。success バリアントには `data: dataSchema` を渡せば内側 payload も自動検証されて `as` 不要・型安全（"as キャスト禁止" 環境での標準 fetch ヘルパパターン）。
 ```typescript
 const envelopeSchema = z.discriminatedUnion("ok", [
   z.object({ ok: z.literal(true), data: z.unknown() }),
@@ -66,7 +66,7 @@ const strProp = (obj: unknown, key: string): string | undefined => {
 
 ### `as` キャスト禁止下での型精度向上: `useRef` パターン
 
-`useState<A[]>` が特定のライフサイクル時点で実際には `B[]`（`B extends A`）を保持している場合、`as B[]` キャストは禁止。代わりに Promise/Generator の解決時に `useRef<B[]>` に格納する:
+`useState<A[]>` が特定のライフサイクル時点で実際には `B[]`（`B extends A`）を保持している場合、`as B[]` キャストは禁止。代わりに Promise/Generator の解決時に `useRef<B[]>` に格納する。
 
 ```ts
 // NG: as キャスト
@@ -130,9 +130,9 @@ test.each([
 
 ### AI SDK `TextStreamPart` のフィールド名は `as` キャストで誤魔化せない — 実機で確認する
 
-AI SDK v6 の `TextStreamPart<TOOLS>` discriminated union は型定義がバージョンによって変わりやすい。`as TextStreamPart<ToolSet>` で誤魔化すとテストが型的に通っても実際の `applyPart` 等に渡すと wrong field で無音スキップされる（`part.text` を読む実装に `{ textDelta: "hello" }` を渡してもイベントが生成されない）。
+AI SDK v6 の `TextStreamPart<TOOLS>` discriminated union は型定義がバージョンによって変わりやすい。`as TextStreamPart<ToolSet>` で誤魔化すとテストが型的に通っても実際の `applyPart` 等に渡すと wrong field でエラーを出さずにスキップされる（`part.text` を読む実装に `{ textDelta: "hello" }` を渡してもイベントが生成されない）。
 
-**ai v6.0.x 実機確認済みのフィールド名** (`node_modules/ai/dist/index.d.ts` 参照):
+**ai v6.0.x 実機確認済みのフィールド名** (`node_modules/ai/dist/index.d.ts` 参照)
 
 ```typescript
 // text-delta: text フィールド（NOT textDelta / NOT delta）, id が必須
@@ -145,7 +145,7 @@ AI SDK v6 の `TextStreamPart<TOOLS>` discriminated union は型定義がバー�
 { type: "error", error: new Error("failed") }
 ```
 
-テストヘルパーでは `as` キャストを使わず正確な型で構築する:
+テストヘルパーでは `as` キャストを使わず正確な型で構築する。
 ```typescript
 // NG: as キャストで誤魔化す → 実際の実装でフィールドが読めず無音スキップ
 function makeTextPart(text: string): TextStreamPart<ToolSet> {
@@ -158,7 +158,7 @@ function makeTextPart(text: string): TextStreamPart<ToolSet> {
 }
 ```
 
-バージョンアップ後はまず `node_modules/ai/dist/index.d.ts` の該当 union 定義を確認してから WHY コメントを書く（未確認の field 名断定は将来の罠になる）。
+バージョンアップ後はまず `node_modules/ai/dist/index.d.ts` の該当 union 定義を確認してから WHY コメントを書く（未確認の field 名断定は将来の誤りのもとになる）。
 <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 
 ---
@@ -167,7 +167,7 @@ function makeTextPart(text: string): TextStreamPart<ToolSet> {
 
 ### `let x: T | null = null` がクロージャ内で代入されると後続で `never` になる
 
-TypeScript は `let` 変数がコールバック/クロージャ内でのみ代入される場合、外側のフローで変数を `null` に保守的 narrow する。そのため `if (x === null) throw` で残りのブランチが `never` に潰れ、プロパティアクセスで型エラーになる。
+TypeScript は `let` 変数がコールバック/クロージャ内でのみ代入される場合、外側のフローで変数を `null` に保守的 narrow する。そのため `if (x === null) throw` で残りのブランチが `never` になり、プロパティアクセスで型エラーになる。
 
 ```ts
 // NG: クロージャ内の代入を TS が追跡しない → after throw, observed: never
@@ -215,7 +215,7 @@ ITEMS.reduce<Partial<Record<"A" | "B", NarrowItem[]>>>((acc, t) => {
 
 ### discriminated union のブランチ内 `??` フォールバックは dead code でも型エラーにならない
 
-discriminated union のブランチ内で保証されるフィールドに `??` フォールバックを書いても、TypeScript は何も言わない。
+discriminated union のブランチ内で保証されるフィールドに `??` フォールバックを書いても、TypeScript はエラーを出さない。
 
 ```ts
 type Item =
@@ -237,7 +237,7 @@ discriminated union ブランチ内に `??` や `||` フォールバックがあ
 
 ### `noUncheckedIndexedAccess` 下では index アクセスが常に `T | undefined`
 
-`noUncheckedIndexedAccess: true`（strict 相当）下では配列 / `match[n]` / `Record[key]` の index アクセスが常に `T | undefined`。理由: TS は「変数の型」のみ narrow し「index 演算子の結果型」は narrow しない — match を if guard しても、type predicate で key を絞っても index 結果は undefined を含む。対処: `?.` + `?? ""` / `?? false` で fail-closed に倒す（`!` アサートは禁止かつ noUncheckedIndexedAccess の目的と相反する）。
+`noUncheckedIndexedAccess: true`（strict 相当）下では配列 / `match[n]` / `Record[key]` の index アクセスが常に `T | undefined`。理由: TS は「変数の型」のみ narrow し「index 演算子の結果型」は narrow しない。match を if guard しても、type predicate で key を絞っても index 結果は undefined を含む。対処: `?.` + `?? ""` / `?? false` で fail-closed にする（`!` アサートは禁止かつ noUncheckedIndexedAccess の目的と相反する）。
 
 - regex 例: NG `const m = text.match(p); if (m) { const v: string = m[1]; }`（guard 後も `string | undefined`）／OK `const label = text.match(p)?.[1] ?? "";`
 - type predicate 例: NG `isKnownRole(user.role)` で narrow した後の `roles[user.role].allowed`（index 結果は `RoleLike | undefined` のまま）／OK `roles[user.role]?.allowed ?? false`
@@ -285,7 +285,7 @@ function validateSegments(raw: TranslationResultRaw, expectedCount: number): voi
 
 ### 型ガードを `filter` に渡すとサイレントドロップになる
 
-`array.filter(isT)` は型ガードを predicate として使えるが、不一致要素が**音もなく消える**。外部データ（API レスポンス・LLM 出力）の場合、予期しない欠損が下流でわかりにくいバグになる。代わりに `map + throw` で早期に検出する。
+`array.filter(isT)` は型ガードを predicate として使えるが、不一致要素がエラーを出さずに消える。外部データ（API レスポンス・LLM 出力）の場合、予期しない欠損が下流でわかりにくいバグになる。代わりに `map + throw` で早期に検出する。
 
 ```typescript
 // NG: 意図しない欠損が無音で起きる
@@ -305,7 +305,7 @@ const segments = rawSegments.map((s) => {
 
 ### 有界ループの「全パス return/throw」は CFA が証明できない（TS2366）— リトライループは `for (;;)` で書く
 
-`for (let i = 0; i <= retries; i++)` の全 iteration が return か throw で終わっても、TS の制御フロー解析はループが最低 1 回回ることを証明できず、ループ後に到達しうると判定する（TS2366: Function lacks ending return statement）。これを黙らせるための末尾 `throw lastError` は `let lastError` との二重管理になり、しかも負の `retries` で `throw undefined` になる実バグを抱える（`tsc --strict` で検証済み・2026-07）。条件なしの `for (;;)` は「ループ後」が存在しないため CFA が clean に通り、`let` も末尾 throw も消える。
+`for (let i = 0; i <= retries; i++)` の全 iteration が return か throw で終わっても、TS の制御フロー解析はループが最低 1 回回ることを証明できず、ループ後に到達しうると判定する（TS2366: Function lacks ending return statement）。このエラーを消すための末尾 `throw lastError` は `let lastError` との二重管理になり、しかも負の `retries` で `throw undefined` になる実バグを抱える（`tsc --strict` で検証済み・2026-07）。条件なしの `for (;;)` は「ループ後」が存在しないため CFA が clean に通り、`let` も末尾 throw も消える。
 
 ```typescript
 // NG: 末尾 throw が TS 要求 + throw undefined の罠
@@ -348,12 +348,12 @@ const keys: TemplateCategory[] = ["運送", "請求", "社内連絡"];
 
 ### `async` 関数のリファクタリング後に sync 化を確認する
 
-既存の `async function` が内部で呼んでいた非同期関数をリファクタリングで取り除いたとき、関数自体の `async` キーワードと戻り型 `Promise<T>` が残骸として残りやすい。`await` が不要になったら `async` を外して同期関数に変えられる。判断: 関数本体に `await` が1つも残っていなければ sync 化できる（TypeScript は `await` なし `async` 関数を許容するが不要な Promise ラップを生成する）。
+既存の `async function` が内部で呼んでいた非同期関数をリファクタリングで取り除いたとき、関数自体の `async` キーワードと戻り型 `Promise<T>` が不要になっても残りやすい。`await` が不要になったら `async` を外して同期関数に変えられる。判断: 関数本体に `await` が1つも残っていなければ sync 化できる（TypeScript は `await` なし `async` 関数を許容するが不要な Promise ラップを生成する）。
 <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 
 ### バックエンドが常に初期化するフィールドは required にする
 
-バックエンドがジョブ作成時に `steps: []`・`sources: []` で初期化することが確定しているなら、TypeScript の型も `optional?` ではなく required にする。Optional にすると全参照箇所で `?? []` フォールバックが必要になり防衛的コードが増殖する。判断基準: "API が返す JSON にこのフィールドは必ず存在するか？" → Yes なら required。"クライアントがいつ設定するか決まっていない" → optional。
+バックエンドがジョブ作成時に `steps: []`・`sources: []` で初期化することが確定しているなら、TypeScript の型も `optional?` ではなく required にする。Optional にすると全参照箇所で `?? []` フォールバックが必要になり防衛的コードが増える。判断基準: "API が返す JSON にこのフィールドは必ず存在するか？" → Yes なら required。"クライアントがいつ設定するか決まっていない" → optional。
 <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
 
 ### DB/サーバー関数に渡す型はフィールド名をスキーマと揃える
@@ -377,7 +377,7 @@ createPost({ ...loc }); // またはスプレッドで直接渡せる
 
 ### テストが analyzer の内部メソッドに直接依存するリスク
 
-- **公開 interface のメソッドをテストが呼ぶと、interface 変更で全壊する**: `ANALYZER.findFiles()`/`ANALYZER.parse()` のように analyzer オブジェクトのプロパティをテストが直接呼ぶと、interface が変わった瞬間に一斉に型エラーになる。
+- **公開 interface のメソッドをテストが呼ぶと、interface 変更で全壊する**: `ANALYZER.findFiles()`/`ANALYZER.parse()` のように analyzer オブジェクトのプロパティをテストが直接呼ぶと、interface が変わった時点で一斉に型エラーになる。
 
   **対処**: 実装関数を `@internal export` で直接エクスポートし、テストは公開 interface 経由ではなく実装関数を直接呼ぶ。
 
@@ -397,9 +397,9 @@ createPost({ ...loc }); // またはスプレッドで直接渡せる
 
 ### optional 値の assertion は `if (x !== undefined)` でなく throw-guard で囲む（無音 pass を防ぐ）
 
-`expect` を `if (optionalValue !== undefined) { ... }` で囲むと、値が `undefined` のとき**ブロックごとスキップされてテストが無音で pass する** — 「検証したつもりで何も検証していない」false positive になる。`?.` でチェーンした値を直接 `expect` に渡すパターン（`expect(calls[0]?.opts?.expiresAt).toBeDefined()` の後で `calls[0]?.opts?.expiresAt.getTime()` を読む等）も同じ穴で、存在を assertion した「つもり」のまま optional chain が `undefined` を返し続ける。
+`expect` を `if (optionalValue !== undefined) { ... }` で囲むと、値が `undefined` のときブロックごとスキップされてテストがエラーを出さずに pass する。「検証したつもりで何も検証していない」false positive になる。`?.` でチェーンした値を直接 `expect` に渡すパターン（`expect(calls[0]?.opts?.expiresAt).toBeDefined()` の後で `calls[0]?.opts?.expiresAt.getTime()` を読む等）も同じ問題で、存在を assertion した「つもり」のまま optional chain が `undefined` を返し続ける。
 
-**対処**: 値を取り出して **throw-guard で「無ければ即失敗」にしてから** assertion を書く。throw 以降は型も narrowing され `?.` が不要になる。
+**対処**: 値を取り出して throw-guard で「無ければ即失敗」にしてから assertion を書く。throw 以降は型も narrowing され `?.` が不要になる。
 
 ```typescript
 // ❌ x が undefined だとブロックごと skip され無音 pass
@@ -421,7 +421,7 @@ expect(expiresAt.getTime()).toBeGreaterThan(now);
 
 ### `spyOn(globalThis, ...)` はグローバルを書き換える — `afterEach` で必ず `mockRestore()` する
 
-`spyOn(globalThis, "fetch")`（や `Date`・`console` 等）はグローバルオブジェクトのメソッドを差し替えるため、restore しないと**同じファイルの後続テストへ mock が漏れる**。`fetch` を使わないつもりのテストがリークした mock を踏み、無関係な失敗・偽の成功を生む。`spyOn` を module スコープの `let spy` に退避し、`afterEach` で `spy?.mockRestore()` する。
+`spyOn(globalThis, "fetch")`（や `Date`・`console` 等）はグローバルオブジェクトのメソッドを差し替えるため、restore しないと同じファイルの後続テストへ mock が漏れる。`fetch` を使わないつもりのテストがリークした mock を使ってしまい、無関係な失敗・偽の成功を生む。`spyOn` を module スコープの `let spy` に退避し、`afterEach` で `spy?.mockRestore()` する。
 
 ```typescript
 let fetchSpy: { mockRestore: () => void } | undefined;
@@ -529,7 +529,7 @@ const casesDir = dirname(fileURLToPath(import.meta.url));
 
 `import.meta.glob`（Vite のビルド時変換）はテストランナー（`bun test`）上では関数として存在しないため、それを評価するモジュールを直接 import するとロード時にクラッシュする。データソース読み込み（glob）とビジネスロジックが同一ファイルだと、ロジックを単体テストできない。
 
-対処: **純粋関数を別モジュールに切り出し、型は `import type` だけで取り込む**。`import type` はランタイムで完全に消える（elision）ため、テストは glob モジュールを評価せずロジックだけ検証できる。デフォルト引数で実データを束ねる便利版は glob 側に置けば、アプリ呼び出しのエルゴノミクスも保てる。
+対処: 純粋関数を別モジュールに切り出し、型は `import type` だけで取り込む。`import type` はランタイムで完全に消える（elision）ため、テストは glob モジュールを評価せずロジックだけ検証できる。デフォルト引数で実データを束ねる便利版は glob 側に置けば、アプリ呼び出しのエルゴノミクスも保てる。
 
 ```ts
 // depends.ts — 純粋・テスト可能。型のみ import（ランタイムでは issues.ts を評価しない）
@@ -541,7 +541,7 @@ import { scheduleConflictsOf as core } from "./depends";
 export const scheduleConflictsOf = (i: Issue, lookup = byNum) => core(i, lookup);
 ```
 
-テストは合成フィクスチャ（合成 `Map` / 配列）を注入する。同根の一般原則は依存性注入: カリー化ファクトリパターン（`typescript.md`）と同じ — 「実データへの依存をデフォルト引数に追い出し、コアは引数で受ける」。
+テストは合成フィクスチャ（合成 `Map` / 配列）を注入する。同根の一般原則は依存性注入: カリー化ファクトリパターン（`typescript.md`）と同じで、「実データへの依存をデフォルト引数に追い出し、コアは引数で受ける」というものだ。
 
 ### `g` フラグ付き RegExp をモジュール定数にしない
 
@@ -612,23 +612,23 @@ for (const match of text.matchAll(pattern)) {
   注意: `import type { SomeType } from "./dep"` でモジュールが差し替えられていてもランタイム import は発生しないため `MockConfig` の定義ソースとして使える。`as const` テーブルでも型引数を揃えておくと `extend`・`spread` 時に明示キャスト不要になる。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 
-- **`bun:test` の `mock.module` はテストファイルを跨いで残留する — 実装をテストしたいなら依存注入で seam を作る**: bun test は複数テストファイルを同一プロセスで走らせるため、あるファイルの `mock.module("./dep", ...)` が**別のテストファイル**にも効き、モック対象モジュール自身のテスト（`dep.test.ts`）が実装の代わりにモックを掴んで壊れる。壊れるのは自分のテストでなく既存の他ファイルなので、フルスイートを回すまで気づかない。対処: モジュール差し替えでなく、テスト対象関数に依存を引数注入する（`fn(config, deps = { git, gh })` のようなデフォルト引数 seam）。判断基準: 「mock したいモジュールに自分のテストファイルがあるか？」YES なら mock.module は使わない。実例: ADeT-AI PR #741 で `mock.module('.../git')` が `git.test.ts`/`gh.test.ts` の 23 件を壊し、`SetupDeps` 引数注入に切り替えた（2026-08）。
+- **`bun:test` の `mock.module` はテストファイルを跨いで残留する。実装をテストしたいなら依存注入で seam を作る**: bun test は複数テストファイルを同一プロセスで走らせるため、あるファイルの `mock.module("./dep", ...)` が別のテストファイルにも効き、モック対象モジュール自身のテスト（`dep.test.ts`）が実装の代わりにモックを読み込んで壊れる。壊れるのは自分のテストでなく既存の他ファイルなので、フルスイートを回すまで気づかない。対処: モジュール差し替えでなく、テスト対象関数に依存を引数注入する（`fn(config, deps = { git, gh })` のようなデフォルト引数 seam）。判断基準: 「mock したいモジュールに自分のテストファイルがあるか？」YES なら mock.module は使わない。実例: ADeT-AI PR #741 で `mock.module('.../git')` が `git.test.ts`/`gh.test.ts` の 23 件を壊し、`SetupDeps` 引数注入に切り替えた（2026-08）。
   <!-- importance: high | mentions: 1 | first-seen: 2026-08 -->
 
-- **`get` トラップだけの Proxy ラッパーは consumer の `"x" in obj` チェックを破る**: 遅延初期化 Proxy（`new Proxy({} as T, { get: ... })`）は、`has` トラップ未実装だと `in` 演算子が target（空オブジェクト）を見て常に false を返す。ライブラリは duck-typing 分岐に `in` を使うことがあり（例: better-auth `toNextJsHandler` の `"handler" in auth ? auth.handler(req) : auth(req)`）、false 側に倒れて「auth is not a function」のような不可解な実行時エラーになる。typecheck は通る（型上は T のまま）ため静的に検出できない。対処: 遅延 Proxy を書くときは `get` に加えて `has: (_t, p) => p in resolve()`（必要なら `ownKeys`/`getOwnPropertyDescriptor` も）を実装し、トラップを resolve 済み実体に委譲する。判断基準: 「この Proxy をライブラリ関数に渡すか？」→ YES なら get 以外のトラップも必須と考える。
+- **`get` トラップだけの Proxy ラッパーは consumer の `"x" in obj` チェックを破る**: 遅延初期化 Proxy（`new Proxy({} as T, { get: ... })`）は、`has` トラップ未実装だと `in` 演算子が target（空オブジェクト）を見て常に false を返す。ライブラリは duck-typing 分岐に `in` を使うことがあり（例: better-auth `toNextJsHandler` の `"handler" in auth ? auth.handler(req) : auth(req)`）、false 側の分岐に進んで「auth is not a function」のような不可解な実行時エラーになる。typecheck は通る（型上は T のまま）ため静的に検出できない。対処: 遅延 Proxy を書くときは `get` に加えて `has: (_t, p) => p in resolve()`（必要なら `ownKeys`/`getOwnPropertyDescriptor` も）を実装し、トラップを resolve 済み実体に委譲する。判断基準: 「この Proxy をライブラリ関数に渡すか？」→ YES なら get 以外のトラップも必須と考える。
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 
-- **union を switch する `default` に `value satisfies never;` を置いて exhaustive check を強制する**: variant 追加時に「型が `never` に代入できない」コンパイルエラーで検出できる。後続の `console.warn` + フォールバック return は DB 由来の予期外値へのランタイム防衛（WHY NOT throw のみ: throw はサービス全体が crash するため domain store は継続を選ぶ）。値が DB 由来でなく自前で組み立てた結果値（never 到達が真に不可能）なら `satisfies never;` + throw でよい。亜種: `map`/`reduce`/`flatMap` のコールバック内 switch は全 case が return しても TS が戻り値型に `undefined` を含めて推論するため Biome `useIterableCallbackReturn` が default を要求する — `default: return null` でも Biome は満たすが exhaustive check 機会を失うので、同じく `value satisfies never;` を 1 行入れる。
+- **union を switch する `default` に `value satisfies never;` を置いて exhaustive check を強制する**: variant 追加時に「型が `never` に代入できない」コンパイルエラーで検出できる。後続の `console.warn` + フォールバック return は DB 由来の予期外値へのランタイム防衛（WHY NOT throw のみ: throw はサービス全体が crash するため domain store は継続を選ぶ）。値が DB 由来でなく自前で組み立てた結果値（never 到達が真に不可能）なら `satisfies never;` + throw でよい。亜種: `map`/`reduce`/`flatMap` のコールバック内 switch は全 case が return しても TS が戻り値型に `undefined` を含めて推論するため Biome `useIterableCallbackReturn` が default を要求する。`default: return null` でも Biome は満たすが exhaustive check 機会を失うので、同じく `value satisfies never;` を 1 行入れる。
   <!-- importance: medium | mentions: 2 | first-seen: 2026-06 -->
 
-- **`?.` は already `undefined` を返す — `?. ?? undefined` は冗長**: `input.file?.name` はチェーンが短絡したとき `undefined` を返す。`input.file?.name ?? undefined` は「undefined を undefined で置き換える」だけで意味がない。detect: `rg '\?\.\w.*\?\? undefined'`。
+- **`?.` は already `undefined` を返す。`?. ?? undefined` は冗長**: `input.file?.name` はチェーンが短絡したとき `undefined` を返す。`input.file?.name ?? undefined` は「undefined を undefined で置き換える」だけで意味がない。detect: `rg '\?\.\w.*\?\? undefined'`。
   <!-- importance: low | mentions: 1 | first-seen: 2026-06 -->
 
-- **Biome auto-fix は中間 Edit 状態を誤検知する — Edit をまたいで壊れる**: ① `noUnusedVariables` の `_` prefix rename は TS6133（`noUnusedLocals` は `_` prefix を特別扱いしない）を消さない → 使われなくなった関数は rename でなく削除する（rename はコメントアウト相当。rename が出たら「本当に使うつもりか」を問い直す）。② `noUnusedImports` は「import 追加直後・使用箇所未記述」の中間状態を未使用として即削除する（PostToolUse hook が Edit ごとに走るため。import だけ先に Edit すると連続で消される）→ import 追加と使用箇所は必ず 1 つの Edit で同時に書く。
+- **Biome auto-fix は中間 Edit 状態を誤検知する。Edit をまたいで壊れる**: ① `noUnusedVariables` の `_` prefix rename は TS6133（`noUnusedLocals` は `_` prefix を特別扱いしない）を消さない → 使われなくなった関数は rename でなく削除する（rename はコメントアウト相当。rename が出たら「本当に使うつもりか」を問い直す）。② `noUnusedImports` は「import 追加直後・使用箇所未記述」の中間状態を未使用として即削除する（PostToolUse hook が Edit ごとに走るため。import だけ先に Edit すると連続で消される）→ import 追加と使用箇所は必ず 1 つの Edit で同時に書く。
   <!-- importance: high | mentions: 2 | first-seen: 2026-06 -->
 
 - **`z.discriminatedUnion` は `ZodObject[]` を要求するため `z.refine()` と組み合わせられない**: `.refine()` を呼ぶと `ZodObject` → `ZodEffects` に変換されるため `z.discriminatedUnion("action", [schema.refine(...), ...])` は TypeScript エラーになる。代替: `z.union([schema.refine(...), otherSchema])` を使う。`z.discriminatedUnion` の「action フィールドで早期終了」メリットは union が 2〜3 択の規模では体感差がないため `z.union` で十分。今回の事例: `action="resolve"` のスキーマに `z.refine((d) => d.kind !== "discount" || d.amount !== null)` を追加した結果 discriminatedUnion が落ちた。
   <!-- importance: medium | mentions: 2 | first-seen: 2026-06 -->
 
-- **`T | null` を nullable にするとき optional（`?`）を付けると `undefined | null | T` の 3 値になる**: `amount?: number | null` は `undefined`・`null`・`number` の 3 状態を持ち、「null を明示的に渡す」と「省略する」を呼び出し側が区別できない。bridge 関数が `amount` を中継するとき「省略 = undefined → ?? null で null に倒せる」と思いがちだが、spread を使うと undefined のまま伝播してサーバー側の schema 検証が通る（optional にしているため）か silent bad state になる。対処: `amount: number | null`（required）にして全ての呼び出し箇所で `amount: null`（holdover/expense）または `amount: 数値`（discount）を明示的に渡す。detect: `rg ': (number|string) \| null\)'` が `?` を持つパターン。
+- **`T | null` を nullable にするとき optional（`?`）を付けると `undefined | null | T` の 3 値になる**: `amount?: number | null` は `undefined`・`null`・`number` の 3 状態を持ち、「null を明示的に渡す」と「省略する」を呼び出し側が区別できない。bridge 関数が `amount` を中継するとき「省略 = undefined → ?? null で null にできる」と思いがちだが、spread を使うと undefined のまま伝播してサーバー側の schema 検証が通る（optional にしているため）か silent bad state になる。対処: `amount: number | null`（required）にして全ての呼び出し箇所で `amount: null`（holdover/expense）または `amount: 数値`（discount）を明示的に渡す。detect: `rg ': (number|string) \| null\)'` が `?` を持つパターン。
   <!-- importance: medium | mentions: 2 | first-seen: 2026-06 -->

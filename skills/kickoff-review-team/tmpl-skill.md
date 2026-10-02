@@ -15,7 +15,7 @@
 # | fixer-adet | 修正実装・lint実行 |
 #
 # --- {reviewer_agent_calls} の書き方 ---
-# 以下を**同時に**起動する（並列 Agent 呼び出し）:
+# 以下を**同時に**起動する（並列 Agent 呼び出し）。
 # - `subagent_type`: `"go-reviewer-adet"`, `prompt`: `"ラウンドN のレビューをしてください。"`
 # - `subagent_type`: `"design-reviewer-adet"`, `prompt`: `"ラウンドN のレビューをしてください。"`
 #
@@ -48,7 +48,7 @@ model: sonnet
 
 ### 1b. 結果集約・分類
 
-全レビュアーの結果をまとめ、以下に分類する:
+全レビュアーの結果をまとめ、以下に分類する。
 
 - **非Nit**: ポリシー違反・整合性・凝集度・可読性・設計（「提案」も含む）
 - **Nit**: 明示的に「Nit:」と書かれているもの
@@ -63,7 +63,7 @@ model: sonnet
 
 ### 1d. fixer に修正依頼
 
-Agent ツールで `{fixer_agent_name}` subagent を起動する:
+Agent ツールで `{fixer_agent_name}` subagent を起動する。
 - `subagent_type`: `"{fixer_agent_name}"`
 - `prompt`:
 

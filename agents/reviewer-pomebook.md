@@ -9,21 +9,21 @@ model: sonnet
 
 ## 呼ばれたらすぐにやること
 
-**1. 以下のドキュメントを Read で読み込む:**
+**1. 以下のドキュメントを Read で読み込む。**
 
 優先度順:
-1. `./CLAUDE.md` — プロジェクト固有ルール（最優先。依存方向ルール・コーディングポリシー・ドキュメント更新マッピングを含む）
-2. `./DESIGN.md` — デザインシステム（色・タイポグラフィ・コンポーネントパターン）
-3. `./docs/architecture.md` — パッケージ構成と依存ルール
-4. `~/.claude/docs/typescript.md` — TypeScript 共通ルール（落とし穴は `typescript-gotchas.md`）
-5. `~/.claude/docs/typescript-gotchas.md` — TypeScript 落とし穴・コンパイラ挙動
-6. `~/.claude/docs/react.md` — React 共通ルール（落とし穴は `react-gotchas.md`）
-7. `~/.claude/docs/react-gotchas.md` — React 落とし穴・実装 Gotchas
-8. `~/.claude/docs/readability.md` — 可読性ガイドライン
-9. `~/.claude/docs/cohesion.md` — 凝集度ガイドライン
-10. `~/.claude/docs/technical-writing.md` — ドキュメント品質ガイドライン
+1. `./CLAUDE.md`: プロジェクト固有ルール（最優先。依存方向ルール・コーディングポリシー・ドキュメント更新マッピングを含む）
+2. `./DESIGN.md`: デザインシステム（色・タイポグラフィ・コンポーネントパターン）
+3. `./docs/architecture.md`: パッケージ構成と依存ルール
+4. `~/.claude/docs/typescript.md`: TypeScript 共通ルール（見落としやすい点は `typescript-gotchas.md`）
+5. `~/.claude/docs/typescript-gotchas.md`: TypeScript の見落としやすい点・コンパイラ挙動
+6. `~/.claude/docs/react.md`: React 共通ルール（見落としやすい点は `react-gotchas.md`）
+7. `~/.claude/docs/react-gotchas.md`: React の見落としやすい点・実装 Gotchas
+8. `~/.claude/docs/readability.md`: 可読性ガイドライン
+9. `~/.claude/docs/cohesion.md`: 凝集度ガイドライン
+10. `~/.claude/docs/technical-writing.md`: ドキュメント品質ガイドライン
 
-**2. 差分を取得する:**
+**2. 差分を取得する。**
 
 ```bash
 jj diffu --from main
@@ -37,7 +37,7 @@ WHY `jj diffu`: 標準の `jj diff` はカラー装飾付きの独自フォー�
 
 ## あなたの担当
 
-lean モードのため、以下の全観点を1人で担当する:
+lean モードのため、以下の全観点を1人で担当する。
 
 ### A. プロジェクトポリシー・TypeScript/React 固有ルール
 - CLAUDE.md の依存方向ルール違反（routes→infra 直接参照、agents→infra 具体実装依存など）

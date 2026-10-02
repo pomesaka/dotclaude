@@ -39,7 +39,7 @@ linterで検出できない「構造・設計・可読性」の問題を人間�
 
 ### 凝集度と結合度の関係
 
-モジュール内の凝集度が高ければ、モジュール間の結合度は自然に低くなる。以下は結合度の問題を示す実用的なシグナル:
+モジュール内の凝集度が高ければ、モジュール間の結合度は自然に低くなる。以下は結合度の問題を示す実用的なシグナル。
 
 | シグナル | 問題 |
 |---------|------|
@@ -91,7 +91,7 @@ linterで検出できない「構造・設計・可読性」の問題を人間�
 - 変数名だけで `true`/`false` の意味が明確になること: `shouldRetry`（trueなら再試行する）
 
 **単位・状態を名前に含める**:
-- `timeoutMs`、`durationSec`（単位の取り違えはサイレントなバグになる）
+- `timeoutMs`、`durationSec`（単位の取り違えは気づきにくいバグになる）
 - `maxRetries`、`retryCount`（上限と現在値の区別）
 - `rawInput`、`sanitizedHtml`、`unsafeUrl`（処理済みか否かの区別）
 
@@ -129,9 +129,9 @@ function process(user: User | null, order: Order | null) {
 **ネストは3段階まで**: それ以上は関数の抽出・早期リターン・条件の反転で平坦化する。各ネストレベルは「このブロック内ではXという条件が成立している」という文脈をワーキングメモリに追加する。4段階以上では保持しなければならない文脈数がワーキングメモリの上限に近づく。
 
 **条件の書き方**:
-- 肯定条件を先に: `if (isValid) { ... } else { ... }` — 否定形の分岐を先に読まされると、「何でないか」から「何であるか」に変換するコストが発生する
+- 肯定条件を先に: `if (isValid) { ... } else { ... }`。否定形の分岐を先に読まされると、「何でないか」から「何であるか」に変換するコストが発生する
 - 短い分岐を先に: 短い処理を先に書くと、長い処理を読む前に「その条件の処理は終わった」と確定できる
-- 変数を左辺に: `if (age >= 18)` > `if (18 <= age)` — 英語・日本語の語順と合致しているため直感的に読める
+- 変数を左辺に: `if (age >= 18)` > `if (18 <= age)`。英語・日本語の語順と合致しているため直感的に読める
 - 三項演算子は単純な単一式のみ。ネストした三項演算子は禁止（条件・真値・偽値の3つを同時に追わなければならず、ネストすると複雑度が指数的に増える）
 
 ---
@@ -329,12 +329,12 @@ type Response = { success: true; data: Data } | { success: false; error: string 
 
 ## 参考文献
 
-- Robert C. Martin『Clean Code』— 関数設計、命名、コメント、SLAP、CQS の原則
-- Dustin Boswell, Trevor Foucher『The Art of Readable Code』— 可読性のヒューリスティクス（スコープと名前の長さ、条件の書き方等）
-- John Ousterhout『A Philosophy of Software Design』— 深いモジュール、コメントは抽象設計の道具という観点
-- Steve McConnell『Code Complete』— 変数宣言位置、命名の具体性、コードの構成
-- Martin Fowler『Refactoring』— コードスメルカタログ（Feature Envy、Shotgun Surgery等）
-- [Google Engineering Practices - Code Review](https://google.github.io/eng-practices/review/) — レビューの標準
-- [Refactoring.Guru - Code Smells](https://refactoring.guru/refactoring/smells) — コードスメル一覧
-- [The Effect of Poor Source Code Lexicon on Developers' Cognitive Load (IEEE, 2018)](https://ieeexplore.ieee.org/document/8972994/) — 識別子の質がプログラム理解・認知負荷に与える影響の実証研究
-- [Locality of Behaviour (htmx essay)](https://htmx.org/essays/locality-of-behaviour/) — 局所性原理の解説
+- Robert C. Martin『Clean Code』: 関数設計、命名、コメント、SLAP、CQS の原則
+- Dustin Boswell, Trevor Foucher『The Art of Readable Code』: 可読性のヒューリスティクス（スコープと名前の長さ、条件の書き方等）
+- John Ousterhout『A Philosophy of Software Design』: 深いモジュール、コメントは抽象設計の道具という観点
+- Steve McConnell『Code Complete』: 変数宣言位置、命名の具体性、コードの構成
+- Martin Fowler『Refactoring』: コードスメルカタログ（Feature Envy、Shotgun Surgery等）
+- [Google Engineering Practices - Code Review](https://google.github.io/eng-practices/review/): レビューの標準
+- [Refactoring.Guru - Code Smells](https://refactoring.guru/refactoring/smells): コードスメル一覧
+- [The Effect of Poor Source Code Lexicon on Developers' Cognitive Load (IEEE, 2018)](https://ieeexplore.ieee.org/document/8972994/): 識別子の質がプログラム理解・認知負荷に与える影響の実証研究
+- [Locality of Behaviour (htmx essay)](https://htmx.org/essays/locality-of-behaviour/): 局所性原理の解説

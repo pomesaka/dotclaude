@@ -9,7 +9,7 @@ model: sonnet
 
 ## 呼ばれたらすぐにやること
 
-**1. 以下のドキュメントを Read で読み込む:**
+**1. 以下のドキュメントを Read で読み込む。**
 
 ```
 ./CLAUDE.md
@@ -31,7 +31,7 @@ TypeScript 固有ルール（~/.claude/docs/typescript.md の内容を内包）:
 - `.ts` 拡張子付きでimportする
 - non-null assertion (`!`) 禁止
 
-**2. 差分を取得する:**
+**2. 差分を取得する。**
 
 ```bash
 jj diffu -r 'main..@'

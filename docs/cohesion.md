@@ -75,7 +75,7 @@ Robert C. Martin（Clean Architecture）が定義した3原則。
 
 ## アーキテクチャ/システムレベルの凝集度
 
-差分だけでなく、**このコードはどこにあるべきか**を問う視点。
+差分だけでなく、このコードはどこにあるべきかを問う視点。
 
 | チェック | 問い |
 |---------|------|
@@ -83,7 +83,7 @@ Robert C. Martin（Clean Architecture）が定義した3原則。
 | **レイヤー整合性** | ドメイン層がインフラ層（DB・HTTP の詳細）に依存していないか |
 | **ドメイン境界の侵食** | あるドメインのエンティティが別ドメインのビジネスロジックを含んでいないか |
 | **概念の散乱** | 同じ概念が複数のパッケージで異なる形で再実装されていないか |
-| **抽象の漏洩** | DB スキーマ名・API エンドポイント等の外部詳細がドメイン層まで滲み出ていないか |
+| **抽象の漏洩** | DB スキーマ名・API エンドポイント等の外部詳細がドメイン層まで漏れていないか |
 
 **Bounded Context（DDD）**：コンテキスト内は高凝集（共通の言語・ルール・モデル）、コンテキスト間は疎結合（明示的なインターフェースのみ）。別コンテキストの用語・モデルが混入していないか確認する。
 
@@ -109,7 +109,7 @@ Ce（遠心性）= このコンポーネントが依存している数
 
 ### 循環依存の解消は「間接化」より「型の再配置」を先に検討する
 <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
-A が B の型を必要とするが直接 import すると循環する、というとき、反射的に interface + adapter で間接化しがち。だがまず **循環の向き** を見る: 循環の原因が「B → A の片方向 import が既にある」ことだけなら、**共有される型を sink 側（= 既に import されている側）パッケージへ移す**だけで循環が消え、interface も adapter も不要になる。間接化（依存性逆転）は「両方向に本質的な依存がある」ときの手段。回避策を足す前に「この型はそもそもどちらのパッケージに属すべきか」を問う。回避策（interface/adapter）を導入した直後ほど、後でこの再配置で消せないか見直す価値が高い。
+A が B の型を必要とするが直接 import すると循環する、というとき、反射的に interface + adapter で間接化しがち。だがまず循環の向きを見る: 循環の原因が「B → A の片方向 import が既にある」ことだけなら、共有される型を sink 側（= 既に import されている側）パッケージへ移すだけで循環が消え、interface も adapter も不要になる。間接化（依存性逆転）は「両方向に本質的な依存がある」ときの手段。回避策を足す前に「この型はそもそもどちらのパッケージに属すべきか」を問う。回避策（interface/adapter）を導入した直後ほど、後でこの再配置で消せないか見直す価値が高い。
 
 ---
 
@@ -117,30 +117,30 @@ A が B の型を必要とするが直接 import すると循環する、とい�
 
 ### データクライアントが URL 文字列を返すのは「IO が呼び出し側に漏れているシグナル」
 <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
-クライアントが `stateUrl(id)` / `streamUrl(id)` のような URL 文字列を公開 IF に出す設計は、**IO（fetch / EventSource）とスキーマを呼び出し側に委ねている**ことになる。症状: スキーマが client と consumer の両方に重複定義される（envelope / step / source 等）。
+クライアントが `stateUrl(id)` / `streamUrl(id)` のような URL 文字列を公開 IF に出す設計は、IO（fetch / EventSource）とスキーマを呼び出し側に委ねていることになる。症状: スキーマが client と consumer の両方に重複定義される（envelope / step / source 等）。
 
-正しい境界: クライアントは API の **wire 契約全体**（URL・スキーマ・fetch・EventSource・パース）を所有し、呼び出し側には**型付きドメイン値**だけを渡す。
-- 読み取り → `getState(id): Promise<Job | null>`（失敗時は throw せず null — streaming hook が初期 snapshot として安全に扱える）
+正しい境界: クライアントは API の wire 契約全体（URL・スキーマ・fetch・EventSource・パース）を所有し、呼び出し側には型付きドメイン値だけを渡す。
+- 読み取り → `getState(id): Promise<Job | null>`（失敗時は throw せず null。streaming hook が初期 snapshot として安全に扱える）
 - 購読 → `streamEvents(id, signal): AsyncIterable<Event>`（raw EventSource は client 内に閉じ、呼び出し側は `for await` で型付きイベントを受け取る）
 
-**設計の非対称（意図的）**: `getState` は失敗時 null、操作系（`kick` 等）は throw — 呼び出し元の用途（streaming 初期 snapshot vs 操作の起動）で契約を分ける。統一性のために合わせない。
+**設計の非対称（意図的）**: `getState` は失敗時 null、操作系（`kick` 等）は throw。呼び出し元の用途（streaming 初期 snapshot vs 操作の起動）で契約を分ける。統一性のために合わせない。
 
 **購読は callback（`onEvent`/`onError` + unsubscribe）より `AsyncIterable` を優先する（React consumer があるとき）**
 <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
-消費側が1つで、それが React hook のとき、購読を callback で返すと消費側に2つの臭いが出る: ① `stop()`/unsubscribe を done/failed/error/unmount の複数箇所から呼ぶ、② `setState` updater の中で副作用（再 fetch・stop）を起こす。これを `streamEvents(id, signal): AsyncIterable` にすると hook が `await getState()` → `for await streamEvents()` の**逐次1関数**になり、停止は「ループを return / signal.abort()」に集約、fold は local accumulator で書けて updater 副作用が消える。「snapshot 取得 → tail 購読」の順序崩れバグも構造的に解消する。
+消費側が1つで、それが React hook のとき、購読を callback で返すと消費側に2つの臭いが出る: ① `stop()`/unsubscribe を done/failed/error/unmount の複数箇所から呼ぶ、② `setState` updater の中で副作用（再 fetch・stop）を起こす。これを `streamEvents(id, signal): AsyncIterable` にすると hook が `await getState()` → `for await streamEvents()` の逐次1関数になり、停止は「ループを return / signal.abort()」に集約、fold は local accumulator で書けて updater 副作用が消える。「snapshot 取得 → tail 購読」の順序崩れバグも構造的に解消する。
 
-トレードオフ: client 側は push（EventSource）→ pull（`for await`）の queue 橋渡し（到着を queue に積み、消費側 await 中だけ notify で起こす）が要る。これは client が一度書けば済む複雑さで、唯一の consumer を単純化する対価として妥当。**close の権威は generator の `finally` に一本化**（return / throw / abort のどの経路でも EventSource を close）。callback 版の「hook が close を所有」より stop 経路が1箇所に閉じる。
+トレードオフ: client 側は push（EventSource）→ pull（`for await`）の queue 橋渡し（到着を queue に積み、消費側 await 中だけ notify で起こす）が要る。これは client が一度書けば済む複雑さで、唯一の consumer を単純化する対価として妥当。close の権威は generator の `finally` に一本化（return / throw / abort のどの経路でも EventSource を close）。callback 版の「hook が close を所有」より stop 経路が1箇所に閉じる。
 
-判断基準: consumer が複数 or 非 React（callback で素直に書ける）なら callback でよい。**React の effect で購読を畳み込むなら `AsyncIterable` 一択**。逆に push→pull 橋渡しを避けたいなら、EventSource をやめて `fetch` + `ReadableStream`（ネイティブに async-iterable）にする手もあるが、SSE フレームの手パース + 再接続喪失と引き換え。
+判断基準: consumer が複数 or 非 React（callback で素直に書ける）なら callback でよい。React の effect で購読を畳み込むなら `AsyncIterable` 一択。逆に push→pull 橋渡しを避けたいなら、EventSource をやめて `fetch` + `ReadableStream`（ネイティブに async-iterable）にする手もあるが、SSE フレームの手パース + 再接続喪失と引き換え。
 
 ### 共有 helper へ抽出したら設計コメント（WHY）は「移動」する — 抽出元にコピーを残さない
 <!-- importance: medium | mentions: 1 | first-seen: 2026-07 -->
-複数関数に共通するロジックを共有 helper に抽出するとき、抽出元の関数に WHY コメント（クエリ分割の理由・順序保証の設計等）を verbatim のまま残すと、同じ設計判断の説明が 2 箇所に並立する。片方だけ更新される drift が必ず起きる（コメントはコンパイラが重複検出しない）。**WHY は helper 側に 1 箇所だけ持たせ、抽出元には参照ポインタ（TS なら `{@link helperName}` + 「〜の方針は helper の WHY を参照」の 1 行）を残す**。抽出元固有の文脈（その関数だけの呼び出し条件等）だけは抽出元に残してよい。判断基準: 「このコメント段落は helper の実装を説明しているか、この関数固有の事情を説明しているか」— 前者は移動、後者は残置。
+複数関数に共通するロジックを共有 helper に抽出するとき、抽出元の関数に WHY コメント（クエリ分割の理由・順序保証の設計等）を verbatim のまま残すと、同じ設計判断の説明が 2 箇所に並立する。片方だけ更新される drift が必ず起きる（コメントはコンパイラが重複検出しない）。WHY は helper 側に 1 箇所だけ持たせ、抽出元には参照ポインタ（TS なら `{@link helperName}` + 「〜の方針は helper の WHY を参照」の 1 行）を残す。抽出元固有の文脈（その関数だけの呼び出し条件等）だけは抽出元に残してよい。判断基準: 「このコメント段落は helper の実装を説明しているか、この関数固有の事情を説明しているか」。前者は移動、後者は残置。
 
 ### Feature Envy（特性の横取り）
 自モジュールより他モジュールのデータを多用する関数。そのコードは本来あるべき場所に移動すべき。
 
-**派生: parse 責任の帰属** — `ProviderAnalyzer<T>.parse()` のような「サービス型 T のパース責任を持つ層」が存在するとき、T をパースするロジックは**すべてその層に置く**。消費側 action 層がパース処理を持つのは Feature Envy。「AI で解析するから action 層に置く」は誤った判断基準 — 処理手段（静的/AI）ではなく、**どの型の知識か**で帰属を決める。
+**派生: parse 責任の帰属**。`ProviderAnalyzer<T>.parse()` のような「サービス型 T のパース責任を持つ層」が存在するとき、T をパースするロジックはすべてその層に置く。消費側 action 層がパース処理を持つのは Feature Envy。「AI で解析するから action 層に置く」は誤った判断基準。処理手段（静的/AI）ではなく、どの型の知識かで帰属を決める。
 <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
 
 ### Divergent Change（発散的変化）

@@ -8,7 +8,7 @@ model: sonnet
 
 # kickoff-review-team: プロジェクト固有レビュースキルの生成
 
-あなたの目的は、現在のリポジトリを分析し、以下を生成することです:
+あなたの目的は、現在のリポジトリを分析し、以下を生成することです。
 - `~/.claude/skills/review-team-{project}/SKILL.md`（Coordinator スキル）
 - `~/.claude/agents/{agent_name}.md`（各 subagent 定義）
 
@@ -18,19 +18,19 @@ model: sonnet
 
 ## Step 0: リポジトリ分析
 
-**プロジェクト名の決定:**
+**プロジェクト名の決定**
 カレントディレクトリ名は使わない（jj workspaceでランダムな名前になるため）。
 `jj git remote list` でリポジトリ名を取得し、英小文字・ハイフン形式に変換する。
 リモートがない場合は `package.json` の `"name"` や `./CLAUDE.md` を参照する。
 
-**リポジトリ構造の把握:**
+**リポジトリ構造の把握**
 トップレベルのディレクトリ一覧・主要言語・サブシステムの分割を調べる。
 
-**プロジェクトドキュメントの確認（存在するものを Read）:**
+**プロジェクトドキュメントの確認（存在するものを Read）**
 `./CLAUDE.md` / `./CODING_CONVENTIONS.md` / `./.claude/rules/` / `./backend/CODING_CONVENTIONS.md` / `./frontend/CODING_CONVENTIONS.md`
 
-**ドキュメント体制の確認:**
-保守すべきドキュメントが存在するかを確認する。以下のいずれかが当てはまれば docs-reviewer の追加対象とする:
+**ドキュメント体制の確認**
+保守すべきドキュメントが存在するかを確認する。以下のいずれかが当てはまれば docs-reviewer の追加対象とする。
 - `docs/` ディレクトリに `.md` ファイルが存在する
 - `CLAUDE.md` が存在する
 - `README.md` 以外の `.md` ファイルがリポジトリに複数存在する
@@ -41,7 +41,7 @@ model: sonnet
 
 ### 1a. モードとfixer戦略を決定
 
-以下の基準で構成モードを選ぶ:
+以下の基準で構成モードを選ぶ。
 
 | 条件 | モード |
 |---|---|
@@ -79,12 +79,12 @@ policy-reviewer は設けない。各スタックレビュアーが**プロジ�
 
 ### 2a. Coordinator SKILL.md の生成
 
-**lean モード**:
+**lean モード**
 `~/.claude/skills/kickoff-review-team/tmpl-skill-lean.md` を Read し、
 `{project}`・`{stack_summary}`・`{lint_command}` を置換して
 `~/.claude/skills/review-team-{project}/SKILL.md` に Write する。
 
-**full モード**:
+**full モード**
 `~/.claude/skills/kickoff-review-team/tmpl-skill.md` を Read し、
 `{project}`・`{reviewers}`・`{reviewer_table}`・`{reviewer_agent_calls}`・`{fixer_agent_name}` を置換して
 `~/.claude/skills/review-team-{project}/SKILL.md` に Write する。
@@ -93,9 +93,9 @@ policy-reviewer は設けない。各スタックレビュアーが**プロジ�
 
 生成先: `~/.claude/agents/`
 
-**lean モード**（reviewer 1名）:
+**lean モード**（reviewer 1名）
 `~/.claude/skills/kickoff-review-team/tmpl-teammate.md` を Read し、
-以下のプレースホルダーを埋めて `~/.claude/agents/reviewer-{project}.md` に Write する:
+以下のプレースホルダーを埋めて `~/.claude/agents/reviewer-{project}.md` に Write する。
 
 | プレースホルダー | 埋める内容 |
 |---|---|
@@ -109,10 +109,10 @@ policy-reviewer は設けない。各スタックレビュアーが**プロジ�
 | `{empty_diff_message}` | 差分なし時のメッセージ |
 | `{report_title}` | レポートのタイトル |
 
-**full モード**（スタック別分散）:
+**full モード**（スタック別分散）
 各スタックレビュアーについて同様に `~/.claude/agents/{agent_name}-{project}.md` に Write する。
 
-**`{docs_to_read}` の書き方:**
+**`{docs_to_read}` の書き方**
 Step 0 で存在確認したファイルのみ列挙する。プロジェクトルールを先に書き、優先順位を明記する。
 
 **重要: パスの書き方**
@@ -139,7 +139,7 @@ lean モードはスキップ。
 
 ## Step 3: 完了報告
 
-生成したファイル一覧を表示し、`/review-team-{project}` で開始できることを案内する:
+生成したファイル一覧を表示し、`/review-team-{project}` で開始できることを案内する。
 
 ```
 ## 生成完了

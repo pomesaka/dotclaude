@@ -5,21 +5,21 @@
 ## `bunx <tool>`（npx 系）はバージョンを固定しないとリポと食い違う
 <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 
-`bunx @biomejs/biome check` のようにバージョン無指定で実行すると、リポが依存している版とは別の版（古いキャッシュや latest）を引いてしまい、**設定ファイルのスキーマ不一致で落ちる**ことがある（例: biome 2.x の `includes` / `css.parser.tailwindDirectives` を 1.x が "unknown key" で拒否）。lint/format/codegen 系の CLI は、リポの `package.json` の版に合わせて `bunx @biomejs/biome@2.4.15 ...` のようにピン留めするか、リポに install 済みのバイナリを使う。
+`bunx @biomejs/biome check` のようにバージョン無指定で実行すると、リポが依存している版とは別の版（古いキャッシュや latest）を引いてしまい、設定ファイルのスキーマ不一致で落ちることがある（例: biome 2.x の `includes` / `css.parser.tailwindDirectives` を 1.x が "unknown key" で拒否）。lint/format/codegen 系の CLI は、リポの `package.json` の版に合わせて `bunx @biomejs/biome@2.4.15 ...` のようにピン留めするか、リポに install 済みのバイナリを使う。
 
 ## macOS sed の落とし穴
 
-macOS の標準 `sed` は GNU sed ではなく **BSD sed**（POSIX 準拠のみ）。
+macOS の標準 `sed` は GNU sed ではなく BSD sed（POSIX 準拠のみ）。
 
 ### `\b` word boundary は機能しない
 
-**NG（macOS で動かない）**:
+**NG（macOS で動かない）**
 ```bash
 sed -i '' 's/FooSession\b/FooJob/g' file.ts
 # → \b が文字通り解釈され、置換されないか誤置換する
 ```
 
-**OK（2段階に分ける）**:
+**OK（2段階に分ける）**
 ```bash
 # 長いほうを先に置換し、短いほうを後から
 sed -i.bak 's/FooSessionStore/FooJobStore/g; s/fooSessionStore/fooJobStore/g' file.ts
@@ -27,7 +27,7 @@ sed -i.bak 's/FooSessionStore/FooJobStore/g; s/fooSessionStore/fooJobStore/g' fi
 sed -i.bak 's/FooSession/FooJob/g' file.ts
 ```
 
-**OK（GNU sed を使う）**:
+**OK（GNU sed を使う）**
 ```bash
 # Homebrew で入れた gsed なら \b が使える
 gsed -i 's/FooSession\b/FooJob/g' file.ts
@@ -54,13 +54,13 @@ gsed -i 's/FooSession\b/FooJob/g' file.ts
 
 `RUN printf '#!/bin/sh\nunset VAR_A VAR_B ...\nexec "$@"\n'` のような entrypoint は、「何を無効化したいか」の目的が異なる変数を一行に混ぜると、後から変数を追加するときに意図しない unset を巻き込む。
 
-**NG（目的が混在）**:
+**NG（目的が混在）**
 ```sh
 unset GIT_REPO_URL GIT_BRANCH GITHUB_APP_ID GIT_DIFF_BASE GIT_DIFF_HEAD
 # → clone 無効化のために書いたのに、diff 計算用の SHA まで消えた
 ```
 
-**OK（目的別にコメントで区別）**:
+**OK（目的別にコメントで区別）**
 ```sh
 # disable git clone: use embedded repo instead
 unset GIT_REPO_URL GIT_BRANCH GIT_CLONE_DIR GITHUB_APP_ID GITHUB_APP_PRIVATE_KEY GITHUB_APP_INSTALLATION_ID
@@ -91,7 +91,7 @@ rg -i 'fooSession' src/
 ## 複合コマンドを避ける — `cd /path && cmd` の代替
 <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 
-`&&`/`||`/`;` を含む複合コマンドはパーミッションプロンプトを誘発するので避ける（ポリシーは CLAUDE.md）。`cd /path && cmd` を使いたくなったときの代替:
+`&&`/`||`/`;` を含む複合コマンドはパーミッションプロンプトを誘発するので避ける（ポリシーは CLAUDE.md）。`cd /path && cmd` を使いたくなったときの代替は次のとおり。
 
 - `cmd -C /path` / `cmd --cwd /path` など、作業ディレクトリを指定するフラグ（ツールが対応していれば）
 - `jj diff -R /path` のようにリポジトリ/対象を指定するフラグを使う
@@ -102,13 +102,13 @@ rg -i 'fooSession' src/
 
 `rm -rf "apps/adachi/app/(app)/dispatch"` のような相対パスは、Bash ツールの暗黙の作業ディレクトリが想定と異なるとサイレントに失敗し（no such file → エラーなし）ディレクトリが残る。破壊的なファイル操作は必ず絶対パスで書く。
 
-**NG（相対パスは作業ディレクトリ依存で誤作動しやすい）**:
+**NG（相対パスは作業ディレクトリ依存で誤作動しやすい）**
 ```bash
 rm -rf "apps/adachi/app/(app)/dispatch"
 # → Bash ツールの cwd がルートでなければ見つからずサイレント失敗
 ```
 
-**OK（絶対パスで確実に指定）**:
+**OK（絶対パスで確実に指定）**
 ```bash
 rm -rf "/Users/pomesaka/.local/share/claude-deck/workspace/-Users.../apps/adachi/app/(app)/dispatch"
 ```

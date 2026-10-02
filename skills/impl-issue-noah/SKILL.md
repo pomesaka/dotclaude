@@ -19,7 +19,7 @@ model: sonnet
 ls issues/$ARGUMENTS-*.md
 ```
 
-該当ファイルを Read して内容を把握する。特に以下を確認:
+該当ファイルを Read して内容を把握する。特に以下を確認する。
 - `status` が `open` または `in-progress` であること（`done` / `wontfix` なら中断してユーザーに確認）
 - `depends` に記載された issue が全て `done` であること
 - 実装すべき機能・修正内容の詳細
@@ -32,7 +32,7 @@ issue ファイルの `status` を `in-progress` に更新する。
 
 Agent ツールで `general-purpose` sub-agentを起動し、実装を委譲する。
 
-プロンプトには以下を含める:
+プロンプトには以下を含める。
 - noahモノレポ（Bun + Next.js App Router）のissueを実装するタスクであること
 - `issues/$ARGUMENTS-*.md` の内容（全文）
 - 「まず `CLAUDE.md`, `docs/apps/architecture.md`, `docs/apps/conventions.md` を読んでアーキテクチャ・規約を確認してください」
@@ -46,7 +46,7 @@ sub-agentの返答を確認し、lint・typecheckが通ったことを確認し�
 
 `review-domain` スキルを呼び出す（Skill ツール使用）。
 
-結果を確認し:
+結果を確認し、次のように対応する。
 - **重大な設計問題**（責務の誤配置・レイヤー境界の侵犯・型設計の欠陥）→ Coordinatorが自分で修正し lint/typecheck を通す
 - **提案レベルの指摘**→ 判断してスキップ or 反映（issue のスコープを超える変更は避ける）
 
@@ -64,7 +64,7 @@ PRのタイトル・本文に `closes #<issue番号>` を含めるよう指示�
 
 ## Step 5: 受け入れ基準を照合して issue を done にする
 
-1. **受け入れ基準のチェックボックスを1つずつ照合して埋める**: issue ファイルの `## 受け入れ基準` / `## 受け入れ基準（詳細）` の `- [ ]` を、実際に満たしたものだけ `- [x]` にする。満たしていない・部分的にしか検証できていない項目は `- [ ]` のまま残し、検証メモを添える（例: 「ストリーミングは Nova で確認・本番 Claude は外部要因で未検証」）。**「status を done にする」だけで済ませてチェックボックスを放置しない** — 実態と記録が乖離する
+1. **受け入れ基準のチェックボックスを1つずつ照合して埋める**: issue ファイルの `## 受け入れ基準` / `## 受け入れ基準（詳細）` の `- [ ]` を、実際に満たしたものだけ `- [x]` にする。満たしていない・部分的にしか検証できていない項目は `- [ ]` のまま残し、検証メモを添える（例: 「ストリーミングは Nova で確認・本番 Claude は外部要因で未検証」）。**「status を done にする」だけで済ませてチェックボックスを放置しない**。放置すると実態と記録が乖離する
 2. issue ファイルの `status` を `done` に更新する。
 
 ## Step 6: 最終 update-pr（issue 更新を PR に含める）
@@ -73,11 +73,11 @@ PRのタイトル・本文に `closes #<issue番号>` を含めるよう指示�
 
 Step 5 で issue ファイルを更新した後、**必ず `update-pr` を呼んで push する**。`update-pr` 内部の `re` が Devlog も兼ねる。
 
-`re` に以下を伝えること（`update-pr` の引数として渡す）:
+`re` に以下を伝えること（`update-pr` の引数として渡す）。
 - 対象 issue ファイルのパス（`issues/NNN-*.md`）
 - Devlog の各セクションを会話ヒストリーから埋めること
 
-`re` が Devlog を書く際の各セクション:
+`re` が Devlog を書く際の各セクションは次のとおり。
 
 | セクション | 書く内容 |
 |---|---|
@@ -88,13 +88,13 @@ Step 5 で issue ファイルを更新した後、**必ず `update-pr` を呼ん
 
 空欄のまま残すセクションがあれば `（なし）` と書く。
 
-知見の書き先（`re` がドキュメントへ反映する際の判断基準）:
+知見の書き先（`re` がドキュメントへ反映する際の判断基準）は次のとおり。
 
 | 知見の性質 | 反映先 |
 |---|---|
 | noah 固有の規約・禁止事項 | `CLAUDE.md` または `docs/apps/conventions.md` |
 | reviewer が複数 issue で同じ観点を指摘 | `docs/apps/conventions.md` に規約として明文化 |
-| TypeScript / React / Next.js の一般的なプラクティス | `~/.claude/docs/typescript.md` 等の言語ドキュメント（規約・設計パターンは本体、実装中の落とし穴は `typescript-gotchas.md` / `react-gotchas.md`） |
+| TypeScript / React / Next.js の一般的なプラクティス | `~/.claude/docs/typescript.md` 等の言語ドキュメント（規約・設計パターンは本体、実装中に見落としやすい点は `typescript-gotchas.md` / `react-gotchas.md`） |
 | reviewer スキルが見落としている観点 | `dotclaude/skills/review-team-noah/teammate-reviewer.md` |
 
 ## Gotchas
@@ -106,7 +106,7 @@ Step 5 で issue ファイルを更新した後、**必ず `update-pr` を呼ん
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 - **lint/typecheckコマンド**: `mise exec -- bun run lint` と `mise exec -- bun run typecheck`。直接 `bun` はPATHに入っていない場合があるため必ず `mise exec --` を前置する
 - **変更フィルタ**: `bun run lint` / `bun run typecheck` はモノレポルートで実行すれば全パッケージをチェックする。変更したパッケージのみ絞る場合は `mise exec -- bun --filter='@noah/xxx' lint` を使う
-- **bun install 未実施・構造変更後の symlink 陳腐化**: 実装前に `bun install` 済みかを確認する。`node_modules` がなければ lint/typecheck が依存解決エラーで全滅する。`ls node_modules 2>/dev/null | head -1` で確認し、空なら `mise exec -- bun install` を先に実行すること。また **ファイルを移動する構造的リファクタ（ディレクトリ rename・namespace 再編等）の後も `bun install` が必要**: workspace symlink が旧パスを指したまま残り LSP が `Cannot find module` を出し続ける。typecheck も symlink 経由で解決するため実行前に `mise exec -- bun install` でリフレッシュする。今回の事例: issue 059 で `packages/ai/src/agent/` → `src/llm/agent/` 移動後に `bun install`（608 packages）が必要だった。**`bun install` 直後に LSP が `Cannot find name 'Proxy'`・`Cannot find module 'bun:test'` 等の stale エラーを出すことがある — これは LSP キャッシュの問題で実エラーではない**。`mise exec -- bun run typecheck` が pass すれば問題なし（LSP の表示を鵜呑みにしない）。今回の事例: issue 082 で `packages/core/src/lazy/` 新設後に LSP stale エラーが出たが typecheck は全パッケージ 0 エラーだった
+- **bun install 未実施・構造変更後の symlink 陳腐化**: 実装前に `bun install` 済みかを確認する。`node_modules` がなければ lint/typecheck が依存解決エラーで全滅する。`ls node_modules 2>/dev/null | head -1` で確認し、空なら `mise exec -- bun install` を先に実行すること。また **ファイルを移動する構造的リファクタ（ディレクトリ rename・namespace 再編等）の後も `bun install` が必要**: workspace symlink が旧パスを指したまま残り LSP が `Cannot find module` を出し続ける。typecheck も symlink 経由で解決するため実行前に `mise exec -- bun install` でリフレッシュする。今回の事例: issue 059 で `packages/ai/src/agent/` → `src/llm/agent/` 移動後に `bun install`（608 packages）が必要だった。**`bun install` 直後に LSP が `Cannot find name 'Proxy'`・`Cannot find module 'bun:test'` 等の stale エラーを出すことがある。これは LSP キャッシュの問題で実エラーではない**。`mise exec -- bun run typecheck` が pass すれば問題なし（LSP の表示を鵜呑みにしない）。今回の事例: issue 082 で `packages/core/src/lazy/` 新設後に LSP stale エラーが出たが typecheck は全パッケージ 0 エラーだった
   今回の事例: issue 088 で新規 workspace に `node_modules` がなく `bun install`（608 packages）が必要。その後も LSP が `Cannot find module '@noah/ai/llm/agent'` を出し続けたが typecheck は全パッケージ pass（LSP キャッシュ問題）。
   今回の事例: issue 057 で `correction.ts`・`factory.test.ts` 新規ファイル追加後に `Cannot find module '@noah/ai/llm/agent'` が出た。`mise exec -- bun install` で解消（既存ディレクトリへのファイル追加でも symlink が陳腐化する）。
   今回の事例: issue 254 で前セッション subagent が 156 ツール呼び出し後に実装完了していたが LSP stale エラーが残存。`bun run typecheck` で 0 エラーを確認してから修正作業を開始した（stale LSP は `bun install` 不要・放置してよい）。
@@ -136,19 +136,19 @@ Step 5 で issue ファイルを更新した後、**必ず `update-pr` を呼ん
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 - **AI SDK v6: `UIMessage` は `content` フィールドを持たず `parts` のみ**: v4/v5 の `UIMessage` は `content: string` を持っていたが v6 では削除され `parts: UIMessagePart[]` のみになった。DB rows → UIMessage 変換時に `content` フィールドを含めると typecheck エラー（`Object literal may only specify known properties, and 'content' does not exist in type 'UIMessage'`）。`parts: textParts` のみを返すよう修正する。今回の事例: 038 の `db/queries/messages.ts` で発生。
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
-- **`toUIMessageStreamResponse` の `onFinish` は必ず `async` にして `await` する**: `onFinish` を同期関数にすると、`return store.saveTurn(...)` の Promise が SDK にアタッチされないまま返却される（SDK は戻り値を待たない）。その結果、保存失敗がサイレントに飲まれる。`onFinish: async ({ responseMessage, isAborted }) => { await store.saveTurn(...) }` と async + await にすること。また `onFinish` の event 型は `UIMessageStreamOnFinishCallback<UIMessage>` で、`{ messages, responseMessage, isAborted, isContinuation, finishReason }` を含む（`responseMessage` と `isAborted` だけでなく他のフィールドもある点に注意）。今回の事例: 038 の `packages/features/src/chat/server.ts` でレビュー指摘後に修正。
+- **`toUIMessageStreamResponse` の `onFinish` は必ず `async` にして `await` する**: `onFinish` を同期関数にすると、`return store.saveTurn(...)` の Promise が SDK にアタッチされないまま返却される（SDK は戻り値を待たない）。その結果、保存失敗が気づかれないまま無視される。`onFinish: async ({ responseMessage, isAborted }) => { await store.saveTurn(...) }` と async + await にすること。また `onFinish` の event 型は `UIMessageStreamOnFinishCallback<UIMessage>` で、`{ messages, responseMessage, isAborted, isContinuation, finishReason }` を含む（`responseMessage` と `isAborted` だけでなく他のフィールドもある点に注意）。今回の事例: 038 の `packages/features/src/chat/server.ts` でレビュー指摘後に修正。
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 - **新 feature を追加したら `packages/features/package.json` の `exports` subpath も追加する**: `packages/features/src/<feature>/` ディレクトリを作成しても、`package.json` の `exports` に `"./feature": "./src/feature/index.ts"` を追加しないと `@noah/features/feature` の import がランタイムエラーになる。実装前に既存 feature と `exports` を突き合わせて欠落がないか確認すること。今回の事例: issue 044 で `summarize` の subpath export が欠落していたことを plan フェーズの `packages/features/package.json` 確認で発見し、044 のスコープに修正を含めた。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 - **`bun:test` を使うテストファイルは tsconfig の `exclude` に追加する**: `apps/ms-holdings` には `@types/bun`（bun-types）が未インストール。テストファイルを `tsconfig.json` の `exclude` に追加しないと `Cannot find module 'bun:test'` などの typecheck エラーが出る。対処: `"exclude": ["node_modules", "**/*.test.ts", "**/*.test.tsx"]` を追加する（実行は `bun test` で正常動作する）。今回の事例: issue 045 で `system-admin.test.ts` 追加時に発生。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
-- **quality reviewer が `test.each` の case object の `as const` を「redundant」と指摘することがある**: `test.each([{ step: "transcribing" as const }])` のように literal 型を持つ property を後で型付き関数に渡す場合、`as const` がないと TypeScript が `string` に widening する。結果として呼び出し先（例: `setStep(step: "queued" | "transcribing" | "generating")`）の型チェックが通らなくなる。この指摘は false alarm — `as const` を除去すると typecheck が落ちるか確認してから判断する。
+- **quality reviewer が `test.each` の case object の `as const` を「redundant」と指摘することがある**: `test.each([{ step: "transcribing" as const }])` のように literal 型を持つ property を後で型付き関数に渡す場合、`as const` がないと TypeScript が `string` に widening する。結果として呼び出し先（例: `setStep(step: "queued" | "transcribing" | "generating")`）の型チェックが通らなくなる。この指摘は false alarm である。`as const` を除去すると typecheck が落ちるか確認してから判断する。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
-- **`JobStore.create` は `string` でなく `JobRecord` を返す — kick service でのパターン**: `createDbJobStore(db).create({ type, userId, expiresAt, onCancel })` の戻り値は `Promise<JobRecord>`。`const jobId = await store.create(...)` と書くと typecheck エラー。正しいパターン: `const job = await store.create({ ..., onCancel: async () => {} })` → `const { id: jobId } = job`。`onCancel` は DB store では無視されるが interface 上は必須。後続 kick service（F03/F06 等）では同パターンで実装する。今回の事例: issue 041 の kick service で発生し修正。
+- **`JobStore.create` は `string` でなく `JobRecord` を返す。kick service でのパターン**: `createDbJobStore(db).create({ type, userId, expiresAt, onCancel })` の戻り値は `Promise<JobRecord>`。`const jobId = await store.create(...)` と書くと typecheck エラー。正しいパターン: `const job = await store.create({ ..., onCancel: async () => {} })` → `const { id: jobId } = job`。`onCancel` は DB store では無視されるが interface 上は必須。後続 kick service（F03/F06 等）では同パターンで実装する。今回の事例: issue 041 の kick service で発生し修正。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
-- **`@noah/features` の root barrel・サブパッケージ barrel は廃止されている（Convention V-1）— import は全て subpath 形式**: `import { X } from "@noah/features"` も `import { X } from "@noah/features/<feature>"` も動かない（`package.json` の exports に `.` と `./<feature>`（barrel）の登録が無いため）。正しい形は `@noah/features/<feature>/<concern>`（例: `@noah/features/minutes/types`・`@noah/features/minutes/components`・`@noah/features/minutes/job`・`@noah/features/jobs`・`@noah/features/providers`）。実装サブエージェントへのプロンプトに「barrel 廃止・subpath 直接 import」を必ず1行入れる（古いコード／README／会話履歴の barrel サンプルをコピーすると壊れる）。conventions.md §V-1 が正の出典。今回の事例: issue 041 rebase 時に旧 barrel import で typecheck 全滅し、ユーザー指摘で気付いた。
+- **`@noah/features` の root barrel・サブパッケージ barrel は廃止されている（Convention V-1）。import は全て subpath 形式**: `import { X } from "@noah/features"` も `import { X } from "@noah/features/<feature>"` も動かない（`package.json` の exports に `.` と `./<feature>`（barrel）の登録が無いため）。正しい形は `@noah/features/<feature>/<concern>`（例: `@noah/features/minutes/types`・`@noah/features/minutes/components`・`@noah/features/minutes/job`・`@noah/features/jobs`・`@noah/features/providers`）。実装サブエージェントへのプロンプトに「barrel 廃止・subpath 直接 import」を必ず1行入れる（古いコード／README／会話履歴の barrel サンプルをコピーすると壊れる）。conventions.md §V-1 が正の出典。今回の事例: issue 041 rebase 時に旧 barrel import で typecheck 全滅し、ユーザー指摘で気付いた。
   <!-- importance: high | mentions: 2 | first-seen: 2026-06 -->
-- **`job/` の barrel（`job/index.ts`）は廃止 — `/job/types`・`/job/mapper` 等の concern ファイルを直接 import する**（2026-06-11 に方針反転。旧 Gotcha「`/job` で止める」は廃止済み・従わないこと）: `package.json` exports の `"./*": "./src/*.ts"` は wildcard `*` が `/` を跨いでマッチするため、`@noah/features/minutes/job/types` のようなネストした subpath も追加エントリなしで解決される（main の `apps/*/src/db/queries/minutes.ts` で動作実績）。`src/<feature>/job/index.ts` を新規作成してはいけない。誤例: `import type { X } from "@noah/features/minutes/job"` → 正: `import type { X } from "@noah/features/minutes/job/types"`。conventions.md §V-1「`job/` の barrel は廃止」が正の出典。今回の事例: issue 075 で旧 Gotcha に従って `minutes/job/index.ts` を作成し、既存の `/job/types` 直 import まで barrel 形式に巻き戻してしまい、ユーザー指摘で修正。**廃止された Gotcha が「正しさの根拠」として参照され逆行を生む**典型例。
+- **`job/` の barrel（`job/index.ts`）は廃止。`/job/types`・`/job/mapper` 等の concern ファイルを直接 import する**（2026-06-11 に方針反転。旧 Gotcha「`/job` で止める」は廃止済み・従わないこと）: `package.json` exports の `"./*": "./src/*.ts"` は wildcard `*` が `/` を跨いでマッチするため、`@noah/features/minutes/job/types` のようなネストした subpath も追加エントリなしで解決される（main の `apps/*/src/db/queries/minutes.ts` で動作実績）。`src/<feature>/job/index.ts` を新規作成してはいけない。誤例: `import type { X } from "@noah/features/minutes/job"` → 正: `import type { X } from "@noah/features/minutes/job/types"`。conventions.md §V-1「`job/` の barrel は廃止」が正の出典。今回の事例: issue 075 で旧 Gotcha に従って `minutes/job/index.ts` を作成し、既存の `/job/types` 直 import まで barrel 形式に巻き戻してしまい、ユーザー指摘で修正。**廃止された Gotcha が「正しさの根拠」として参照され逆行を生む**典型例。
   <!-- importance: high | mentions: 2 | first-seen: 2026-06 -->
 - **`@noah/ai` から features へ re-export するときは concern ごとに subpath を分ける**: lifecycle infrastructure（`runAsJob` / `createJobLambdaHandler` 等）は `packages/features/src/jobs.ts` → `@noah/features/jobs`、LLM/STT provider（`bedrockModel` / `awsTranscribeProvider` 等）は `packages/features/src/providers.ts` → `@noah/features/providers`。一つの re-export ファイルに混ぜると概念がぼやけ、Lambda 等の非 React consumer が必要以上の依存を引き込む。新しい `@noah/ai/<x>` を apps から使う必要が出たら、既存 subpath への追加と新 subpath の新設を「意味のまとまり」で判断する。conventions.md §V「concern ごとに subpath を切る」が正。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
@@ -156,7 +156,7 @@ Step 5 で issue ファイルを更新した後、**必ず `update-pr` を呼ん
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 - **SC fetcher での認証は `requireAuthentication()` を使うよう実装プロンプトに明示する**: 実装サブエージェントは SC fetcher に `auth.api.getSession` を直接使い、未認証時に `notFound()` や空リストを返す傾向がある。これは conventions.md Convention J 違反（SC では `requireAuthentication()` を使い未認証を `redirect("/login")` に統一）。Step 1 のプロンプトに「SC fetcher の認証は `requireAuthentication()` を使う（`auth.api.getSession` 直接使用は Route Handler 専用）」を1行追加して予防する。参照実装: `apps/ms-holdings/app/(app)/minutes/[id]/_components/minutes-detail-fetcher.tsx`。今回の事例: issue 048 の `TranscriptionDetailFetcher`・`JobListFetcher` でレビュー Round 2 に検出。
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
-- **「観測可能な挙動」を記述する doc issue（テストケースカタログ・手順書等）の期待結果は PRD でなく実コードで検証してから確定する**: PRD は理想仕様を書くため実装と乖離する（例: PRD は streaming 生成・実装は mock の一括生成 / バリデーションは presign 400 + kick 413/415 の 2 層 / UI 進捗ステップに DB 内部状態 `queued` は出ない）。PRD だけを入力に書くと初回実走が「カタログの誤り」の検出で埋まる。対処: 実装サブエージェントの初稿に対し coverage（足りないケース）/ validity（期待結果の正しさ）の 2 並列検証サブエージェントを挟み、参照した実装パスをケースに記載させる。また期待結果に「A または B」のような判定不能な記述を残さない — 該当コンポーネントの実装（disabled 条件等）まで読んで一意に確定する。今回の事例: issue 083 で validity 検証が 9 件の実装乖離を検出し、副産物として UI 表示と実制限のドリフト（500 MB 表示 vs 200 MB 実制限）も発見・修正できた。
+- **「観測可能な挙動」を記述する doc issue（テストケースカタログ・手順書等）の期待結果は PRD でなく実コードで検証してから確定する**: PRD は理想仕様を書くため実装と乖離する（例: PRD は streaming 生成・実装は mock の一括生成 / バリデーションは presign 400 + kick 413/415 の 2 層 / UI 進捗ステップに DB 内部状態 `queued` は出ない）。PRD だけを入力に書くと初回実走が「カタログの誤り」の検出で埋まる。対処: 実装サブエージェントの初稿に対し coverage（足りないケース）/ validity（期待結果の正しさ）の 2 並列検証サブエージェントを挟み、参照した実装パスをケースに記載させる。また期待結果に「A または B」のような判定不能な記述を残さない。該当コンポーネントの実装（disabled 条件等）まで読んで一意に確定する。今回の事例: issue 083 で validity 検証が 9 件の実装乖離を検出し、副産物として UI 表示と実制限のドリフト（500 MB 表示 vs 200 MB 実制限）も発見・修正できた。
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 - **`useChat` + `DefaultChatTransport` でカスタムリクエストボディを送る場合は `pendingInputRef` パターンで stale closure を回避する**: `prepareSendMessagesRequest` コールバックは毎レンダリングで再生成される closure のため、コールバック内で React state を直接参照すると送信時の最新値を取得できない（stale closure）。対処: 送信したいデータを `useRef` に退避（`pendingInputRef`）し、`submit()` でまず ref を更新してから `sendMessage({ text: "..." })` プレースホルダーを呼ぶ。`prepareSendMessagesRequest` は ref から値を読むことで常に最新データを参照できる。今回の事例: issue 050 の `useSummarizeStream` で `SummarizeRequestInput` を `pendingInputRef` に退避し、`sendMessage({ text: "summarize" })` プレースホルダーで `useChat` をトリガー。参照実装: `packages/features/src/summarize/hooks/use-summarize-stream.ts`。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
@@ -166,11 +166,11 @@ Step 5 で issue ファイルを更新した後、**必ず `update-pr` を呼ん
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 - **新規 Server Action を複数追加した後は conventions.md 規約 AE（FormData は Zod safeParse）の遵守を必ずチェックする**: 実装サブエージェントは SA を書くとき `typeof formData.get("x") !== "string"` の手動チェック連鎖を書きやすく、`create-user.ts` 等の参照実装が同じディレクトリにあっても見落とす。Step 1 のプロンプトに「SA の FormData バリデーションは `z.object({...}).safeParse(Object.fromEntries(formData))` + `firstZodError`（`@noah/core/zod`）で書くこと（規約 AE — 手動 typeof チェックは書かない）」を明示する。また **`FormData` の boolean フィールドは `z.boolean()` でなく `z.enum(["true", "false"])`** が正しい（FormData 値は常に文字列のため `z.boolean()` は機能しない。`parsed.data.field === "true"` で変換）。今回の事例: issue 224 で 5 種類の SA に手動 typeof チェックが残り、ユーザー指摘で発覚・全修正。
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
-- **pure function を新設したら `rg '<funcname>'` で実際に import されているか確認する — 0 import は domain review で削除指摘を受ける**: `countUnresolvedLineStatuses` や `derive.ts` の `unresolvedLineCount` のような「新設した集計ヘルパー」を呼び出し元なしで残すと、domain reviewer が「trivial accessor・未使用」として削除を指摘する。実装完了前に `rg '<funcname>' apps/` でヒット件数を確認する習慣を持つ。今回の事例: issue 254 で `vendor-matching/derive.ts` の関数群が 0 import だったため domain review で削除（`countUnresolvedLineStatuses` は tests にしか呼ばれていないが TODO(#257) として意図的残置）。
+- **pure function を新設したら `rg '<funcname>'` で実際に import されているか確認する。0 import は domain review で削除指摘を受ける**: `countUnresolvedLineStatuses` や `derive.ts` の `unresolvedLineCount` のような「新設した集計ヘルパー」を呼び出し元なしで残すと、domain reviewer が「trivial accessor・未使用」として削除を指摘する。実装完了前に `rg '<funcname>' apps/` でヒット件数を確認する習慣を持つ。今回の事例: issue 254 で `vendor-matching/derive.ts` の関数群が 0 import だったため domain review で削除（`countUnresolvedLineStatuses` は tests にしか呼ばれていないが TODO(#257) として意図的残置）。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 - **Step 5 の受け入れ基準チェックは「コードの存在」でなく「保存 → 読み取りのループが閉じているか」で照合する**: 受け入れ基準に「選択結果が下流に伝播する」のような文言があるとき、保存する側（upsert）だけ実装されて読み取りパス（即時更新・次回フェッチへの反映）が抜けていても「コードがある」と見えてしまう。typecheck・lint は両方通過する。照合時に「誰がどのタイミングでこのデータを読むか」を辿り、保存→読み取りのループが閉じているか確認する。今回の事例: issue 231 の `selectVendorCandidateAction` が `vendor_decisions` を upsert するだけで `invoices.resolvedPayeeCode` を更新しなかった。受け入れ基準「確定後 invoices.resolvedPayeeCode が更新される」をデータフロー視点で照合して初めて発覚（typecheck・lint は通過済み）。
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
-- **Step 0 で issue の `status: open` を鵜呑みにしない — マージ済み PR で実装済みなのに status 更新が漏れているケースがある**: 過去の実装セッションが Step 5/6（done 化 + push）を漏らすと、実装済み issue が `open` のまま残る。後続セッション（引き継ぎ資料の作成者も含む）はそれを「未着手」と誤認し、二重実装や誤ったスコープ設計に進む。対処: Step 0 で issue を読んだら着手前に `gh pr list --state merged --search "<issue番号>"`（または `rg "#<番号>" issues/` で他 issue からの参照）で「この issue を実装した PR が既に存在しないか」を確認する。実装済みと判明したら実装せず、受け入れ基準の照合 → 未達分の切り出し → done 化のブックキーピングだけを行う。今回の事例: issue 267 が PR #231（2026-06-30 マージ）で実装済みなのに `open` のまま残り、引き継ぎ資料も「未着手」を継承していた（2026-07 に発覚・未達 2 項目を #967 に切り出して done 化）。
+- **Step 0 で issue の `status: open` を鵜呑みにしない。マージ済み PR で実装済みなのに status 更新が漏れているケースがある**: 過去の実装セッションが Step 5/6（done 化 + push）を漏らすと、実装済み issue が `open` のまま残る。後続セッション（引き継ぎ資料の作成者も含む）はそれを「未着手」と誤認し、二重実装や誤ったスコープ設計に進む。対処: Step 0 で issue を読んだら着手前に `gh pr list --state merged --search "<issue番号>"`（または `rg "#<番号>" issues/` で他 issue からの参照）で「この issue を実装した PR が既に存在しないか」を確認する。実装済みと判明したら実装せず、受け入れ基準の照合 → 未達分の切り出し → done 化のブックキーピングだけを行う。今回の事例: issue 267 が PR #231（2026-06-30 マージ）で実装済みなのに `open` のまま残り、引き継ぎ資料も「未着手」を継承していた（2026-07 に発覚・未達 2 項目を #967 に切り出して done 化）。
   <!-- importance: high | mentions: 1 | first-seen: 2026-07 -->
 - **Step 1 の実装サブエージェントが issue ファイルの lifecycle 編集（`status: done` 化・受け入れ基準の check-off）まで先行実行することがある**: issue 全文をプロンプトに含めるため、サブエージェントが「実装完了 = issue も閉じる」と解釈して status と `- [x]` を書き換えてしまう。レビューループ前に done 化されると「レビュー未完了なのに記録上は完了」の乖離が生まれ、チェックボックスも実態照合なしに埋まる（Step 5 の照合が形骸化する）。対処: ①Step 1 のプロンプトに「issue ファイル（`issues/NNN-*.md`）の `status` とチェックボックスは変更しないこと（レビューループ完了後に Coordinator が Step 5 で実態照合して更新する）」を 1 行明示する ②サブエージェント完了後に `jj diff` で issues/ への変更有無を確認し、勝手に done 化されていたら `in-progress` に差し戻す（チェックボックスは Step 5 で 1 項目ずつ根拠付きで照合し直す）。今回の事例: issue 978 で実装サブエージェントが status: done + 全 check-off まで実行 → Coordinator が in-progress に差し戻し、レビュー 2 ラウンド完了後の Step 5 で検証メモ付きで改めて done 化した（2026-07）。
   <!-- importance: high | mentions: 1 | first-seen: 2026-07 -->

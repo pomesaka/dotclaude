@@ -10,13 +10,13 @@ model: sonnet
 ## やること
 
 1. Coordinator から渡された指摘を全て修正する（非Nit優先、Nitも可能な範囲で）
-2. 参照用に差分を確認する:
+2. 参照用に差分を確認する。
 
 ```bash
 jj diffu -r 'main..@'
 ```
 
-3. 修正後に lint を実行する:
+3. 修正後に lint を実行する。
 
 ```bash
 bun run typecheck   # tsc --build

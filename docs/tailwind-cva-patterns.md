@@ -1,12 +1,12 @@
 # Tailwind + CVA パターン集
 
-> **TL;DR**: Tailwind v4 では `bg-*` クラス競合に注意（`[&.active]:bg-X` で回避）。`dark:` クラスはデザイントークン設計ミスのシグナル — `dark:` が必要な場面では `--muted`・`--warning` 等のセマンティックトークンに切り替える。アクション用トークン（`--primary`）はレイアウト背景に転用しない。
+> **TL;DR**: Tailwind v4 では `bg-*` クラス競合に注意（`[&.active]:bg-X` で回避）。`dark:` クラスはデザイントークン設計ミスのシグナル。`dark:` が必要な場面では `--muted`・`--warning` 等のセマンティックトークンに切り替える。アクション用トークン（`--primary`）はレイアウト背景に転用しない。
 
 ## bg クラス競合回避（Tailwind v4）
 
 ### 問題
 
-Tailwind v4 では、同一要素に `bg-A` と `bg-B` が両方存在するとき、どちらが勝つかは **HTML クラス属性の順序ではなく生成 CSS のソース順** で決まる。
+Tailwind v4 では、同一要素に `bg-A` と `bg-B` が両方存在するとき、どちらが勝つかは HTML クラス属性の順序ではなく生成 CSS のソース順で決まる。
 
 CVA で `theme` バリアントに `bg-primary` を持たせ、compound variant で `bg-transparent` を上書きしようとしても、ビルド後の CSS で `bg-primary` が後に定義されていれば `bg-transparent` が無効になる。
 
@@ -43,7 +43,7 @@ compoundVariants: [
 - CVA + Tailwind v4 の組み合わせ全般
 - 特に `theme` × `variant` の 2 軸で bg が変化するボタン・カードコンポーネント
 - **CVA を使っていない素の文字列連結も同じ**: `const SELECTED = \`${BASE} border-green bg-green-soft\`` のように「ベース定数を展開してから状態クラスを足す」書き方は、ベースが `border-line bg-white` を持っていれば上書きに失敗する。競合するのは `bg-*` に限らず**同一 CSS プロパティを出すユーティリティすべて**（`border-*` / `text-*` / `ring-*`）
-- **無音で失敗するので目視でも見つからない**: `ring-*` のような別プロパティだけが効いて「うっすら変わる」ため、選択状態が弱いだけに見える。疑ったら `getComputedStyle(el).borderColor` を実測する。恒久対処はベース定数から色を抜き、状態ごとに排他で足す
+- **エラーを出さずに失敗するので目視でも見つからない**: `ring-*` のような別プロパティだけが効いて「うっすら変わる」ため、選択状態が弱いだけに見える。疑ったら `getComputedStyle(el).borderColor` を実測する。恒久対処はベース定数から色を抜き、状態ごとに排他で足す
 
 <!-- importance: high | mentions: 2 | first-seen: 2026-05 -->
 
@@ -70,7 +70,7 @@ compoundVariants: [
 ### 問題
 
 IDE サイドバーのような `bg-muted` 背景を持つ領域に `hover:bg-accent` を使うと、`--accent` ≈ `--muted` のときホバーが視覚的に無効化される。  
-Tailwind v4 ではデフォルト値として `accent` と `muted` に同じかほぼ同じ値が設定されていることがあり、**ホバーフィードバックが消える**。
+Tailwind v4 ではデフォルト値として `accent` と `muted` に同じかほぼ同じ値が設定されていることがあり、ホバーフィードバックが消える。
 
 ### 解決策
 
@@ -101,7 +101,7 @@ TreeItem の `hover:bg-accent` が IDE サイドバー（`bg-muted` 背景）上
 
 ## `dark:` クラスはトークン設計ミスのシグナル
 
-コンポーネント内に `dark:text-xxx`・`dark:bg-xxx` のようなクラスがある場合、それは **セマンティックトークンの設計失敗**を意味する。
+コンポーネント内に `dark:text-xxx`・`dark:bg-xxx` のようなクラスがある場合、それはセマンティックトークンの設計失敗を意味する。
 
 ### 原則
 
@@ -133,7 +133,7 @@ TreeItem の `hover:bg-accent` が IDE サイドバー（`bg-muted` 背景）上
 
 ## アクション用トークンをレイアウト背景に転用しない
 
-`--secondary` / `--primary` / `--destructive` はボタン等の **操作要素用**トークン。テーブルヘッダー・セクション区切り・IDE ツールバーなど **構造的なレイアウト背景**に使ってはいけない。
+`--secondary` / `--primary` / `--destructive` はボタン等の操作要素用トークン。テーブルヘッダー・セクション区切り・IDE ツールバーなど構造的なレイアウト背景に使ってはいけない。
 
 ```tsx
 // ❌ secondary はボタン背景用トークン — レイアウトに使うとセマンティクスがずれる
@@ -145,7 +145,7 @@ TreeItem の `hover:bg-accent` が IDE サイドバー（`bg-muted` 背景）上
 <div className="bg-muted">Section header</div>
 ```
 
-**判断基準**: 「ここにボタンを置いても違和感がないか？」— Yes なら action token でよい。No ならレイアウトトークン（`muted`・`card`・`background`）を選ぶ。
+**判断基準**: 「ここにボタンを置いても違和感がないか？」Yes なら action token でよい。No ならレイアウトトークン（`muted`・`card`・`background`）を選ぶ。
 
 <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
 
@@ -178,13 +178,13 @@ TreeItem の `hover:bg-accent` が IDE サイドバー（`bg-muted` 背景）上
 
 ### 問題
 
-白背景上で `bg-muted/90` は `bg-muted`（不透明）より**明るく（薄く）**なる。opacity modifier は白が透けるため、下げるほど白に近づく。
+白背景上で `bg-muted/90` は `bg-muted`（不透明）より明るく（薄く）なる。opacity modifier は白が透けるため、下げるほど白に近づく。
 
 「もう少し濃くしたい」つもりで `/80` → `/60` とすると期待と逆に薄くなる。
 
 ### 解決策
 
-背景を濃くしたいなら、**より暗いトークンに切り替える**。opacity は下げない。
+背景を濃くしたいなら、より暗いトークンに切り替える。opacity は下げない。
 
 ```tsx
 // ❌ 逆効果: bg-muted/80 は bg-muted より薄い（白が透ける）

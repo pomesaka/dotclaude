@@ -21,7 +21,7 @@ allowed-tools:
 
 **ホスト名の一意性**: 同じプロジェクトを複数の jj ワークスペース（worktree）や異なるブックマークから同時に起動する場合、`package.json` の name をそのまま使うとホスト名が衝突する。その場合は `portless <name> <cmd>` 構文でブックマーク名やワークスペース名を含めた一意な名前を使うこと。
 
-例:
+例を挙げる。
 - ブックマーク `issue-006` で作業中 → `ms-holdings-issue-006`
 - ワークスペース名 `iori-4343` → `ms-holdings-iori-4343`
 
@@ -29,14 +29,14 @@ allowed-tools:
 
 ### 2. バックグラウンドで起動
 
-`run_in_background: true` で起動してコンテキストを守る:
+`run_in_background: true` で起動してコンテキストを守る。
 
-**通常起動（package.json の name を使用）:**
+**通常起動（package.json の name を使用）**
 ```bash
 mise exec --cd /path/to/apps/<appname> -- portless >> ~/.claude/tmp/<appname>-dev.log 2>&1
 ```
 
-**カスタム名で起動（`portless <name> <cmd>` 構文）:**
+**カスタム名で起動（`portless <name> <cmd>` 構文）**
 ```bash
 mise exec --cd /path/to/apps/<appname> -- portless <custom-name> bun run dev >> ~/.claude/tmp/<custom-name>-dev.log 2>&1
 ```
@@ -47,7 +47,7 @@ mise exec --cd /path/to/apps/<appname> -- portless <custom-name> bun run dev >> 
 ### 3. 数秒後にログを確認
 
 起動結果を確認するためにバックグラウンドタスク完了通知を待つ（すぐに完了 = 失敗、長時間起動中 = 成功）。
-失敗した場合はログファイルを Read して原因を確認する:
+失敗した場合はログファイルを Read して原因を確認する。
 
 ```
 Read ~/.claude/tmp/<appname>-dev.log
@@ -55,23 +55,23 @@ Read ~/.claude/tmp/<appname>-dev.log
 
 ### 4. ログに応じた対応
 
-**プロキシ未起動（`Proxy is not running` が含まれる場合）**:
+**プロキシ未起動（`Proxy is not running` が含まれる場合）**
 
-> portless proxy がまだ起動していません。ターミナルで以下を実行してください:
+> portless proxy がまだ起動していません。ターミナルで以下を実行してください。
 > ```
 > sudo portless proxy start --https
 > ```
 > 完了後にもう一度 `/portless` を呼んでください。
 
-ポートを使いたくない場合の代替:
+ポートを使いたくない場合の代替は次のとおり。
 > ```
 > mise exec --cd apps/<appname> -- portless proxy start --port 1355 --https
 > ```
 > この場合 URL は `https://<appname>.localhost:1355` になります。
 
-**正常起動**:
+**正常起動**
 
-URL をユーザーに案内する:
+URL をユーザーに案内する。
 - アクセス先: `https://<appname>.localhost`
 - ログ: `~/.claude/tmp/<appname>-dev.log`
 
@@ -89,7 +89,7 @@ URL をユーザーに案内する:
 - **同一アプリの複数ワークスペース同時起動**: `package.json` の name をそのまま使うとホスト名が衝突する。ブックマーク名・ワークスペース名を含めたカスタム名（例: `ms-holdings-issue-006`）を使うこと
 - **「ホスト名固定 env」を使う認証ライブラリ（BetterAuth 等）が portless ホスト名と不一致で Invalid origin になる**: portless のホスト名はワークスペース/ブックマークで変わるが、認証ライブラリ側は `BETTER_AUTH_URL=https://ms-holdings.localhost` のように env で固定するパターンが多い。dev サーバーログに `Invalid origin: https://ms-holdings-iori-b747.localhost` が出ていたら env と portless ホスト名のミスマッチ。対処の選択肢: (1) ワークスペースごとに `.env.local` の URL を書き換える（毎回必要）、(2) ライブラリの trustedOrigins 設定を関数化して Origin ヘッダーから動的に許可する（要ライブラリ調査）、(3) portless に固定名で起動して env を 1 つに保つ（ただし複数ワークスペース同時起動はできない）
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
-- **portless のホスト名は `apps/<customer>/package.json` の `name` フィールドから決まる — ワークスペースディレクトリ名ではない**: `adachi-anna-8b5d.localhost` のようにワークスペース名を使うと 404 になる。正しいホスト名は `apps/<customer>/package.json` の `"name"` を確認する（例: `"name": "adachi"` → `adachi.localhost`）。`.env.local` の `BETTER_AUTH_URL` 等も同じ名前で設定する。CLAUDE.md の「jj ワークスペースではブランチ名がサブドメインに付く」はカスタム名起動時の話（`portless <custom-name> bun run dev`）で、通常起動では package.json name そのもの。
+- **portless のホスト名は `apps/<customer>/package.json` の `name` フィールドから決まる。ワークスペースディレクトリ名ではない**: `adachi-anna-8b5d.localhost` のようにワークスペース名を使うと 404 になる。正しいホスト名は `apps/<customer>/package.json` の `"name"` を確認する（例: `"name": "adachi"` → `adachi.localhost`）。`.env.local` の `BETTER_AUTH_URL` 等も同じ名前で設定する。CLAUDE.md の「jj ワークスペースではブランチ名がサブドメインに付く」はカスタム名起動時の話（`portless <custom-name> bun run dev`）で、通常起動では package.json name そのもの。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 - **Playwright 等の一時スクリプトをワークスペースルートから `bun run` すると `bun add` が走り package.json を汚染する**: `bun run /path/to/script.mjs`（外部 ESM ファイル）をワークスペースルートで実行すると、スクリプト内の `import { chromium } from "playwright"` が解決できず bun が自動で `bun add playwright` を走らせる（または手動実行が必要になる）。毎回 `bun remove playwright` → `jj restore package.json` の手戻りが発生する。対処: 一時スクリプトは scratchpad（`/tmp` 等）に置き、`bun` に直接実行させる（`bun /path/to/script.mjs`）か、Node.js 互換の `node /path/to/script.mjs`（playwright は npx でインストール済みの場合）で走らせる。どうしても bun を使う場合は scratchpad に `package.json`（`{"name":"tmp","type":"module"}`）と `bun add playwright` を行い、ワークスペースルートには触れない。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->

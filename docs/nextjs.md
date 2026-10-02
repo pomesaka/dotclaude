@@ -25,9 +25,9 @@ React の観点に加え、以下の観点でレビューする。
   <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
 - **Server Action を `action` prop として受け取る features View のラッパーは SC のままで良い**: Client Component に関数を渡すと通常 ClientWrapper が必要になるが、Server Action（`"use server"` 関数）はシリアライズ可能なため SC から CC へ直接渡せる。`"use client"` は features の View 自体に付けるだけで足りる。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
-- **コンポーネントライブラリの境界にはドメイン型を使う（transport 型を露出しない）**: `packages/features` の View が Server Action を props として受け取る場合、`(formData: FormData) => void` ではなく `(templateId: string, values: Record<string, string>) => void` のように **ドメイン型のシグネチャ** にする。FormData のパースは View 内部で完結させ、呼び出し側が `_templateId` のような内部キー名を知る必要をなくす。Server Action は JS から呼ぶ場合に任意の引数型を使えるため、FormData に縛られる必要はない。
+- **コンポーネントライブラリの境界にはドメイン型を使う（transport 型を露出しない）**: `packages/features` の View が Server Action を props として受け取る場合、`(formData: FormData) => void` ではなく `(templateId: string, values: Record<string, string>) => void` のようにドメイン型のシグネチャにする。FormData のパースは View 内部で完結させ、呼び出し側が `_templateId` のような内部キー名を知る必要をなくす。Server Action は JS から呼ぶ場合に任意の引数型を使えるため、FormData に縛られる必要はない。
   <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
-- **`redirect()` は try/catch の外で呼ぶ**: `redirect()` は内部的に `NEXT_REDIRECT` 例外を throw する。try ブロック内で呼ぶと catch に握り潰されてリダイレクトが発生しない。Server Action パターン: `try { await someAction() } catch(err) { /* handle */ throw err } redirect("/")` — redirect は try の外に出す。
+- **`redirect()` は try/catch の外で呼ぶ**: `redirect()` は内部的に `NEXT_REDIRECT` 例外を throw する。try ブロック内で呼ぶと catch に握り潰されてリダイレクトが発生しない。Server Action パターン: `try { await someAction() } catch(err) { /* handle */ throw err } redirect("/")`。redirect は try の外に出す。
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 - **`useActionState` + `defaultValue` でフォームリセットを防ぐ**: Server Action が失敗すると React はフォームを `defaultValue` ベースにリセットする。エラー時に入力値（例: email）を保持したい場合は、state に入力値を含めて返し（`return { error, email }`）、input の `defaultValue={state?.email}` で制御する。password はセキュリティ上保持しない（毎回入力を促す）。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
@@ -36,7 +36,7 @@ React の観点に加え、以下の観点でレビューする。
 
 ## ルーティング規約
 
-リソースのルートは以下のパターンに統一する:
+リソースのルートは以下のパターンに統一する。
 
 ```
 /{resource}/           # 一覧
@@ -47,14 +47,14 @@ React の観点に加え、以下の観点でレビューする。
 
 ## UI 永続化パターン（localStorage vs Cookie）
 
-サイドバー開閉・テーマ・ロケールなど「ページ間で保持したい UI 状態」を SSR と整合させる方法：
+サイドバー開閉・テーマ・ロケールなど「ページ間で保持したい UI 状態」を SSR と整合させる方法。
 
 | 手法 | SSR で読める？ | 実装コスト | 向いている用途 |
 |------|--------------|-----------|--------------|
-| `localStorage` | ❌（クライアント専用） | `isLoaded` フラグ + hydration ガードが必要 | SPA・クライアント限定のキャッシュ |
-| `Cookie` | ✅（`next/headers` で読める） | SC で読んで props で渡す | テーマ・サイドバー・ロケールなど SSR に影響する UI 状態 |
+| `localStorage` | NG（クライアント専用） | `isLoaded` フラグ + hydration ガードが必要 | SPA・クライアント限定のキャッシュ |
+| `Cookie` | OK（`next/headers` で読める） | SC で読んで props で渡す | テーマ・サイドバー・ロケールなど SSR に影響する UI 状態 |
 
-**Cookie パターン（推奨）**:
+**Cookie パターン（推奨）**
 
 ```ts
 // "use server" — SC で読む
@@ -79,12 +79,12 @@ SSR で状態を読むなら Cookie（`next/headers`）。SC で読んで props 
 
 ### SSR / Server Component での Suspense 境界
 
-**`loading.tsx` vs `<Suspense>` の使い分け**:
+**`loading.tsx` vs `<Suspense>` の使い分け**
 
 - `loading.tsx` → ルートセグメント全体をブロックする。静的なヘッダーやナビも skeleton になる
 - `<Suspense fallback={<Skeleton />}>` → 非同期 SC を部分的に包む。静的要素はすぐ表示
 
-ページに固定ヘッダーや静的な操作ボタンがある場合は `<Suspense>` による部分ローディングを優先する:
+ページに固定ヘッダーや静的な操作ボタンがある場合は `<Suspense>` による部分ローディングを優先する。
 
 ```tsx
 // page.tsx（non-async）
@@ -100,7 +100,7 @@ export default function Page() {
 }
 ```
 
-**Suspense が有効な条件**:
+**Suspense が有効な条件**
 - async Server Component のストリーミング待機
 - Client Component が `use(promise)` で Promise を読む場合
 
@@ -109,7 +109,7 @@ export default function Page() {
 **Suspense 境界はデータ依存部分だけを内側で囲む**: CC 内にタブバー・ヘッダー等の静的要素があるとき CC ごと包むと静的要素まで skeleton 化される。
 <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
 
-**Skeleton の設計原則**:
+**Skeleton の設計原則**
 - **動的コンテンツのみ対象**: ボタン・ラベル・タイトル等の静的要素は skeleton にしない。データが来るまで確定できない部分（リスト・本文・ユーザー依存の値）だけを skeleton で置き換える
 - 実際のコンテンツの形・レイアウトを模倣する。ランダム幅のバーを並べるだけでなく、カード・リストの構造を再現する
 - 実コンテンツと skeleton の高さを揃える（表示切替でレイアウトジャンプが起きない）
@@ -117,7 +117,7 @@ export default function Page() {
 
 ### クライアントサイドの loading 管理
 
-**TanStack Query の使い分け**:
+**TanStack Query の使い分け**
 
 | 状態 | 意味 | Skeleton 表示 |
 |------|------|--------------|
@@ -127,18 +127,18 @@ export default function Page() {
 
 初回表示は `isLoading` で Skeleton を出し、バックグラウンド再フェッチは `isFetching` の spinner 等で軽く示すか無視する。
 
-**mutation 中のローディング**:
+**mutation 中のローディング**
 - 送信ボタンは `isPending` 中に `disabled` にして二重送信を防ぐ
 - Optimistic update を使う場合はローディング表示自体を省略できる
 
-**クライアントサイド非同期処理（`setTimeout` / API 呼び出し等）**:
+**クライアントサイド非同期処理（`setTimeout` / API 呼び出し等）**
 - 処理開始時に `isProcessing: true` → UI をブロック
 - 完了・エラー時に `isProcessing: false` → 結果を表示
 - モックアップでは `setTimeout` でローディングをシミュレートし、Skeleton を必ず表示する
 
 ## SC → ClientWrapper → FeatureView パターン
 
-Server Component（SC）は `packages/features` の Client Component に**関数 props を直接渡せない**。SC がデータをフェッチして FeatureView に callback（`onSubmit`・`onSummarize` 等）を渡したい場合は、app 層に "use client" の中間 Wrapper を挟む。
+Server Component（SC）は `packages/features` の Client Component に関数 props を直接渡せない。SC がデータをフェッチして FeatureView に callback（`onSubmit`・`onSummarize` 等）を渡したい場合は、app 層に "use client" の中間 Wrapper を挟む。
 
 ```
 SomeFetcher (async SC)          → データ取得
@@ -158,7 +158,7 @@ async SC でデータ取得 → `"use client"` Wrapper で `useCallback` の cal
   <!-- importance: high | mentions: 3 | first-seen: 2026-05 -->
 - **`router.refresh()` は CC の state（useState 等）を保持する**: SC データを再取得するがクライアントツリーはアンマウントされない。「refresh したら state がリセットされる」という誤解が生じやすい。Next.js 公式: "The client will merge the updated RSC payload without losing unaffected client-side React state."
   <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
-- **Node コアモジュール（`node:fs` 等）を参照するファイルをパッケージのバレルに含めると Turbopack がクライアントバンドルで検出してエラーになる**: dev モードの Turbopack は tree-shake をしないため、バレルの `export * from`／value re-export が Node.js コアモジュールを参照するファイルまで辿り "the chunking context does not support external modules (request: node:fs)" のエラーになる。**dev 専用 API（eval runner・ファイル操作スクリプト）だけでなく、server 専用の runtime 依存（AWS SDK・DB クライアント・LLM provider 等、内部で node コアを使う）も同じ**。対処: server 専用シンボルはパッケージのサブパス（`package.json exports` に `"./agent": "./src/agent/index.ts"` 等を追加）から import させ、Client Component が import する runtime バレルからは完全に切り離す。**型のみの re-export（`export type`）は erase されるので安全、value re-export だけが問題**。見極め: 「このバレルを `"use client"` のファイルが import するか？」が Yes なら server runtime を value re-export しない。発覚例: chat barrel が `createChatAgent`（→ `@aws-sdk/credential-providers` → `node:fs`）を value re-export しており、`@ai-sdk/amazon-bedrock`（aws4fetch でブラウザ安全）から `@aws-sdk/credential-providers`（node 依存）に変えた瞬間にビルドが壊れた。
+- **Node コアモジュール（`node:fs` 等）を参照するファイルをパッケージのバレルに含めると Turbopack がクライアントバンドルで検出してエラーになる**: dev モードの Turbopack は tree-shake をしないため、バレルの `export * from`／value re-export が Node.js コアモジュールを参照するファイルまで辿り "the chunking context does not support external modules (request: node:fs)" のエラーになる。dev 専用 API（eval runner・ファイル操作スクリプト）だけでなく、server 専用の runtime 依存（AWS SDK・DB クライアント・LLM provider 等、内部で node コアを使う）も同じ。対処: server 専用シンボルはパッケージのサブパス（`package.json exports` に `"./agent": "./src/agent/index.ts"` 等を追加）から import させ、Client Component が import する runtime バレルからは完全に切り離す。型のみの re-export（`export type`）は erase されるので安全、value re-export だけが問題。見極め: 「このバレルを `"use client"` のファイルが import するか？」が Yes なら server runtime を value re-export しない。発覚例: chat barrel が `createChatAgent`（→ `@aws-sdk/credential-providers` → `node:fs`）を value re-export しており、`@ai-sdk/amazon-bedrock`（aws4fetch でブラウザ安全）から `@aws-sdk/credential-providers`（node 依存）に変えた時点でビルドが壊れた。
   <!-- importance: high | mentions: 2 | first-seen: 2026-05 -->
 
 - **ルートグループ `(name)` を含むパスは LSP が解決できず false positive になる**: Next.js App Router のルートグループ（`(auth)`, `(app)` 等）のように括弧を含むディレクトリに置かれたファイルへの import は、LSP（VS Code 等）が "Cannot find module" と誤検知することがある。`tsc --noEmit`（`bun run typecheck`）は正常通過するため false positive。対処: typecheck が通っていれば無視してよい。LSP の誤検知を修正しようとして不要なファイル移動をしないこと
@@ -167,19 +167,19 @@ async SC でデータ取得 → `"use client"` Wrapper で `useCallback` の cal
 - **Playwright で Next.js dev サーバーを検証するとき `getByRole("alert")` は dev overlay と衝突する**: Next.js の dev error indicator（画面隅の「1 Issue」バッジ）が `role="alert"` 相当の要素を持つため、アプリ側の alert 要素と合わせて複数マッチになり、Playwright strict mode が `isVisible()`/`textContent()` で throw する。`.catch(() => false)` で握っていると「エラー表示が描画されていない」という false negative になる（実例: エラーメッセージは DOM に存在したのに不在と誤判定）。対処: `page.locator("form").innerHTML()` 等で DOM を直接確認してから判断する・`getByRole("alert", { name: ... })` や scope 付き locator（`form.getByRole(...)`）で絞る・本番ビルド（`next build` + `next start`）で検証する。dev サーバー上の role ベース検証は overlay 由来の偽陽性/偽陰性を常に疑うこと。
   <!-- importance: medium | mentions: 2 | first-seen: 2026-06 -->
 
-- **検証付き env をモジュールのトップレベルで `parse` すると `next build` がビルド時にランタイム env を要求して落ちる**: `export const env = schema.parse(process.env)` のようにトップレベルで検証する設計は、`next build` の 2 つのフェーズでランタイム env（本番は ECS/コンテナが起動時に注入し、ビルド時には存在しない）を要求して `ZodError` でクラッシュする。(1) **"Collecting page data"**: route モジュールを import して static/dynamic 判定するため、import チェーン上のトップレベル副作用（env parse・DB クライアント生成・auth 初期化）が全て走る。(2) **静的プリレンダー（export）**: 認証付きページを build 時に render しようとし、render 中の `auth`/`db`（→env）参照で落ちる。NG: `export const env = schema.parse(process.env)` / `export const db = drizzle(postgres({host: env.DB_HOST}))`（トップレベル即生成）。OK: env/db/auth シングルトンを**初回プロパティアクセスまで初期化を遅延する Proxy**でラップして import を副作用フリーにする（`env.X`/`db.X`/`auth.api.*` の API は不変。Proxy の target に `as` が要る点だけ許容）＋ **認証セグメントの layout に `export const dynamic = "force-dynamic"`** を付けてビルド時プリレンダー自体を止める。見極め: 「runtime env がビルド時に不在（ECS/Secrets Manager 注入）」かつ「その env を参照するモジュールが route/page から import される」なら必ず踏む。ビルド時ダミー env を Dockerfile で渡す手もあるが、遅延化のほうが import 副作用ゼロ・ランタイム検証維持で筋が良い。
+- **検証付き env をモジュールのトップレベルで `parse` すると `next build` がビルド時にランタイム env を要求して落ちる**: `export const env = schema.parse(process.env)` のようにトップレベルで検証する設計は、`next build` の 2 つのフェーズでランタイム env（本番は ECS/コンテナが起動時に注入し、ビルド時には存在しない）を要求して `ZodError` でクラッシュする。(1) **"Collecting page data"**: route モジュールを import して static/dynamic 判定するため、import チェーン上のトップレベル副作用（env parse・DB クライアント生成・auth 初期化）が全て走る。(2) **静的プリレンダー（export）**: 認証付きページを build 時に render しようとし、render 中の `auth`/`db`（→env）参照で落ちる。NG: `export const env = schema.parse(process.env)` / `export const db = drizzle(postgres({host: env.DB_HOST}))`（トップレベル即生成）。OK: env/db/auth シングルトンを初回プロパティアクセスまで初期化を遅延する Proxy でラップして import を副作用フリーにする（`env.X`/`db.X`/`auth.api.*` の API は不変。Proxy の target に `as` が要る点だけ許容）＋ 認証セグメントの layout に `export const dynamic = "force-dynamic"` を付けてビルド時プリレンダー自体を止める。見極め: 「runtime env がビルド時に不在（ECS/Secrets Manager 注入）」かつ「その env を参照するモジュールが route/page から import される」なら必ず起きる。ビルド時ダミー env を Dockerfile で渡す手もあるが、遅延化のほうが import 副作用ゼロ・ランタイム検証維持で筋が良い。
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 
-- **`sessionStorage` / `localStorage` は SSR 時に `window is not defined` でクラッシュする — `useEffect` 内で初期化する**: CC ファイルに `"use client"` があっても、Next.js App Router は SC fetcher ツリーで SSR を実行するため `useState` の初期化関数（`useState(() => sessionStorage.getItem("key"))`) も SSR で実行される。対処: `const [value, setValue] = useState<T | null>(null)` で null 初期値にして、`useEffect(() => { setValue(sessionStorage.getItem("key") ?? null) }, [])` で mount 後に読み込む。WHY useState 初期化関数では不可: 初期化関数は SSR で eager 実行されるが、`useEffect` は client-only（`window` が存在する環境）なのでクラッシュしない。
+- **`sessionStorage` / `localStorage` は SSR 時に `window is not defined` でクラッシュする。`useEffect` 内で初期化する**: CC ファイルに `"use client"` があっても、Next.js App Router は SC fetcher ツリーで SSR を実行するため `useState` の初期化関数（`useState(() => sessionStorage.getItem("key"))`) も SSR で実行される。対処: `const [value, setValue] = useState<T | null>(null)` で null 初期値にして、`useEffect(() => { setValue(sessionStorage.getItem("key") ?? null) }, [])` で mount 後に読み込む。WHY useState 初期化関数では不可: 初期化関数は SSR で eager 実行されるが、`useEffect` は client-only（`window` が存在する環境）なのでクラッシュしない。
   <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 
-- **SSR で同じ重いフェッチが 2 経路から必要なとき「解決前の Promise を注入して共有」する — 逐次化も二重実行もしない**: page.tsx の `Promise.all` に載る 2 つの取得関数が内部で同じ重い計算（集計 assemble 等）を必要とする場合、素朴に並行実行すると同じ計算が 2 回走り、片方を await してから渡すと逐次化で遅くなる。対処: `const p = heavyFetch(key)` で **await せず** Promise を作り、片方の関数にオプション引数（`preloadedX: { key, promise }`）として注入して内部でそのまま await させ、もう片方は `Promise.all([fnA({preloadedX}), p])` で同じ Promise を await する。並行性を維持したまま計算は 1 回に畳まれる。注入側は key の一致判定をしてから使う（別 key の Promise を誤って再利用しない）。判断基準: 「2 つの SSR 取得関数が内部で同じ入力の同じ計算を含むか」YES なら Promise 共有。実例: noah issue 977 の `listUnfinishedMonths` への `preloadedMonth` 注入（当月フル assemble の二重実行を排除・domain review MEDIUM 指摘）。
+- **SSR で同じ重いフェッチが 2 経路から必要なとき「解決前の Promise を注入して共有」する。逐次化も二重実行もしない**: page.tsx の `Promise.all` に載る 2 つの取得関数が内部で同じ重い計算（集計 assemble 等）を必要とする場合、素朴に並行実行すると同じ計算が 2 回走り、片方を await してから渡すと逐次化で遅くなる。対処: `const p = heavyFetch(key)` で **await せず** Promise を作り、片方の関数にオプション引数（`preloadedX: { key, promise }`）として注入して内部でそのまま await させ、もう片方は `Promise.all([fnA({preloadedX}), p])` で同じ Promise を await する。並行性を維持したまま計算は 1 回に畳まれる。注入側は key の一致判定をしてから使う（別 key の Promise を誤って再利用しない）。判断基準: 「2 つの SSR 取得関数が内部で同じ入力の同じ計算を含むか」YES なら Promise 共有。実例: noah issue 977 の `listUnfinishedMonths` への `preloadedMonth` 注入（当月フル assemble の二重実行を排除・domain review MEDIUM 指摘）。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-07 -->
 
 - **searchParams / route params 由来の日付キーは「形」だけでなく「暦の有効性」まで検証してから DB に渡す**: `/^\d{4}-\d{2}-01$/` のような形状 regex は "2026-13-01" を通し、Postgres の date 列比較で `date field value out of range` になって SSR / Server Action が 500 でクラッシュする（クエリ文字列の操作だけで誰でも 500 を作れる）。月部分は `(0[1-9]|1[0-2])`、日付全体なら実 Date への round-trip 検証まで入れる。検証関数は SC（page.tsx）と CC（URL / localStorage 復元）の両方が使うため `_lib/` に 1 箇所で定義して共用する（散らすと片方だけ緩い regex が残る）。判断基準: 「この外部入力文字列は DB の型付き列（date / uuid / int）に届くか」YES なら型のドメイン全体（暦・フォーマット）を境界で検証する。実例: noah issue 977 Round 5 の `isTargetMonthFirstDay` 集約。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-07 -->
 
-- **App Router の dynamic route params は percent-encoded のまま届く — 境界（page.tsx）で `decodeURIComponent` してから分岐する**: `/invoice/[id]` に `merge:C300` を含む URL でアクセスすると `params.id` は `merge%3AC300` のまま渡される（Next.js 15 実機確認・2026-07）。`:` / `/` 等を含む合成キーを route param に載せて `startsWith("merge:")` のような prefix 判定をすると、encoded 値がすり抜けて else 分岐（UUID クエリ等）に流れ、typecheck では検出できない実行時エラー（PostgresError: invalid input syntax for type uuid）になる。対処: params を読む最初の境界（page.tsx）で `decodeURIComponent(params.id)` してから分岐・下流に渡す。判断基準: route param に「英数字と `-` 以外を含みうる値」（合成キー・prefix 付き ID・日本語）を載せるなら必ず decode を挟む。同じ route に後から別 prefix を足すとき、既存 prefix も同じ潜在バグを持っていないか確認する（実例: noah issue 975 で `merge:` 追加時に既存 `ledger-only:` の同一バグを発見・治癒）。
+- **App Router の dynamic route params は percent-encoded のまま届く。境界（page.tsx）で `decodeURIComponent` してから分岐する**: `/invoice/[id]` に `merge:C300` を含む URL でアクセスすると `params.id` は `merge%3AC300` のまま渡される（Next.js 15 実機確認・2026-07）。`:` / `/` 等を含む合成キーを route param に載せて `startsWith("merge:")` のような prefix 判定をすると、encoded 値がすり抜けて else 分岐（UUID クエリ等）に流れ、typecheck では検出できない実行時エラー（PostgresError: invalid input syntax for type uuid）になる。対処: params を読む最初の境界（page.tsx）で `decodeURIComponent(params.id)` してから分岐・下流に渡す。判断基準: route param に「英数字と `-` 以外を含みうる値」（合成キー・prefix 付き ID・日本語）を載せるなら必ず decode を挟む。同じ route に後から別 prefix を足すとき、既存 prefix も同じ潜在バグを持っていないか確認する（実例: noah issue 975 で `merge:` 追加時に既存 `ledger-only:` の同一バグを発見・治癒）。
   <!-- importance: high | mentions: 1 | first-seen: 2026-07 -->
 
 ## 禁止パターン

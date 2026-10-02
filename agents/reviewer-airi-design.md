@@ -9,7 +9,7 @@ model: sonnet
 
 ## 呼ばれたらすぐにやること
 
-**1. 以下のドキュメントを Read で読み込む:**
+**1. 以下のドキュメントを Read で読み込む。**
 
 ```
 ~/.claude/docs/cohesion.md
@@ -17,7 +17,7 @@ model: sonnet
 ~/.claude/docs/design.md
 ```
 
-**2. 差分を取得する:**
+**2. 差分を取得する。**
 
 ```bash
 jj diffu -r 'main..@'

@@ -17,8 +17,8 @@ LLM が毎回読み込むドキュメント（`CLAUDE.md`・プロジェクト�
 
 ### 立ち位置
 
-- **/curate-docs**: 横断監査（サイズ・TL;DR・@-embed・重複検出）— 受動的な健全性チェック
-- **/gotcha**: 単発の失敗談追記 — 具体例を 1 件足すだけ
+- **/curate-docs**: 横断監査（サイズ・TL;DR・@-embed・重複検出）。受動的な健全性チェック
+- **/gotcha**: 単発の失敗談追記。具体例を 1 件足すだけ
 - **このスキル**: 蓄積された具体例チェーンを **live doc から抽出 → 原則に統合 → 元の実例は archive に退避** し、LLM が読むトークン数を実効的に減らす
 
 ### アーキテクチャ: Progressive Disclosure
@@ -40,7 +40,7 @@ LLM が毎回読み込むドキュメント（`CLAUDE.md`・プロジェクト�
 
 ### 理論的背景
 
-Stanford の Generative Agents 論文 (Park et al. 2023) の Reflection 機構（大量メモリから 3 つの高レベル問い → retrieve → evidence 付き insight 合成）をプロンプト技法として借用する。ただし論文の目的は「エージェントの未来行動のための洞察」で、このスキルの目的は「読むトークン数を減らす context 圧縮」— **問い立ての基準は「salience」でなく「compression opportunity（どこに冗長性があるか）」** で読み替える。
+Stanford の Generative Agents 論文 (Park et al. 2023) の Reflection 機構（大量メモリから 3 つの高レベル問い → retrieve → evidence 付き insight 合成）をプロンプト技法として借用する。ただし論文の目的は「エージェントの未来行動のための洞察」で、このスキルの目的は「読むトークン数を減らす context 圧縮」なので、**問い立ての基準は「salience」でなく「compression opportunity（どこに冗長性があるか）」** で読み替える。
 
 ---
 
@@ -48,7 +48,7 @@ Stanford の Generative Agents 論文 (Park et al. 2023) の Reflection 機構�
 
 ### Phase 1: 対象範囲の決定
 
-引数 `$ARGUMENTS` があればそれを primary target にする。なければ以下をデフォルト対象とする:
+引数 `$ARGUMENTS` があればそれを primary target にする。なければ以下をデフォルト対象とする。
 
 - `~/.claude/CLAUDE.md`
 - `~/.claude/docs/*.md`（`design-md/` 配下は除外）
@@ -60,7 +60,7 @@ Stanford の Generative Agents 論文 (Park et al. 2023) の Reflection 機構�
 
 ### Phase 2: 圧縮対象ブロックの抽出（2 レイヤーで列挙）
 
-対象ドキュメントを走査し、**2 レイヤー** でブロックを列挙する:
+対象ドキュメントを走査し、**2 レイヤー** でブロックを列挙する。
 
 **レイヤー L（Local / 節内圧縮）**:
 - 同一節内に「亜種:」「実例:」「補足:」が 3 件以上並んでいる
@@ -107,9 +107,9 @@ Stanford の Generative Agents 論文 (Park et al. 2023) の Reflection 機構�
 
 ### Phase 4: 統合原則の合成（X → L の順）
 
-**Step 1: X（meta-pattern）から先に合成する** — これで複数節が消えるため、L の対象が減る。
+**Step 1: X（meta-pattern）から先に合成する**。これで複数節が消えるため、L の対象が減る。
 
-各 X 問いについて:
+各 X 問いについて、以下を行う。
 
 1. **retrieve**: 該当ブロック（3-8 件、複数節にまたがる）を選ぶ
 2. **本文読み込み**: 選ばれたブロックのみ Read
@@ -126,7 +126,7 @@ meta-rule: <WHY-first で書かれた 1-2 文の higher-order principle>
 
 **Step 2: L（local）を X で扱わなかったブロックに対して合成する**
 
-各 L 問いについて:
+各 L 問いについて、以下を行う。
 
 1. **retrieve**: 該当ブロック（3-8 件、通常は同一節内）を選ぶ
 2. **本文読み込み**: 選ばれたブロックのみ Read
@@ -142,7 +142,7 @@ meta-rule: <WHY-first で書かれた 1-2 文の higher-order principle>
 
 ### Phase 5: 昇格先の確認
 
-各原則について AskUserQuestion で以下を確認:
+各原則について AskUserQuestion で以下を確認する。
 
 ```
 質問: この原則をどこに置きますか？
@@ -153,15 +153,15 @@ meta-rule: <WHY-first で書かれた 1-2 文の higher-order principle>
 - 却下（この抽象は採用しない）
 ```
 
-**判断基準**: 「この原則を live doc に置いたときの `トークン増加 × 読み込み頻度` と、archive 退避で得られる `トークン削減 × 読み込み頻度` の差引がプラスか」— プラスなら昇格、マイナスなら再検討。
+**判断基準**: 「この原則を live doc に置いたときの `トークン増加 × 読み込み頻度` と、archive 退避で得られる `トークン削減 × 読み込み頻度` の差引がプラスか」。プラスなら昇格、マイナスなら再検討。
 
 ### Phase 6: 圧縮実行
 
-ユーザーが承認した原則について以下を実行:
+ユーザーが承認した原則について以下を実行する。
 
 #### 6-a. archive ファイルへの退避（archive-split の原則のみ）
 
-書き戻し方針が **archive-split**（原則だけ残して unique 情報 — 亜種・issue 番号・再現条件 — を live doc から出す）の原則についてのみ、元の具体例チェーンを **1 ファイルに集約して** archive に退避する（1 reflection run = 1 archive ファイル）。**inline-merge**（統合後も unique 情報が live doc に残る・消えるのは重複や矛盾の片割れだけ）の原則は archive 不要 — 6-a をスキップして 6-b へ（区別の詳細は Gotchas 参照）。run 内の全原則が inline-merge なら archive ファイル自体を作らない。
+書き戻し方針が **archive-split**（原則だけ残して、亜種・issue 番号・再現条件といった unique 情報を live doc から出す）の原則についてのみ、元の具体例チェーンを **1 ファイルに集約して** archive に退避する（1 reflection run = 1 archive ファイル）。**inline-merge**（統合後も unique 情報が live doc に残る・消えるのは重複や矛盾の片割れだけ）の原則は archive 不要。6-a をスキップして 6-b へ（区別の詳細は Gotchas 参照）。run 内の全原則が inline-merge なら archive ファイル自体を作らない。
 
 **archive パス**: `<primary-doc の親ディレクトリ>/archive/<元のファイル名>-YYYY-MM-DD.md`
 
@@ -171,7 +171,7 @@ meta-rule: <WHY-first で書かれた 1-2 文の higher-order principle>
 
 同日に複数回実行する場合は `-01`, `-02` サフィックスで区別（レアケース）。
 
-`YYYY-MM-DD` は `date +%Y-%m-%d` で取得（頭で計算しない — CLAUDE.md の「ツール所有ファイル」規約参照）。
+`YYYY-MM-DD` は `date +%Y-%m-%d` で取得（頭で計算しない。CLAUDE.md の「ツール所有ファイル」規約参照）。
 
 **archive ファイルの構造**:
 
@@ -205,7 +205,7 @@ meta-rule: <WHY-first で書かれた 1-2 文の higher-order principle>
 
 #### 6-b. live doc の圧縮
 
-元の具体例チェーンを削除し、**原則 + archive リンクの 1 行** に置換する:
+元の具体例チェーンを削除し、**原則 + archive リンクの 1 行** に置換する。
 
 ```markdown
 - **<原則タイトル>**: <WHY-first の短い本文（1-3 文）>。詳細と実例は `archive/<元のファイル名>-YYYY-MM-DD.md#N-<slug>` を参照。
@@ -224,7 +224,7 @@ meta-rule: <WHY-first で書かれた 1-2 文の higher-order principle>
 
 #### 6-c. 圧縮メトリクスの提示
 
-書き戻しの diff を提示する前に、**必ず** 以下を出力:
+書き戻しの diff を提示する前に、**必ず** 以下を出力する。
 
 ```
 ## 圧縮メトリクス
@@ -265,10 +265,10 @@ archive 生成:
 
 ### 原則の質のセルフチェック
 
-書き戻し前に自問:
+書き戻し前に自問する。
 
 - **WHY を含んでいるか？** WHY 抜きの抽象は「やり残し / バグ」と区別がつかない（CLAUDE.md 規約より）
-- **原則だけを読んだ将来の LLM/自分が、archive を Read せずに判断できるか？** できないなら原則が薄すぎるサイン — 補強するか、そもそも圧縮に向かないと判断する
+- **原則だけを読んだ将来の LLM/自分が、archive を Read せずに判断できるか？** できないなら原則が薄すぎるサイン。補強するか、そもそも圧縮に向かないと判断する
 - **既存の上位原則で既にカバーされていないか？** 重複を作ると情報密度が下がる（圧縮の逆効果）
 
 ---
@@ -279,10 +279,10 @@ archive 生成:
 - **X の meta-rule が既存 L 原則の上位互換になっているか確認する**: X の meta-rule は「複数節の共通原則」なので、既に個別に書かれている L 原則がその子集合になっているケースがある。この場合、既存 L 原則は削除して meta-rule に一本化する（重複を残すと情報密度が下がる）。
 - **X 統合の判断基準**: 「表層のトピックが違っても、深層の失敗モード（rg 全件確認をサボる・placeholder を掃除しない・drift 検出をサボる など）が同一か？」YES なら X 候補、NO なら L 候補。曖昧なら **AskUserQuestion で「これは同じ根本原因ですか？」を必ず聞く**（LLM 単独で無理に横断化すると各文脈のニュアンスが消える）。
 - **入力を全部一気に投げない**: 元論文が 100 メモリに限定しているのには理由がある。conventions.md（2596 行）+ CLAUDE.md（数百行）を一括で LLM に渡すと 3 問が総花的になり圧縮機会が見えなくなる。Phase 2 で「見出し + ブロック先頭数行」だけ抽出し、Phase 4 で本文を Read する。
-- **live doc から具体例を全消しできない、というルールを持たない**: 過去の設計では「代表例 1-2 件は残す」としていたが、これは圧縮の天井を作る。archive に退避するのでトレーサビリティは保たれる。**live doc は原則のみ、実例は archive に集約** が原則。
-- **archive が必要なのは archive-split のみ — inline-merge は archive 不要**: archive の存在意義は「live doc から消えた **unique 情報**（亜種・issue 番号・再現条件）の trace 可能性」。**archive-split** = 原則 1 行だけ残して実例チェーンを外に出す → unique 情報が live doc から消えるので archive 必須。**inline-merge** = 統合後も WHY・issue 参照・再現条件が live doc に残る編集 → 消えるのは重複コピー・矛盾の片割れ・❌コードの逆写しなど定義上の冗長物なので、archive するとそれ自体が矛盾（冗長物の保管庫になる）。履歴は VCS に任せる。**この区別の規律**: inline-merge と呼べる条件は「unique 情報が live doc に残っていること」— それを満たさない削除をしたくなったら、それは inline-merge ではなく archive-split を選ぶ（2026-07 の docs/ 圧縮 run で境界が曖昧なまま実行し、後追い archive を作りかけて撤回した実例）。
+- **live doc から具体例を全消しできない、というルールを持たない**: 過去の設計では「代表例 1-2 件は残す」としていたが、これは圧縮の上限を作る。archive に退避するのでトレーサビリティは保たれる。**live doc は原則のみ、実例は archive に集約** が原則。
+- **archive が必要なのは archive-split のみ。inline-merge は archive 不要**: archive の存在意義は「live doc から消えた **unique 情報**（亜種・issue 番号・再現条件）の trace 可能性」。**archive-split** = 原則 1 行だけ残して実例チェーンを外に出す → unique 情報が live doc から消えるので archive 必須。**inline-merge** = 統合後も WHY・issue 参照・再現条件が live doc に残る編集 → 消えるのは重複コピー・矛盾の片割れ・NG コードの逆写しなど定義上の冗長物なので、archive するとそれ自体が矛盾（冗長物の保管庫になる）。履歴は VCS に任せる。**この区別の規律**: inline-merge と呼べる条件は「unique 情報が live doc に残っていること」。それを満たさない削除をしたくなったら、それは inline-merge ではなく archive-split を選ぶ（2026-07 の docs/ 圧縮 run で境界が曖昧なまま実行し、後追い archive を作りかけて撤回した実例）。
 - **archive リンクを絶対パスで書かない**: `archive/<元のファイル名>-YYYY-MM-DD.md#N-<slug>` の相対パス表記にする（primary-doc と同じディレクトリの archive/ を指す）。絶対パスにするとリポジトリ移動時に壊れる。
-- **primary-doc が symlink 経由でアクセスされる場合、archive も symlink で辿れるようにする — 初回セットアップを忘れると相対リンクが解決しない**: `~/.claude/CLAUDE.md` のように primary-doc が実体（例: `~/github.com/pomesaka/dotclaude/CLAUDE.md`）への symlink 経由で読まれるとき、live doc 内の相対リンク `archive/xxx.md` は「symlink 経由で読んだ場合の解決先」（`~/.claude/archive/xxx.md`）を指す。archive 実体を `<実体リポジトリ>/archive/` に置いただけでは symlink 側から解決できない。初回だけ `ln -s <実体>/archive <symlink 親>/archive` を実行して、両方のパスから同じ archive を辿れるようにする。2 回目以降の run では既存 symlink を使うので不要。
+- **primary-doc が symlink 経由でアクセスされる場合、archive も symlink で辿れるようにする。初回セットアップを忘れると相対リンクが解決しない**: `~/.claude/CLAUDE.md` のように primary-doc が実体（例: `~/github.com/pomesaka/dotclaude/CLAUDE.md`）への symlink 経由で読まれるとき、live doc 内の相対リンク `archive/xxx.md` は「symlink 経由で読んだ場合の解決先」（`~/.claude/archive/xxx.md`）を指す。archive 実体を `<実体リポジトリ>/archive/` に置いただけでは symlink 側から解決できない。初回だけ `ln -s <実体>/archive <symlink 親>/archive` を実行して、両方のパスから同じ archive を辿れるようにする。2 回目以降の run では既存 symlink を使うので不要。
 - **archive は 1 reflection run = 1 ファイルに集約する**: 原則ごとに別ファイルにすると archive ディレクトリが乱雑になり、後から「あの月に何を圧縮したか」を追いにくい。1 run で処理した複数原則は 1 ファイル内でセクション分けする。同日再実行時は `-01`, `-02` サフィックスで区別。
 - **read frequency が低いファイルを無理に圧縮しない**: `docs/*.md` の一部はオンデマンド Read なので、圧縮の ROI が低い。CLAUDE.md（毎セッション）を最優先、conventions.md（プロジェクト作業時）を次点にする。
 - **横断原則を強引に作らない**: 「app 間 drift 検出」のような真の横断原則は存在するが、無理に横断化すると各文脈の重要な違いが消える。3 件揃っても「別ドメインで偶然形が似ているだけ」なら却下する。

@@ -1,8 +1,8 @@
 # doobie + cats-effect: WeakAsync と Dispatcher
 
-> **TL;DR**: TX を保持しながら F（IO）の効果（SMTP 等）を呼ぶには `WeakAsync.liftK[F, ConnectionIO].use { fk => ... fk(fa) ... .transact(xa) }` パターンを使う。`WeakAsync` は doobie 固有の typeclass（cats-effect にはない）— `import doobie.WeakAsync`。落とし穴: `commitNoLog` で即 commit すると行ロック解放・`fk` を `.use` 外に持ち出すと runtime エラー・SMTP 等の外部 I/O は at-least-once 問題あり。
+> **TL;DR**: TX を保持しながら F（IO）の効果（SMTP 等）を呼ぶには `WeakAsync.liftK[F, ConnectionIO].use { fk => ... fk(fa) ... .transact(xa) }` パターンを使う。`WeakAsync` は doobie 固有の typeclass（cats-effect にはない）。`import doobie.WeakAsync` する。落とし穴: `commitNoLog` で即 commit すると行ロック解放・`fk` を `.use` 外に持ち出すと runtime エラー・SMTP 等の外部 I/O は at-least-once 問題あり。
 
-doobie で「**トランザクション境界を保持したまま F の効果 (SMTP 送信等) を埋め込む**」パターンに必要な道具のメモ。
+doobie で「トランザクション境界を保持したまま F の効果 (SMTP 送信等) を埋め込む」パターンに必要な道具のメモ。
 
 `FOR UPDATE SKIP LOCKED` で取った行ロックを保持して業務処理 → NanoQueueRun 記録 → commit、を 1 TX でやりたい時の典型パターン。
 
@@ -19,18 +19,18 @@ doobie で「**トランザクション境界を保持したまま F の効果 (
 | `WeakAsync[ConnectionIO]` instance | doobie が提供 |
 | `Async[ConnectionIO]` instance | **存在しない** |
 
-特に注意: `WeakAsync` は doobie 固有の typeclass。**cats-effect には無い**。doobie が cats-effect の `Async` と `Dispatcher` を借りた上で、自分の typeclass `WeakAsync` を定義している。
+特に注意: `WeakAsync` は doobie 固有の typeclass。cats-effect には無い。doobie が cats-effect の `Async` と `Dispatcher` を借りた上で、自分の typeclass `WeakAsync` を定義している。
 
 ## なぜ WeakAsync が要るか
 
-cats-effect の typeclass 階層:
+cats-effect の typeclass 階層は次のとおり。
 
 ```
 Sync → MonadCancel → Concurrent → Temporal → Async
        (キャンセル)   (fiber fork)  (sleep)    (callback ↔ F の橋渡し)
 ```
 
-`ConnectionIO` の能力:
+`ConnectionIO` の能力は次のとおり。
 - ✓ 同期 I/O (delay) はできる
 - ✓ async 表現 (callback) もできる
 - ✗ **fiber を fork できない** (1 connection は sequential)
@@ -40,7 +40,7 @@ Sync → MonadCancel → Concurrent → Temporal → Async
 
 ## TX-holding パターンの実装テンプレート
 
-job queue worker の per-iteration: dequeue → execute → record の 3 段を 1 TX で書く形:
+job queue worker の per-iteration: dequeue → execute → record の 3 段を 1 TX で書く形。
 
 ```scala
 import cats.effect.Async
@@ -137,7 +137,7 @@ G[Unit] が完成
 F[Unit] になって runtime が実行
 ```
 
-一文要約: **「F のランタイムを使って、G の program を、F の効果も呼びつつ実行する基盤」**。
+一文要約: 「F のランタイムを使って、G の program を、F の効果も呼びつつ実行する基盤」。
 
 ## 落とし穴
 
@@ -153,22 +153,22 @@ F[Unit] になって runtime が実行
 4. **`Async[ConnectionIO]` を要求しない**
    存在しないので。`def foo[F[_]: Async]` の F に ConnectionIO を渡すとコンパイルエラー。`F[_]: WeakAsync` で書くべき。
 
-5. **失敗時の record も rollback される罠**
-   業務処理 (parseRow + dispatch) を `.attempt` で wrap せず例外を伝播させると、TX 全体が rollback されて record (NanoQueueRun 記録 + failCount++) も巻き戻る → 失敗が DB に残らない。**`.attempt` を必ず process 層で挟んで Either 化** し、record 自体は正常 CIO 値として実行されるようにする。
+5. **失敗時の record も rollback される**
+   業務処理 (parseRow + dispatch) を `.attempt` で wrap せず例外を伝播させると、TX 全体が rollback されて record (NanoQueueRun 記録 + failCount++) も巻き戻る → 失敗が DB に残らない。`.attempt` を必ず process 層で挟んで Either 化し、record 自体は正常 CIO 値として実行されるようにする。
 
 6. **at-least-once 問題 (SMTP 等の外部 I/O)**
-   `fk(runner.run)` で SMTP 送信した **後で commit する前にプロセスが落ちる** と、メールは送られたが TX は rollback → 行ロック解放 → 別 worker が拾って **メール 2 通**。これは TX-holding パターンの本質的な制約 (SMTP は DB の TX に参加しない)。対策案: idempotency key で受信側 dedup、2-phase pattern (started 状態 commit → send → done 状態 commit)、outbox pattern など。最初は at-least-once を受け入れるのが現実的。
+   `fk(runner.run)` で SMTP 送信した後で commit する前にプロセスが落ちると、メールは送られたが TX は rollback → 行ロック解放 → 別 worker が拾ってメール 2 通。これは TX-holding パターンの本質的な制約 (SMTP は DB の TX に参加しない)。対策案: idempotency key で受信側 dedup、2-phase pattern (started 状態 commit → send → done 状態 commit)、outbox pattern など。最初は at-least-once を受け入れるのが現実的。
 
 ## Dispatcher 自体について
 
-doobie 経由で使う場合、Dispatcher は `WeakAsync.liftK` が隠してくれるので **直接触らない** のが普通。
+doobie 経由で使う場合、Dispatcher は `WeakAsync.liftK` が隠してくれるので直接触らないのが普通。
 
-直接 Dispatcher を扱うのは:
+直接 Dispatcher を扱うのは次の場合。
 - Java callback API から F[A] を実行したい時 (`dispatcher.unsafeRunSync(fa)` 等)
 - Reactive Streams Subscriber 実装
 - 他の effect system (FS2 など) との橋渡し
 
-`Dispatcher.parallel` vs `Dispatcher.sequential`:
+`Dispatcher.parallel` vs `Dispatcher.sequential` は次のとおり。
 - `parallel`: 並行に submit された effect を並列実行
 - `sequential`: 1 つずつ順次実行
 
@@ -181,7 +181,7 @@ doobie の `WeakAsync.liftK` は `parallel` を使ってる。「1 TX 内で複�
 - WeakAsync ソース: github.com/typelevel/doobie 内 `modules/free/src/main/scala/doobie/WeakAsync.scala` 周辺
 - 実例コード探索: GitHub で `WeakAsync.liftK` 検索
 
-doobie の WeakAsync 周りは公式ドキュメントが薄い領域。**ソース直読み + Metals goto-definition が結局一番速い**。
+doobie の WeakAsync 周りは公式ドキュメントが薄い領域。ソース直読み + Metals goto-definition が結局一番速い。
 
 ## 関連概念の対応表 (cats-effect 由来 vs doobie 由来)
 
@@ -193,4 +193,4 @@ doobie の WeakAsync 周りは公式ドキュメントが薄い領域。**ソー
 | 効果間 lift | `Resource.eval`, `MonadCancel.liftK` 等 | **`WeakAsync.liftK`** |
 | fiber pool | `Dispatcher.parallel/sequential` | (doobie が内部で使う) |
 
-両者は別ライブラリだが **typeclass エコシステムで噛み合っている**。doobie が cats-effect の上で SQL DSL を提供している、と理解する。
+両者は別ライブラリだが typeclass エコシステムで噛み合っている。doobie が cats-effect の上で SQL DSL を提供している、と理解する。

@@ -10,11 +10,11 @@ model: sonnet
 
 `~/.claude/docs/` と `~/.claude/skills/` の健全性を `llm-memory-management.md` の知見に基づいて監査・整理する。
 
-理論的背景は以下を参照:
+理論的背景は以下を参照。
 
 !`cat ~/.claude/docs/llm-memory-management.md`
 
-プロンプト品質の基準（NG/OK ペア・強度ラダー・テスタビリティ）は以下を参照:
+プロンプト品質の基準（NG/OK ペア・強度ラダー・テスタビリティ）は以下を参照。
 
 !`cat ~/.claude/docs/prompt-engineering.md`
 
@@ -93,7 +93,7 @@ rg -rL 'Gotchas' ~/.claude/skills/*/SKILL.md
 
 #### mentions カウンターの解釈
 
-`<!-- importance: ... | mentions: N -->` コメントがある場合、以下の判断基準を適用する:
+`<!-- importance: ... | mentions: N -->` コメントがある場合、以下の判断基準を適用する。
 
 | mentions | 推奨アクション |
 |---------|--------------|
@@ -151,7 +151,7 @@ Lost in the Middle 対策として、LLM が先頭を読んだだけで要旨を
 <!-- importance: medium | mentions: 1 | first-seen: YYYY-MM -->
 ```
 
-`importance` の目安:
+`importance` の目安を以下に示す。
 - `critical`: 違反すると壊れる/セキュリティ問題になるルール
 - `high`: 何度も引っかかった・re スキルで複数回記録されたもの
 - `medium`: 知っておくべきが違反しても致命的でないもの

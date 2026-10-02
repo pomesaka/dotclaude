@@ -29,7 +29,7 @@ Tailwind CSS（mobile-first）を前提とした実装・レビュー観点。
 | `lg:` | ≥1024px | デスクトップ（BtoB の主要ターゲット） |
 | `md:` `xl:` `2xl:` | — | 特別な理由がある場合のみ |
 
-**1プロパティあたり最大2段階**。`sm:md:lg:xl:` の4段階チェーンは可読性が崩壊するため禁止。
+**1プロパティあたり最大2段階**。`sm:md:lg:xl:` の4段階チェーンは可読性が大きく落ちるため禁止。
 
 ```tsx
 // 良い: 2段階
@@ -103,7 +103,7 @@ max-w-lg   ← グリッド不要
 
 ## タッチターゲット
 
-タップ可能な要素は最小 **44×44px**（Tailwind: `min-h-11` = 44px）を確保する。
+タップ可能な要素は最小 44×44px（Tailwind: `min-h-11` = 44px）を確保する。
 
 ```tsx
 // ボタン: デスクトップは 36px、モバイルは 44px
@@ -131,7 +131,7 @@ max-w-lg   ← グリッド不要
 
 ### app-shell の固定高 clamp は `lg:` で gate する（モバイル白画面の典型原因）
 
-「ヘッダー固定・内部パネルだけスクロール」の app-shell レイアウトでは、ラッパーに `h-full overflow-hidden`（+ 子に `lg:h-screen`）を付けて高さを 1 画面に固定する。**この clamp を breakpoint で gate しないと、モバイルの自然縦積みコンテンツが 1 画面分で clip され、下がスクロール不能の白画面になる**（コンテンツが「途切れる」）。Mobile-first 原則の典型違反: clamp は大画面の上書きなので `lg:h-full lg:overflow-hidden` と書く。モバイルは clamp なしで `<main overflow-y-auto>`（or ページ）が自然スクロールする。
+「ヘッダー固定・内部パネルだけスクロール」の app-shell レイアウトでは、ラッパーに `h-full overflow-hidden`（+ 子に `lg:h-screen`）を付けて高さを 1 画面に固定する。この clamp を breakpoint で gate しないと、モバイルの自然縦積みコンテンツが 1 画面分で clip され、下がスクロール不能の白画面になる（コンテンツが「途切れる」）。Mobile-first 原則の典型違反: clamp は大画面の上書きなので `lg:h-full lg:overflow-hidden` と書く。モバイルは clamp なしで `<main overflow-y-auto>`（or ページ）が自然スクロールする。
 
 ```tsx
 // 誤: 全幅で高さ固定 → モバイルでコンテンツが 1 画面に clip され下が白画面
@@ -140,13 +140,13 @@ max-w-lg   ← グリッド不要
 <div className="min-h-0 lg:h-full lg:overflow-hidden">{children}</div>
 ```
 
-**このバグの検証は「実際にスクロールする要素」基準で測る**。app-shell は `window`/`documentElement` でなく内部の `<main overflow-y-auto>` がスクロールするため、`window.scrollY` / `documentElement.scrollHeight` 基準の計測は実態と乖離して**誤った PASS を出す**（実際にハマった）。コンテンツが途切れる/白画面のバグは、コンテンツ要素から**祖先チェーンを辿り**各 ancestor の `height` / `overflowY` / `scrollHeight` / `clientHeight` を出力する。`scrollHeight == clientHeight`（スクロール不能）なのに子が overflow している ancestor が clamp 位置。修正後は「実スクロールコンテナの `scrollHeight > clientHeight`」「最下部へスクロール後に末尾要素が viewport 内」を確認する。
+**このバグの検証は「実際にスクロールする要素」基準で測る**。app-shell は `window`/`documentElement` でなく内部の `<main overflow-y-auto>` がスクロールするため、`window.scrollY` / `documentElement.scrollHeight` 基準の計測は実態と乖離して誤った PASS を出す（実際にこの誤りに陥った）。コンテンツが途切れる/白画面のバグは、コンテンツ要素から祖先チェーンを辿り各 ancestor の `height` / `overflowY` / `scrollHeight` / `clientHeight` を出力する。`scrollHeight == clientHeight`（スクロール不能）なのに子が overflow している ancestor が clamp 位置。修正後は「実スクロールコンテナの `scrollHeight > clientHeight`」「最下部へスクロール後に末尾要素が viewport 内」を確認する。
 
 ### grid sibling の「高さが揃っていない」報告は、まず両方の box height を計測してから調べる
 
 <!-- importance: medium | mentions: 1 | first-seen: 2026-09 -->
 
-`grid` の子要素は既定で `align-items: stretch` が効き、枠（border box）は兄弟と同じ高さになる。ユーザーがスクリーンショット付きで「カードの高さが違う」と報告しても、**枠自体は既に揃っていて中身の配置だけが違って見えている**ケースがある: 片方のカードは中身（凡例・リスト等）の行数が少なく、上詰めのまま終わって下部に空白ができるため、枠の高さが同じでも視覚的に「短い」と感じる。
+`grid` の子要素は既定で `align-items: stretch` が効き、枠（border box）は兄弟と同じ高さになる。ユーザーがスクリーンショット付きで「カードの高さが違う」と報告しても、枠自体は既に揃っていて中身の配置だけが違って見えているケースがある。片方のカードは中身（凡例・リスト等）の行数が少なく、上詰めのまま終わって下部に空白ができるため、枠の高さが同じでも視覚的に「短い」と感じる。
 
 対処前に `getBoundingClientRect().height` 等で両方の実際の box height を計測し、枠が揃っているかを切り分ける。揃っていれば直すのは枠のレイアウトではなく中身の配置（縦方向 `flex-col` にして中身側に `flex-1` + `content-center` を付け、余白を上下中央に寄せる等）。
 
@@ -196,7 +196,7 @@ AppLayout が `overflow-hidden h-screen` を使っている場合、PDF 印刷�
 
 ## レビューチェックリスト
 
-UI を含む変更差分を見るときは以下を確認する:
+UI を含む変更差分を見るときは以下を確認する。
 
 - [ ] グリッドにブレークポイントがあるか（`grid-cols-*` 固定ではないか）
 - [ ] ページタイトルが responsive か（`text-2xl lg:text-4xl` 等）

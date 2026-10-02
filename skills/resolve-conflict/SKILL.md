@@ -19,7 +19,7 @@ mainとのコンフリクトを解消してpushする。
 
 ### 1. 引数の解釈
 
-`$ARGUMENTS` がPR番号（数値）の場合、bookmark名を取得する:
+`$ARGUMENTS` がPR番号（数値）の場合、bookmark名を取得する。
 
 ```bash
 gh pr view $ARGUMENTS --json headRefName -q '.headRefName'
@@ -34,7 +34,7 @@ jj bookmark list
 jj git fetch
 ```
 
-対象bookmarkがローカルにない場合はtrackする:
+対象bookmarkがローカルにない場合はtrackする。
 
 ```bash
 jj bookmark track <bookmark>@origin
@@ -57,7 +57,7 @@ jj st
 ```
 
 コンフリクトのあるファイルの内容を確認し、解決方針を立てる。
-必要に応じて各親の変更内容を確認:
+必要に応じて各親の変更内容を確認する。
 
 ```bash
 jj diff -r main
@@ -68,11 +68,11 @@ jj diff -r <bookmark>
 
 コンフリクトマーカーを含むファイルを編集して解決する。
 
-jjのコンフリクトマーカー形式:
+jjのコンフリクトマーカー形式は次のとおり。
 - diff形式: `%%%%%%%` で囲まれたブロック内の `-` 行と `+` 行
 - snapshot形式: `<<<<<<<`, `|||||||`, `=======`, `>>>>>>>` で区切られたブロック
 
-解決後に確認:
+解決後に確認する。
 
 ```bash
 jj st
