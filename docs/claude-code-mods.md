@@ -39,7 +39,9 @@ Mods（`plugins/mods`）は早期アクセスで、型定義の冒頭に「予�
 
 - **hookからモデルを呼べる**: `$.model.fork({ prompt })`は、メインが最後に送った要求（モデル、システムプロンプト、会話）の後ろに`prompt`を足して1回だけ答えさせる。ツールは使えず、依頼と返事は会話に残らない。`$.model.complete({ model, prompt })`は、会話を持たない単発の呼び出しで、モデルを選べる。どちらも失敗で例外を投げず、`isAnswered`と`reason`で分かれる（forkは`mods/next-step`の最初の版で動かして確認。completeは同じModのいまの版が使っているが、実機での確認はまだ。「hookは自分では考えられない」と誤って答えたことがある）
   <!-- importance: high | mentions: 1 | first-seen: 2026-10 -->
-- **forkはモデルを選べず、遅い**: 入力は`prompt`だけで、メインのモデルに会話の全文を読ませる。ターンのたびに呼ぶ用途では、返事が来るまでの待ち時間が目立った（`mods/next-step`で利用者が確認、秒数は未計測）。速さが要るなら、`$.session.messages()`で読んだ会話の末尾だけを`$.model.complete`で小さいモデルに渡す。`model`、`effort`、`maxTokens`、`timeoutMs`を指定できる。サブエージェントのforkも同じで、`model`は無視されて親と同じになる（型定義の`AgentSpawnInput.model`）
+- **forkはモデルを選べない。そのかわり、会話の全部をキャッシュから読む**: 入力は`prompt`だけ。メインが最後に送った要求（モデル、システムプロンプト、ツール、会話）をそのまま送り直すので、APIのキャッシュが効く（型定義の説明）。キャッシュはモデルごとなので、モデルを選ぶ入力が無い。Claude Code自身の次のプロンプトの案（prompt suggestion）も同じやり方で作られている（実行ファイルの`prompt_suggestion`の呼び出しで確認）。小さいモデルに聞きたいなら`$.model.complete`で、`$.session.messages()`から自分で会話を渡す。`model`、`effort`、`maxTokens`、`timeoutMs`を指定できるが、渡した分はキャッシュなしで読まれる。スキルの`context: fork`は名前が同じでも別物で、会話を引き継がない新しいサブエージェントにスキルの文を渡す（公式の文書）。だからモデルを選べる
+- **会話の末尾だけを小さいモデルに渡した案は、それらしいだけで的を外す**: `mods/next-step`で、haikuに末尾の6発言を渡して「次に送るとよい指示」を聞いたところ、的を射た案が出なかった。会話の全部を読ませて「利用者が打とうとしている文を当てる」と頼む形（fork）に戻した。forkを最初に試したときに遅く感じたのは、4つの案を説明つきのJSONで書かせていたからだと見ている（未計測）
+- **`prompt.suggest`のhookで、Claude Code自身の案を受け取れる**: `e.origin.kind === 'suggestion'`がエンジンの案で、`e.text`がその文。`next(e)`を返せば入力欄の薄い表示は残る。エンジンは、次の一手がはっきりしないターンやエラーの後には案を出さないので、このhookも来ない。`mods/next-step`は、これを札を出すきっかけにしている
   <!-- importance: medium | mentions: 1 | first-seen: 2026-10 -->
 - **`turn.complete`でforkしても、直前の答えは会話に入っていない**: forkが使うのは「最後に送った要求」で、その要求への返事である最後の答えは含まれない（型定義のforkの説明）。`e.answer`を依頼の文に入れて渡す
 - **`turn.complete`のhookは、モデルの返事を待たずに戻ってよい**: `void think($, ...)`で投げておけば、hookが戻った後も問い合わせは走り切り、返事で`$.state`を書き換えると帯が描き直される（v2.1.295、2026-10-10に`mods/next-step`のforkで確認）。待つと、返事が来るまでの数秒、ターンが終わらない

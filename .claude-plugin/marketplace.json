@@ -10,7 +10,7 @@
     {
       "name": "next-step",
       "source": "./mods/next-step",
-      "description": "After each turn, asks a small model for up to four prompts the user is likely to send next and shows them as cards above the prompt; clicking a card sends its prompt"
+      "description": "After a turn, shows up to four prompts the user is likely to type next as cards above the prompt: Claude Code's own prompt suggestion first, then more from a fork of the conversation; clicking a card sends it"
     },
     {
       "name": "publish-guard",
