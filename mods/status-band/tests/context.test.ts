@@ -31,7 +31,7 @@ test('サブエージェントには渡さない', async ($, on) => {
 })
 
 // 説明に出てくる名前が、実際の名前とずれていないことを固定する
-const NAMES = ['mcp__status-band__add_question', 'mcp__status-band__resolve_question', 'mcp__status-band__list_questions', 'mcp__status-band__track_pr', '/jjcommit', '/difit', 'pushしといて', '【保留への回答】', 'がマージされました', 'の CI が失敗しました']
+const NAMES = ['mcp__status-band__track_pr', '/jjcommit', '/difit', 'pushしといて', 'がマージされました', 'の CI が失敗しました']
 
 for (const name of NAMES) {
   test(`説明は「${name}」に触れている`, async () => {

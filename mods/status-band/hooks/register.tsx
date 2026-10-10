@@ -1,8 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderSurface, Timer } from 'claude-code'
 
-import type { Checks, JjCounts, OpenQuestion, PrRef, PrRow, PrStatus, Review, Status } from '../types'
-import { SUMMARY_PROMPT, commandOf, consultPrompt, handoffMessage, hasTalked, isReadOnlyCall, notifiedAgentOf, summaryOf, withTurn } from './consult'
+import type { Checks, JjCounts, PrRef, PrRow, PrStatus, Review, Status } from '../types'
 import { SESSION_CONTEXT } from './context'
 import { clampCursor, moveCursor, windowOf } from './cursor'
 import { BAR_CELLS, cellWidth, clip, filledCells, isSameStatus, levelOf, shortPath, type Level } from './format'
@@ -24,49 +23,21 @@ import {
   touchRef,
   touchedRefOf,
 } from './pr'
-import {
-  addQuestion,
-  answerOpening,
-  explainMessage,
-  labelOf,
-  lastIdOf,
-  parseQuestion,
-  parseQuestionId,
-  questionsOf,
-  withAnswer,
-} from './questions'
 
 const status = atom({ plugin: 'status-band', key: 'status' } as const, null)
 const log = atom({ plugin: 'status-band', key: 'log' } as const, null)
 const pullRequests = atom({ plugin: 'status-band', key: 'prs' } as const, [])
 const pendingNotice = atom({ plugin: 'status-band', key: 'pendingNotice' } as const, null)
-const questions = atom({ plugin: 'status-band', key: 'questions' } as const, [])
 const cursors = atom({ plugin: 'status-band', key: 'cursors' } as const, {})
-const consult = atom({ plugin: 'status-band', key: 'consult' } as const, null)
-const CONSULT_PANE = 'consult'
-const CONSULT_PANE_TITLE = 'consult'
-// このセッションで立てた、相談用のエージェントの ID。ツールを絞る相手と、終了の知らせを止める相手を、これで見分ける。
-// WHY モジュール変数: エージェントはセッションを開き直すと残らない。$.store に持つ意味が無い
-const consultAgents = new Set<string>()
-// 相談の要約を待っている受け取り口。null は、待っていない
-let summaryWaiter: { agentId: string; resolve: (reply: string) => void } | null = null
-// 要約を待つ上限（ミリ秒）。過ぎたら、要約を付けずに結論を送る
-const SUMMARY_TIMEOUT_MS = 30_000
-// 相談用のエージェントに、読む以外のツールを拒むときの理由。エージェントが読む
-const CONSULT_READ_ONLY = 'This side conversation is read-only: only Read and read-only shell commands (rg, fd, ls, cat, head, tail, wc, jq, jj log/diff/show/status) without redirection run here. Answer from what you can read.'
-// 相談用のエージェントの終了の知らせを捨てるときの理由。会話の行に「Prompt dropped by a hook: …」として出る
-const CONSULT_NOTICE_DROPPED = '相談用のエージェントの終了の知らせ（メインには渡さない）'
 const LOG_PANE = 'jj-log'
 const PR_PANE = 'pull-requests'
 const PR_PANE_TITLE = 'pull requests'
-const QUESTIONS_PANE = 'questions'
-const QUESTIONS_PANE_TITLE = 'open questions'
 
 // $.store には、セッションごとに PR の url の配列を持つ。キーは prs:<セッションID>
 const PR_PREFIX = 'prs:'
 // 1 つのセッションで覚える PR の数。古いものから落とす
 const PRS_MAX = 50
-// $.store に覚えておくセッションの数。PR の一覧と保留の一覧で、それぞれ数える。古いセッションから落とす
+// $.store に覚えておくセッションの数。古いセッションから落とす
 const SESSIONS_MAX = 30
 // 一覧に残す、終わった PR（マージ済みか閉じた）の数
 const PRS_DONE_MAX = 3
@@ -76,13 +47,6 @@ const PRS_DONE_MAX = 3
 // grace は、実行中の PR が無くても続ける回数。push の直後は、CI がまだ GitHub に現れていないことがある
 const WATCH_INTERVAL_MS = 60_000
 const WATCH_LIMITS = { max: 10, grace: 2 }
-
-// $.store には、セッションごとに保留の配列を持つ。キーは qs:<セッションID>
-const QUESTIONS_PREFIX = 'qs:'
-// このセッションで保留に付けた、いちばん大きい番号。保留を外しても減らさない
-const QUESTION_LAST_PREFIX = 'qlast:'
-// 1 つのセッションで覚える保留の数。古いものから落とす
-const QUESTIONS_MAX = 100
 
 // pane の一覧で、選んでいる行を delta だけ動かす。length は一覧の行数。
 // 一覧は、選んでいる行のまわりの収まる分だけを描くので、pane を送る必要は無い（windowOf）。
@@ -107,45 +71,6 @@ const copyText = async ($: EngineInterface, text: string, surface: RenderSurface
 const openInBrowser = ($: EngineInterface, url: string): void => {
   // WHY open: macOS の既定のブラウザで開く。ほかの OS では動かない
   void $.process.run(['open', url], { timeoutMs: 5_000 }).catch(() => undefined)
-}
-
-
-// Claude が、仮に決めて先へ進んだことを一覧に残すためのツールと、決まった保留を外すためのツール
-const QUESTION_TOOL_NAME = 'add_question'
-const QUESTION_TOOL = 'mcp__status-band__add_question'
-const QUESTION_TOOL_DESCRIPTION = `Record a decision you made provisionally so work could continue, in the user's open questions pane, for the user to settle later by clicking one of the choices.
-Call it when you go ahead on an assumption the user has not confirmed: a name, a default, a threshold, a behaviour you picked between options. Not for things you can verify yourself, and not when you need the answer before continuing (ask instead).
-Calling it again with the same question replaces it. The result gives the number (Q3) the user will refer to it by.`
-const QUESTION_TOOL_SCHEMA = {
-  type: 'object',
-  properties: {
-    question: { type: 'string', description: 'A short heading, in the language you answer the user in: what is left to decide.' },
-    detail: {
-      type: 'string',
-      description: 'One to three sentences the user can decide from without rereading the conversation: what this is about, and what changes with each choice.',
-    },
-    options: { type: 'array', items: { type: 'string' }, minItems: 2, maxItems: 6, description: 'The choices, each a short label. The user clicks one.' },
-    assumed: { type: 'string', description: 'The choice you went with for now. Must be one of options, spelled the same.' },
-  },
-  required: ['question', 'detail', 'options', 'assumed'],
-}
-// Claude が、保留の中身を読み直すためのツール。
-// WHY 読むツールを持つ: 保留は、残してから時間がたって答えが届く。会話が圧縮された後でも、問いと選択肢を取り戻せるようにする。
-// 利用者が「この問いを rich で説明して」と頼んだときにも、ここから中身を取る
-const LIST_TOOL_NAME = 'list_questions'
-const LIST_TOOL = 'mcp__status-band__list_questions'
-const LIST_TOOL_DESCRIPTION = `Read the open questions on the user's open questions pane as JSON: id, question, detail, options, assumed, and answer (the choice the user clicked, or null).
-Use it when you need a question's wording or choices again, for example to explain one in more depth before the user decides.`
-const LIST_TOOL_SCHEMA = { type: 'object', properties: {} }
-const RESOLVE_TOOL_NAME = 'resolve_question'
-const RESOLVE_TOOL = 'mcp__status-band__resolve_question'
-const RESOLVE_TOOL_DESCRIPTION = `Remove an open question from the user's open questions pane, once the user has settled it and you have applied the decision.`
-const RESOLVE_TOOL_SCHEMA = {
-  type: 'object',
-  properties: {
-    id: { type: 'integer', minimum: 1, description: 'The number of the question: 3 for Q3.' },
-  },
-  required: ['id'],
 }
 
 // Claude が PR を一覧に足すためのツール。gh pr create / edit を通らない PR（ほかの人が作った PR など）に使う
@@ -272,7 +197,7 @@ const refresh = async ($: EngineInterface, jj: JjMode | 'skip'): Promise<void> =
 
 // このセッションの値を $.store に書く。キーは <prefix><セッションID>。覚えておくセッションの数を超えたら、古いものから消す。
 // WHY 消してから書く: $.store.keys() の並びを「最後に書いた順」に保ち、古いセッションから落とせるようにする
-const saveForSession = async ($: EngineInterface, prefix: string, value: string[] | OpenQuestion[] | number): Promise<void> => {
+const saveForSession = async ($: EngineInterface, prefix: string, value: string[]): Promise<void> => {
   const key = `${prefix}${await $.session.id()}`
   await $.store.delete(key)
   await $.store.set(key, value)
@@ -284,186 +209,6 @@ const loadPrRefs = async ($: EngineInterface): Promise<PrRef[]> => refsOf(await 
 
 // このセッションの PR の一覧を書き直す。urls は、末尾がいちばん新しい
 const savePrRefs = async ($: EngineInterface, urls: string[]): Promise<void> => saveForSession($, PR_PREFIX, urls)
-
-const loadQuestions = async ($: EngineInterface): Promise<OpenQuestion[]> =>
-  questionsOf(await $.store.get(`${QUESTIONS_PREFIX}${await $.session.id()}`))
-
-// 保留の一覧を、$.store と画面の両方に書く
-const saveQuestions = async ($: EngineInterface, list: OpenQuestion[]): Promise<void> => {
-  await saveForSession($, QUESTIONS_PREFIX, list)
-  await update($, questions, current => (JSON.stringify(current) === JSON.stringify(list) ? current : list))
-}
-
-// 保留を一覧から外す。返すのは、外した後の一覧。その番号が無ければ null
-const dropQuestion = async ($: EngineInterface, id: number): Promise<OpenQuestion[] | null> => {
-  const list = await loadQuestions($)
-  if (!list.some(one => one.id === id)) return null
-  const rest = list.filter(one => one.id !== id)
-  await saveQuestions($, rest)
-  return rest
-}
-
-// 利用者が pane のボタンで選んだ答えを、その場で Claude に送る。選んだ選択肢は、一覧に印で残す。
-// WHY 1 つずつ送る: 選んだらすぐ届く。まとめて送る操作を別に持たない（2026-10-10 に利用者が決めた）。
-// WHY asUser: 答えは利用者が選んだもの。利用者が打って送った文と同じ扱いで届ける。
-// WHY 待たない: 送信は、いまのターンが終わるまで返らない（submitNotice と同じ）。
-// 先に印を付けておき、送れなかったときに戻す。
-// summary は、相談の pane から送るときに付ける要約。保留の pane から送るときは空文字
-const answerQuestion = async ($: EngineInterface, question: OpenQuestion, option: string, summary = ''): Promise<void> => {
-  await saveQuestions($, withAnswer(await loadQuestions($), question.id, option))
-  const undo = async (): Promise<void> => {
-    await saveQuestions($, withAnswer(await loadQuestions($), question.id, question.answer))
-    $.ui.toast(`${labelOf(question)} の答えを送れませんでした。もう一度、選択肢を押してください`, { timeoutMs: 8_000 })
-  }
-  void $.prompt.submit({ text: handoffMessage(question, option, summary), asUser: true }).then(
-    result => (result.drop === undefined ? undefined : undo()),
-    () => undo(),
-  )
-}
-
-// 相談用のエージェントを立てられなかったときに、保留の説明をメインの Claude に頼む。答えは付けない。
-// 頼み方は、環境変数 QLIST_EXPLAIN_PROMPT で差し替えられる。
-// WHY 環境変数: 説明の出し方（文章、rich の図）は利用者の好みで、Mod は rich に依存しない。
-// 「/rich で説明しろ」のように書けば、Claude がそのスキルで描く。
-// WHY 待たない: answerQuestion と同じ
-const explainInMain = async ($: EngineInterface, question: OpenQuestion): Promise<void> => {
-  const failed = (): void => $.ui.toast(`${labelOf(question)} の説明を頼めませんでした。もう一度押してください`, { timeoutMs: 8_000 })
-  // $.env.get の名前は、文字列をその場に書く。定数で渡すと読み込みで弾かれる（v2.1.295）
-  const instruction = await $.env.get('QLIST_EXPLAIN_PROMPT')
-  void $.prompt.submit({ text: explainMessage(question, instruction), asUser: true }).then(
-    result => (result.drop === undefined ? undefined : failed()),
-    () => failed(),
-  )
-}
-
-// 立てたエージェントの ID を、エージェントの一覧から探す。まだ相談に使っていない、その説明のいちばん新しいもの。無ければ undefined。
-// WHY 一覧から探す道を持つ: spawn の答えの agentId は、型では無いことがある。
-// claude plugin test の土台は ID を返さないので、この道が無いと、立てた後の動きを試せない（v2.1.296）。
-// 実機の spawn は ID を返すことを確認している
-const spawnedAgentOf = async ($: EngineInterface, description: string): Promise<string | undefined> =>
-  (await $.agent.list().catch(() => [])).filter(agent => agent.description === description && !consultAgents.has(agent.id)).at(-1)?.id
-
-// 利用者が pane の「詳しく聞く」を押した保留について、相談を始める。
-// メインの会話を引き継いだエージェント（フォーク）を立て、最初の説明を頼んで、相談の pane を開く。
-// WHY メインに頼まない: メインが動いている最中は、頼んだ文がターンの終わりまで待たされる。説明と相談のやりとりで、メインの文脈も増える
-// （2026-10-11 に利用者が決めた）。
-// WHY フォーク: 保留を置いた経緯を知っているのは、会話を引き継いだエージェントだけ。
-// メインのターンの最中でも立てられ、進行中のターンのそこまでを見ている（v2.1.296 で確認）。
-// 同じ保留の相談が開いていれば、立て直さずに pane を開き直す
-const startConsult = async ($: EngineInterface, question: OpenQuestion): Promise<void> => {
-  const open = await read($, consult)
-  if (open !== null && open.question.id === question.id) {
-    await $.ui.open({ id: CONSULT_PANE, title: CONSULT_PANE_TITLE, focus: true })
-    return
-  }
-  await update($, consult, () => ({ question, agentId: null, turns: [], isWaiting: true, isHandingOff: false }))
-  await $.ui.open({ id: CONSULT_PANE, title: CONSULT_PANE_TITLE, focus: true })
-  const description = `${labelOf(question)} の相談`
-  const started = await $.agent.spawn({ prompt: consultPrompt(question), description, subagentType: 'fork' }).catch(() => null)
-  const agentId = started === null || started.deny !== undefined ? undefined : (started.agentId ?? (await spawnedAgentOf($, description)))
-  if (agentId === undefined) {
-    // 立てられなかった（最初の応答の前、エージェントを使えない設定など）。メインに頼む形に切り替える
-    await update($, consult, () => null)
-    await $.ui.close({ id: CONSULT_PANE })
-    await explainInMain($, question)
-    return
-  }
-  consultAgents.add(agentId)
-  await update($, consult, current => (current === null || current.question.id !== question.id ? current : { ...current, agentId }))
-}
-
-// 相談用のエージェントのターンが終わった。答えを pane に足す。要約を待っていたら、待っている側へ渡す
-const receiveConsultReply = async ($: EngineInterface, agentId: string, answer: string): Promise<void> => {
-  if (summaryWaiter !== null && summaryWaiter.agentId === agentId) {
-    const waiter = summaryWaiter
-    summaryWaiter = null
-    waiter.resolve(answer)
-    return
-  }
-  const text = answer.trim() === '' ? '（答えがありませんでした。もう一度聞いてください）' : answer
-  await update($, consult, current => (current === null || current.agentId !== agentId ? current : withTurn(current, { speaker: 'claude', text }, false)))
-  // 新しい答えが見えるところまで送る。送れなくても、利用者が自分で送れる
-  void $.ui.scroll({ in: CONSULT_PANE, to: 'end' }).catch(() => undefined)
-}
-
-// 利用者が相談の pane で打った問いを、相談用のエージェントへ送る。
-// 答え終わったエージェントは、送った文で続きから動く（session.send。v2.1.296 で確認）
-const askConsult = async ($: EngineInterface, typed: string): Promise<void> => {
-  const text = typed.trim()
-  const current = await read($, consult)
-  // WHY 答えを待っているあいだも送る: 入力欄は、送ると空になる。断ると、打った文が消える。
-  // 動いている最中のエージェントに送った文は、そのターンの中で読まれる（v2.1.296 で確認）。
-  // WHY 立てている最中と、結論を送っている最中は断る: 送る相手がまだいないか、次の答えを要約として受け取るところ
-  if (text === '' || current === null) return
-  if (current.agentId === null || current.isHandingOff) {
-    $.ui.toast(current.isHandingOff ? '結論をメインへ送っているところです' : '相談を始めているところです。説明が出てから送ってください')
-    return
-  }
-  const agentId = current.agentId
-  await update($, consult, () => withTurn(current, { speaker: 'user', text }, true))
-  const sent = await $.session.send({ to: { agentId }, text }).catch(() => null)
-  if (sent !== null && sent.isDelivered) return
-  await update($, consult, latest => (latest === null ? latest : { ...latest, isWaiting: false }))
-  $.ui.toast('相談の問いを送れませんでした。pane を閉じて、「詳しく聞く」を押し直してください', { timeoutMs: 8_000 })
-}
-
-// 相談用のエージェントに、相談で決まったことの要約を頼んで待つ。答えが来なければ空文字
-const summarize = ($: EngineInterface, agentId: string): Promise<string> =>
-  new Promise(resolve => {
-    const giveUp = (): void => {
-      if (summaryWaiter === null || summaryWaiter.agentId !== agentId) return
-      summaryWaiter = null
-      resolve('')
-    }
-    const timer = $.clock.after(SUMMARY_TIMEOUT_MS, giveUp)
-    summaryWaiter = {
-      agentId,
-      resolve: reply => {
-        timer.cancel()
-        resolve(summaryOf(reply))
-      },
-    }
-    void $.session.send({ to: { agentId }, text: SUMMARY_PROMPT }).then(
-      sent => (sent.isDelivered ? undefined : giveUp()),
-      () => giveUp(),
-    )
-  })
-
-// 相談の結論を、メインの Claude へ送る。option は選んだ選択肢で、null は選択肢に無い結論。
-// WHY 要約を付ける: 選んだ選択肢だけでは、相談の中で付いた条件（「案 A で、ただし上限は 10 件」）がメインに届かない。
-// WHY 問答をそのまま付けない: 長い相談を全部渡すと、メインの文脈を増やさないという目的と逆になる。
-// WHY 問いを送っていなければ要約しない: 最初の説明を読んで選んだだけなら、保留の pane で選ぶのと同じ
-const handOffConsult = async ($: EngineInterface, option: string | null): Promise<void> => {
-  const current = await read($, consult)
-  if (current === null || current.agentId === null || current.isHandingOff) return
-  if (current.isWaiting) {
-    $.ui.toast('答えを待っています。答えが出てから送ってください')
-    return
-  }
-  await update($, consult, () => ({ ...current, isHandingOff: true }))
-  const summary = hasTalked(current) ? await summarize($, current.agentId) : ''
-  if (option === null && summary === '') {
-    await update($, consult, latest => (latest === null ? latest : { ...latest, isHandingOff: false }))
-    $.ui.toast('相談から結論を読み取れませんでした。選択肢を押すか、入力欄で答えを書いてください', { timeoutMs: 8_000 })
-    return
-  }
-  if (option === null) {
-    void $.prompt.submit({ text: handoffMessage(current.question, null, summary), asUser: true }).then(
-      result => (result.drop === undefined ? undefined : $.ui.toast('相談の結論を送れませんでした', { timeoutMs: 8_000 })),
-      () => $.ui.toast('相談の結論を送れませんでした', { timeoutMs: 8_000 }),
-    )
-  } else {
-    await answerQuestion($, current.question, option, summary)
-  }
-  await update($, consult, () => null)
-  await $.ui.close({ id: CONSULT_PANE })
-}
-
-// セッションの開始時。開き直したセッションでは、$.store に残っている保留の一覧を戻す
-const restoreQuestions =async ($: EngineInterface): Promise<void> => {
-  const list = await loadQuestions($)
-  await update($, questions, () => list)
-}
 
 // このセッションの一覧で、触った PR をいちばん新しい位置に置く。無ければ足す
 const rememberPr = async ($: EngineInterface, ref: PrRef): Promise<void> => {
@@ -635,41 +380,10 @@ const trackPrs = async ($: EngineInterface, command: string, result: unknown): P
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.tool.register({ name: TRACK_TOOL_NAME, description: TRACK_TOOL_DESCRIPTION, inputSchema: TRACK_TOOL_SCHEMA, isDeferred: false })
-    await $.tool.register({ name: QUESTION_TOOL_NAME, description: QUESTION_TOOL_DESCRIPTION, inputSchema: QUESTION_TOOL_SCHEMA, isDeferred: false })
-    await $.tool.register({ name: LIST_TOOL_NAME, description: LIST_TOOL_DESCRIPTION, inputSchema: LIST_TOOL_SCHEMA, isDeferred: false })
-    await $.tool.register({ name: RESOLVE_TOOL_NAME, description: RESOLVE_TOOL_DESCRIPTION, inputSchema: RESOLVE_TOOL_SCHEMA, isDeferred: false })
-    // WHY catch: PR と保留の一覧を戻せなくても、帯は出す
-    await Promise.all([refresh($, 'read'), restorePrs($).catch(() => undefined), restoreQuestions($).catch(() => undefined)])
+    // WHY catch: PR の一覧を戻せなくても、帯は出す
+    await Promise.all([refresh($, 'read'), restorePrs($).catch(() => undefined)])
     return next(e)
   })
-
-  // Claude が、仮に決めて先へ進んだことを一覧に残す
-  on('tool.call', { tool: QUESTION_TOOL }, async ($, e) => {
-    const parsed = parseQuestion(e)
-    if (typeof parsed === 'string') return { deny: `add_question failed: ${parsed}` }
-    const last = lastIdOf(await $.store.get(`${QUESTION_LAST_PREFIX}${await $.session.id()}`))
-    const added = addQuestion(await loadQuestions($), parsed, QUESTIONS_MAX, last)
-    await saveQuestions($, added.list)
-    if (added.id > last) await saveForSession($, QUESTION_LAST_PREFIX, added.id)
-    // 足した保留を、利用者の操作を待たずに pane に出す（2026-10-10 に利用者が決めた）。フォーカスは移さない。
-    // 幅が足りないと置かれない。帯の pending の件数は増えるので、toast は出さない
-    await $.ui.open({ id: QUESTIONS_PANE, title: QUESTIONS_PANE_TITLE, closeOnEscape: true })
-    return { result: `Recorded as Q${added.id}. ${added.list.length} open.` }
-  }).catch(($, e, next) => (next.called ? next(e) : { deny: `add_question failed: ${next.error.message}` }))
-
-  // Claude が、保留の中身を読み直す
-  on('tool.call', { tool: LIST_TOOL }, async $ => ({ result: JSON.stringify(await loadQuestions($)) })).catch(($, e, next) =>
-    next.called ? next(e) : { deny: `list_questions failed: ${next.error.message}` },
-  )
-
-  // Claude が、決まった保留を一覧から外す
-  on('tool.call', { tool: RESOLVE_TOOL }, async ($, e) => {
-    const id = parseQuestionId(e)
-    if (typeof id === 'string') return { deny: `resolve_question failed: ${id}` }
-    const rest = await dropQuestion($, id)
-    if (rest === null) return { deny: `resolve_question failed: there is no Q${id} on the list` }
-    return { result: `Q${id} removed. ${rest.length} open.` }
-  }).catch(($, e, next) => (next.called ? next(e) : { deny: `resolve_question failed: ${next.error.message}` }))
 
   // セッションの始めに、利用者の画面と操作の届き方を Claude に伝える。
   // WHY classic.SessionStart: 起動、再開、fork、/clear、compact のたびに来る（入力の source の型で確認）。
@@ -703,11 +417,6 @@ export const register: Register = on => {
   // コンテキストはツールのたびに動く。jj は Bash（jj commit、jj git push など）の後だけ数え直す。
   // WHY ここでは記録しない: 番の途中は Claude の jj コマンドと重なりうる。操作ログもツールのたびに増える
   on('tool.call', async ($, e, next) => {
-    // 相談用のエージェントには、読むツールだけを通す。
-    // WHY ここでも止める: tool.check が、どの権限モードでも通るかを確かめていない。Bash 以外は、ここだけで止まる
-    if (e.agentId !== undefined && consultAgents.has(e.agentId) && !isReadOnlyCall(e.tool, e.tool === 'Bash' ? e.command : '')) {
-      return { deny: CONSULT_READ_ONLY }
-    }
     const ran = await next(e)
     await refresh($, e.tool === 'Bash' ? 'read' : 'skip')
     // Bash の結果から、PR への操作（gh pr <動詞>）と push を拾う
@@ -716,57 +425,8 @@ export const register: Register = on => {
     // WHY catch: この hook はすべてのツールの呼び出しを通る。集め直しで何が起きても、ツールの結果はそのまま返す
   }).catch(($, e, next) => next(e))
 
-  // 相談用のエージェントの Bash は、読むコマンドの一覧に入っていて、エンジンも確認なしで通すものだけを通す。
-  // WHY エンジンの判定も見る: 設定の許可ルールに無いコマンドは、利用者が確認なしで通すと決めていない。
-  // 相談の pane には確認のダイアログを出す場所が無いので、確認が要るものは拒む。
-  // WHY 失敗したら拒む: 絞り込みが動かないまま、書けるエージェントを残さない
-  on('tool.check', async (_$, e, next) => {
-    if (e.agentId === undefined || !consultAgents.has(e.agentId) || e.tool === 'Read') return next(e)
-    if (!isReadOnlyCall(e.tool, commandOf(e.input))) return { decision: 'deny', reason: CONSULT_READ_ONLY }
-    const core = await next(e)
-    return core.decision === 'allow' ? core : { decision: 'deny', reason: CONSULT_READ_ONLY }
-  }).catch((_$, e, next) => (e.agentId !== undefined && consultAgents.has(e.agentId) ? { decision: 'deny', reason: CONSULT_READ_ONLY } : next(e)))
-
-  // 相談を始めるボタンと、相談の pane のボタン、入力欄は、部品の onPress や onSubmit でなく、ここの hook で受ける。
-  // WHY hook で受ける: onPress の中から立てたエージェントのツールの呼び出しには、この Mod の tool.call と tool.check の hook が呼ばれず、
-  // 読むだけの絞り込みが効かなかった（touch が通った）。hook の中から立てると呼ばれる（v2.1.296、2026-10-11 に実機で確認）。
-  // WHY 結論を送る処理は待たない: 要約を 30 秒まで待つ。hook は 10 秒で打ち切られる
-  on('ui.press', { plugin: 'status-band', component: 'Pane' }, async ($, e, next) => {
-    if (e.requestId === QUESTIONS_PANE) {
-      const id = /^explain-(\d+)$/.exec(e.element)?.[1]
-      const question = id === undefined ? undefined : (await loadQuestions($)).find(one => one.id === Number(id))
-      if (question !== undefined) await startConsult($, question)
-    }
-    if (e.requestId === CONSULT_PANE) {
-      const at = /^decide-(\d+)$/.exec(e.element)?.[1]
-      const option = at === undefined ? undefined : (await read($, consult))?.question.options[Number(at)]
-      if (option !== undefined) void handOffConsult($, option).catch(() => undefined)
-      if (e.element === 'conclude') void handOffConsult($, null).catch(() => undefined)
-    }
-    return next(e)
-  }).catch((_$, e, next) => next(e))
-
-  on('ui.input', { plugin: 'status-band', component: 'Pane', requestId: CONSULT_PANE }, async ($, e, next) => {
-    if (e.kind === 'submit') await askConsult($, e.value)
-    return next(e)
-  }).catch((_$, e, next) => next(e))
-
-  // 相談用のエージェントが終わると、メインに終了の知らせが届いて、メインが 1 ターン動く。その知らせを捨てる。
-  // WHY task-id を見る: バックグラウンドのシェルや、Claude が立てたエージェントの知らせも、同じ出どころで届く。
-  // 会話の行には「Prompt dropped by a hook: 理由」が 1 行出る（v2.1.296 で確認）
-  on('prompt.submit', async (_$, e, next) => {
-    if (e.origin.kind !== 'task-notification') return next(e)
-    const agentId = notifiedAgentOf(e.text)
-    return agentId !== null && consultAgents.has(agentId) ? { drop: CONSULT_NOTICE_DROPPED } : next(e)
-  }).catch((_$, e, next) => next(e))
-
   // 番の終わりにだけ作業コピーを記録する。Edit や Write で編集した分が、ここで件数に入る
   on('turn.complete', async ($, e, next) => {
-    // 相談用のエージェントのターン。答えを相談の pane へ渡す。メインの番ではないので、記録も知らせもしない
-    if (e.agentId !== undefined && consultAgents.has(e.agentId)) {
-      await receiveConsultReply($, e.agentId, e.answer).catch(() => undefined)
-      return next(e)
-    }
     await refresh($, 'snapshot')
     // ツールの後に気づいたマージと CI の失敗を、ここで Claude に知らせる
     const waiting = await read($, pendingNotice)
@@ -810,9 +470,6 @@ export const register: Register = on => {
       void $.ui.open({ id: PR_PANE, title: PR_PANE_TITLE, focus: true, closeOnEscape: true })
       void refreshPrsNow($).catch(() => undefined)
     }
-    const openQuestions = () => {
-      void $.ui.open({ id: QUESTIONS_PANE, title: QUESTIONS_PANE_TITLE, focus: true, closeOnEscape: true })
-    }
     // 次にやることを 1 つだけ目立たせる。未コミットがあればコミット、無ければログ
     const primary = jj !== null && jj.changed > 0 ? 'commit' : 'log'
     const pill = (name: string) =>
@@ -822,7 +479,6 @@ export const register: Register = on => {
     const percent = now.contextPercent
     const filled = percent === undefined ? 0 : filledCells(percent)
     const prs = await read($, pullRequests)
-    const waiting = await read($, questions)
     // 最後に触った PR から、幅に応じて 3 つまで出す
     const shownPrs = prs.slice(0, width >= WIDE ? 3 : width >= MEDIUM ? 2 : 1)
 
@@ -889,12 +545,6 @@ export const register: Register = on => {
           {prs.length > 0 && (
             <Button key="pr" plain onPress={openPrs}>
               <Text {...pill('pr')}> pr </Text>
-            </Button>
-          )}
-          {/* 保留は、件数も出す。決めることが残っていると、帯だけで分かるようにする */}
-          {waiting.length > 0 && (
-            <Button key="pending" plain onPress={openQuestions}>
-              <Text {...pill('pending')}>{` pending ${waiting.length} `}</Text>
             </Button>
           )}
         </Box>
@@ -1092,186 +742,6 @@ export const register: Register = on => {
             閉じる
           </Button>
         </Box>
-        </Box>
-      </Box>
-    )
-  })
-
-  // 保留の一覧。どの問いも、説明と選択肢を開いたまま並べる。答えは、選択肢のボタンを押して選ぶ。
-  // WHY キーで選ぶ行を持たない: 答える操作は、問いごとの選択肢を押すこと。行を選んでから押す 2 段にしない
-  // （2026-10-10 に利用者が決めた。「ボタンぽちぽちで答えていく」「畳まないで全部ひらきっぱなし」）。
-  // WHY 閉じるを上に置く: 一覧が pane より長いと、下に置いたボタンは流れて見えなくなる
-  on('ui.render', { component: 'Pane', requestId: QUESTIONS_PANE }, async ($, e, next) => {
-    if (e.surface !== 'terminal') return next(e)
-    const { Box, Button, Text } = $.ui.resolve(e)
-    const list = await read($, questions)
-    const width = e.props.bodyColumns
-    // 選択肢に無い答えを書く。書き出しを入力欄に入れて、pane を閉じる。
-    // WHY 閉じる: pane がキーボードを持ったままだと、打った字が pane のキー（q で閉じる）として働く
-    const write = async (one: OpenQuestion): Promise<void> => {
-      await $.prompt.fill({ text: answerOpening(one) })
-      await $.ui.close({ id: QUESTIONS_PANE })
-    }
-
-    return (
-      <Box flexDirection="column" gap={1} width={width}>
-        <Box flexDirection="row" columnGap={2}>
-          <Button
-            key="close"
-            role="dismiss"
-            hotkey="q"
-            onPress={() => {
-              void $.ui.close({ id: QUESTIONS_PANE })
-            }}
-          >
-            閉じる
-          </Button>
-          {list.length > 0 && <Text dimColor>選択肢を押すと、その答えがClaudeに届く</Text>}
-        </Box>
-        {list.length === 0 ? (
-          <Text dimColor>仮に決めて先へ進んだことは、いまありません</Text>
-        ) : (
-          list.map(one => (
-            <Box key={`row-${one.id}`} flexDirection="column" width={width}>
-              <Box flexDirection="row" justifyContent="space-between" width={width}>
-                <Box flexDirection="row" columnGap={1}>
-                  <Text bold color={ACCENT}>
-                    {labelOf(one)}
-                  </Text>
-                  <Box width={Math.max(1, width - labelOf(one).length - 1 - 8)}>
-                    <Text bold>{one.question}</Text>
-                  </Box>
-                </Box>
-                <Box flexDirection="row" columnGap={1}>
-                  {one.answer !== null && <Text dimColor>送信済</Text>}
-                  <Button key={`drop-${one.id}`} plain onPress={() => void dropQuestion($, one.id).catch(() => undefined)}>
-                    <Text dimColor>×</Text>
-                  </Button>
-                </Box>
-              </Box>
-              {one.detail !== '' && <Text dimColor>{one.detail}</Text>}
-              {one.options.map((option, index) => (
-                <Box flexDirection="row" columnGap={1}>
-                  <Button key={`option-${one.id}-${index}`} plain onPress={() => void answerQuestion($, one, option).catch(() => undefined)}>
-                    <Text color={option === one.answer ? GREEN : undefined} bold={option === one.answer}>
-                      {`${option === one.answer ? '●' : '○'} ${option}`}
-                    </Text>
-                  </Button>
-                  {option === one.assumed && <Text dimColor>いまの仮置き</Text>}
-                </Box>
-              ))}
-              {/* 押したときの動きは、ui.press の hook にある */}
-              <Button key={`explain-${one.id}`} plain onPress={() => undefined}>
-                <Text dimColor>？ 詳しく聞く</Text>
-              </Button>
-              <Button key={`write-${one.id}`} plain onPress={() => void write(one).catch(() => undefined)}>
-                <Text dimColor>✎ ほかの答えを書く</Text>
-              </Button>
-            </Box>
-          ))
-        )}
-      </Box>
-    )
-  })
-
-  // 保留 1 件についての相談。上から、保留の中身、やりとり、問いの入力欄、結論を送るボタン。
-  // ボタンと入力欄の動きは、上の ui.press と ui.input の hook にある。
-  // WHY キーを付けない: 入力欄のある pane で、打った字がボタンのキーとして働かないようにする。
-  // WHY 入力欄の key に問いの数を入れる: 送った後に、入力欄を空の新しい部品として描き直す。
-  // 答えが届いたときには変わらないので、先に打ち始めた次の問いは消えない
-  on('ui.render', { component: 'Pane', requestId: CONSULT_PANE }, async ($, e, next) => {
-    if (e.surface !== 'terminal') return next(e)
-    const { Box, Button, Input, Markdown, Text } = $.ui.resolve(e)
-    const current = await read($, consult)
-    const width = e.props.bodyColumns
-    const close = (
-      <Button
-        key="close"
-        role="dismiss"
-        onPress={() => {
-          void $.ui.close({ id: CONSULT_PANE })
-        }}
-      >
-        閉じる
-      </Button>
-    )
-    if (current === null) {
-      return (
-        <Box flexDirection="column" gap={1} width={width}>
-          {close}
-          <Text dimColor>相談は開いていません。保留の一覧で「詳しく聞く」を押すと始まります</Text>
-        </Box>
-      )
-    }
-    const question = current.question
-    const asked = current.turns.filter(turn => turn.speaker === 'user').length
-    const isBusy = current.isWaiting || current.isHandingOff
-
-    return (
-      <Box flexDirection="column" gap={1} width={width}>
-        <Box flexDirection="column" width={width}>
-          <Box flexDirection="row" columnGap={2}>
-            {close}
-            <Text dimColor>読むだけの相談。メインの会話には残らない</Text>
-          </Box>
-          <Box flexDirection="row" columnGap={1} width={width}>
-            <Text bold color={ACCENT}>
-              {labelOf(question)}
-            </Text>
-            <Box width={Math.max(1, width - labelOf(question).length - 1)}>
-              <Text bold wrap="wrap">
-                {question.question}
-              </Text>
-            </Box>
-          </Box>
-          {question.detail !== '' && (
-            <Text dimColor wrap="wrap">
-              {question.detail}
-            </Text>
-          )}
-        </Box>
-        {current.turns.map((turn, at) =>
-          turn.speaker === 'user' ? (
-            <Box key={`turn-${at}`} flexDirection="row" columnGap={1} width={width}>
-              <Text color={ACCENT}>❯</Text>
-              <Box width={Math.max(1, width - 2)}>
-                <Text bold wrap="wrap">
-                  {turn.text}
-                </Text>
-              </Box>
-            </Box>
-          ) : (
-            <Box key={`turn-${at}`} width={width}>
-              <Markdown text={turn.text} />
-            </Box>
-          ),
-        )}
-        {isBusy && <Text dimColor>{current.isHandingOff ? '相談の要約を作って、メインへ送ります…' : current.agentId === null ? '相談を始めています…' : '考えています…'}</Text>}
-        <Input
-          key={`ask-${asked}`}
-          label="聞く"
-          placeholder="この保留について聞きたいこと"
-          submitLabel="送る"
-          autoFocus
-          // 送ったときの動きは、ui.input の hook にある
-          onSubmit={() => undefined}
-        />
-        <Box flexDirection="column" width={width}>
-          <Text dimColor>決めたら、押してメインへ送る</Text>
-          {question.options.map((option, index) => (
-            <Box key={`decide-row-${index}`} flexDirection="row" columnGap={1}>
-              <Button key={`decide-${index}`} plain onPress={() => undefined}>
-                <Text>{`○ ${option}`}</Text>
-              </Button>
-              {option === question.assumed && <Text dimColor>いまの仮置き</Text>}
-            </Box>
-          ))}
-          {/* 選択肢に無い結論。相談の要約だけを送る。問いを送っていない相談には、要約することが無いので出さない */}
-          {asked > 0 && (
-            <Button key="conclude" plain onPress={() => undefined}>
-              <Text dimColor>✎ 選択肢に無い結論を送る</Text>
-            </Button>
-          )}
         </Box>
       </Box>
     )

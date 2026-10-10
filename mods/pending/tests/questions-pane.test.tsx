@@ -1,10 +1,11 @@
 import { expect, test } from 'claude-code/testing'
 import type { OpenQuestion } from '../types'
+import { SESSION_CONTEXT } from '../hooks/context'
 import { START, line, questionsPane, world } from './world'
 
-const ADD = 'mcp__status-band__add_question'
-const LIST = 'mcp__status-band__list_questions'
-const RESOLVE = 'mcp__status-band__resolve_question'
+const ADD = 'mcp__pending__add_question'
+const LIST = 'mcp__pending__list_questions'
+const RESOLVE = 'mcp__pending__resolve_question'
 const ASKED = { question: '上限は何件か', detail: '一覧に覚える数', options: ['50 件', '100 件'], assumed: '100 件' }
 const Q1: OpenQuestion = { id: 1, ...ASKED, answer: null }
 const Q2: OpenQuestion = { id: 2, question: '名前をどうするか', detail: '', options: ['pending', 'todo'], assumed: 'pending', answer: null }
@@ -184,23 +185,48 @@ test('保留が無ければ、その旨を出す', async ($, on) => {
   await ui.unmount()
 })
 
-test('保留があれば、帯に件数つきの pending が出る。押すと、コマンドを通さずに pane を開く', async ($, on) => {
+test('保留があれば、プロンプトの下の行に件数つきの pending が出る。下の層の表示は残す。押すと pane を開く', async ($, on) => {
   const seen = world(on, { stored: { 'qs:s1': [Q1, Q2] } })
   await $.session.start(START)
-  const ui = await $.ui.mount(line(140))
+  const ui = await $.ui.mount(line)
 
   expect(await ui.find({ type: 'Text', text: /^ pending 2 $/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^BELOW$/ })).toBeDefined()
   await ui.press({ key: 'pending' })
   expect(seen.opened).toEqual(['questions'])
-  expect(seen.commands).toEqual([])
   await ui.unmount()
 })
 
-test('保留が無ければ、帯に pending は出ない', async ($, on) => {
+test('保留が無ければ、pending は出ない。下の層の表示は残す', async ($, on) => {
   world(on)
   await $.session.start(START)
-  const ui = await $.ui.mount(line(140))
+  const ui = await $.ui.mount(line)
 
   expect(await ui.find({ key: 'pending' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^BELOW$/ })).toBeDefined()
   await ui.unmount()
 })
+
+const STARTED = { hook_event_name: 'SessionStart', session_id: 's1', transcript_path: '/t.jsonl', cwd: '/repo' } as const
+
+const STARTS: { name: string; agentId: string | undefined; context: string[] }[] = [
+  { name: 'メインのセッションには、ほかの説明の後ろに足す', agentId: undefined, context: ['OTHER', SESSION_CONTEXT] },
+  { name: 'サブエージェントには渡さない', agentId: 'a1', context: ['OTHER'] },
+]
+
+for (const one of STARTS) {
+  test(`セッションの始めの説明: ${one.name}`, async ($, on) => {
+    world(on, { otherContext: ['OTHER'] })
+
+    const result = await $.classic.SessionStart({ ...STARTED, source: 'startup', ...(one.agentId === undefined ? {} : { agent_id: one.agentId }) })
+    expect(result.additionalContext).toEqual(one.context)
+  })
+}
+
+const NAMED = ['mcp__pending__add_question', 'mcp__pending__resolve_question', 'mcp__pending__list_questions', '【保留への回答】', '相談で決まったこと', 'について相談した結論']
+
+for (const name of NAMED) {
+  test(`説明は「${name}」に触れている`, async () => {
+    expect(SESSION_CONTEXT).toContain(name)
+  })
+}

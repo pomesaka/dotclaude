@@ -1,0 +1,9 @@
+{
+  "name": "pending",
+  "version": "0.1.0",
+  "description": "A list of the decisions the agent made provisionally so work could continue, kept with add_question and shown in a pane for the user to settle by clicking; a question can be talked over with a read-only fork of the conversation first. Adds a pending button to the line under the prompt",
+  "author": {
+    "name": "pomesaka"
+  },
+  "types": "./types/index.d.ts"
+}

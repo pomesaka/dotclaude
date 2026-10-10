@@ -13,6 +13,11 @@
       "description": "After a turn, shows up to four prompts the user is likely to type next as cards above the prompt: Claude Code's own prompt suggestion first, then more from a fork of the conversation; clicking a card sends it"
     },
     {
+      "name": "pending",
+      "source": "./mods/pending",
+      "description": "A list of the decisions the agent made provisionally so work could continue, kept with add_question and shown in a pane for the user to settle by clicking; a question can be talked over with a read-only fork of the conversation first. Adds a pending button to the line under the prompt"
+    },
+    {
       "name": "publish-guard",
       "source": "./mods/publish-guard",
       "description": "Before the agent pushes from a repository that has scripts/check-public.sh, runs that check and blocks the push when it finds names or keys that must not be published"

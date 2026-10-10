@@ -52,38 +52,6 @@ export type PrStatus = {
 // PR の一覧の 1 行。status の null は、まだ 1 度も状態を取れていない
 export type PrRow = PrRef & { status: PrStatus | null }
 
-// 仮に決めて先へ進んだこと。あとで利用者が決め直す
-export type OpenQuestion = {
-  // 一覧と会話で使う番号（Q3 の 3）
-  id: number
-  // 決めること
-  question: string
-  // 何を決めるのか、選ぶと何が変わるのかの説明。無ければ空文字
-  detail: string
-  // 選択肢。2 つ以上
-  options: string[]
-  // 仮に置いた選択肢。options の 1 つ
-  assumed: string
-  // 利用者が pane で選んで、Claude に送った答え。options の 1 つ。null は、まだ選んでいない
-  answer: string | null
-}
-
-// 相談の 1 発言。user は利用者が pane で打った問い、claude は相談用のエージェントの答え
-export type ConsultTurn = { speaker: 'user' | 'claude'; text: string }
-
-// 保留 1 件についての相談。メインの会話を引き継いだ別のエージェントと、pane でやりとりする
-export type Consult = {
-  // 相談を始めた時点の保留
-  question: OpenQuestion
-  // 相談用のエージェント。null は、立てている最中
-  agentId: string | null
-  turns: ConsultTurn[]
-  // エージェントの答えを待っている
-  isWaiting: boolean
-  // 結論をメインへ送るために、エージェントの要約を待っている
-  isHandingOff: boolean
-}
-
 declare module 'claude-code' {
   interface PluginState {
     'status-band': {
@@ -93,10 +61,6 @@ declare module 'claude-code' {
       log: LogEntry[] | null
       // このセッションで作るか直すかした PR。最後に触った PR が先頭。帯と PR の pane が、この順で出す
       prs: PrRow[]
-      // 仮に決めて先へ進んだこと。古いものが先頭（番号の順）
-      questions: OpenQuestion[]
-      // 開いている相談。null は、相談していない。セッションを開き直すと消える
-      consult: Consult | null
       // pane の一覧で、キーで選んでいる行の位置。キーは pane の id。まだ動かしていない pane は、項目が無い
       cursors: { [pane: string]: number }
       // Claude へ送るのを待っている、マージの知らせ。null は、待っているものが無い。

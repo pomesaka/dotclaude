@@ -80,9 +80,12 @@ export const answerMessage = (question: OpenQuestion, option: string): string =>
 
 const EXPLAIN_DEFAULT = '詳しく説明して'
 
-// 保留の説明を Claude に頼む文。instruction は環境変数の値で、空なら既定の頼み方にする
+// 保留の説明の頼み方。instruction は環境変数の値で、空なら既定の頼み方にする
+export const explainInstruction = (instruction: string | undefined): string => (text(instruction) === '' ? EXPLAIN_DEFAULT : text(instruction))
+
+// 保留の説明を、メインの Claude に頼む文
 export const explainMessage = (question: OpenQuestion, instruction: string | undefined): string =>
-  `${labelOf(question)}（${question.question}）について、${text(instruction) === '' ? EXPLAIN_DEFAULT : text(instruction)}`
+  `${labelOf(question)}（${question.question}）について、${explainInstruction(instruction)}`
 
 // 選択肢に無い答えを利用者が書くときに、入力欄に入れておく書き出し
 export const answerOpening = (question: OpenQuestion): string => `${labelOf(question)}（${question.question}）は、`
