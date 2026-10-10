@@ -137,6 +137,14 @@ const UNREFERENCE_TOOL_SCHEMA = {
   required: ['url'],
 }
 
+// WHY 全部外すツールを持つ: 話題が切り替わったときに、利用者が「refs をまっさらにして」と頼む。
+// 外すツールは url を 1 つずつ受けるだけで、Claude は一覧の中身を読めないので、まとめて消す道が無かった（2026-10-10）
+const CLEAR_REFERENCES_TOOL_NAME = 'clear_references'
+const CLEAR_REFERENCES_TOOL = 'mcp__status-band__clear_references'
+const CLEAR_REFERENCES_TOOL_DESCRIPTION = `Remove every entry from the user's references pane.
+Use it only when the user asks to clear the references. To drop single entries that no longer open, use remove_reference.`
+const CLEAR_REFERENCES_TOOL_SCHEMA = { type: 'object', properties: {} }
+
 // Claude が、仮に決めて先へ進んだことを一覧に残すためのツールと、決まった保留を外すためのツール
 const QUESTION_TOOL_NAME = 'add_question'
 const QUESTION_TOOL = 'mcp__status-band__add_question'
@@ -578,6 +586,12 @@ export const register: Register = on => {
       inputSchema: UNREFERENCE_TOOL_SCHEMA,
       isDeferred: false,
     })
+    await $.tool.register({
+      name: CLEAR_REFERENCES_TOOL_NAME,
+      description: CLEAR_REFERENCES_TOOL_DESCRIPTION,
+      inputSchema: CLEAR_REFERENCES_TOOL_SCHEMA,
+      isDeferred: false,
+    })
     await $.tool.register({ name: QUESTION_TOOL_NAME, description: QUESTION_TOOL_DESCRIPTION, inputSchema: QUESTION_TOOL_SCHEMA, isDeferred: false })
     await $.tool.register({ name: LIST_TOOL_NAME, description: LIST_TOOL_DESCRIPTION, inputSchema: LIST_TOOL_SCHEMA, isDeferred: false })
     await $.tool.register({ name: RESOLVE_TOOL_NAME, description: RESOLVE_TOOL_DESCRIPTION, inputSchema: RESOLVE_TOOL_SCHEMA, isDeferred: false })
@@ -608,6 +622,13 @@ export const register: Register = on => {
     await dropReference($, parsed.url)
     return { result: `Removed. The references pane now lists ${list.length - 1}.` }
   }).catch(($, e, next) => (next.called ? next(e) : { deny: `remove_reference failed: ${next.error.message}` }))
+
+  // Claude が、利用者に頼まれて参照の一覧を空にする
+  on('tool.call', { tool: CLEAR_REFERENCES_TOOL }, async $ => {
+    const list = await loadReferences($)
+    await saveReferences($, [])
+    return { result: `Cleared ${list.length}. The references pane is empty.` }
+  }).catch(($, e, next) => (next.called ? next(e) : { deny: `clear_references failed: ${next.error.message}` }))
 
   // Claude が、仮に決めて先へ進んだことを一覧に残す
   on('tool.call', { tool: QUESTION_TOOL }, async ($, e) => {
@@ -1144,6 +1165,12 @@ export const register: Register = on => {
               onPress={press => void copyText($, toMarkdown(list), press.surface, `参照を ${list.length} 件、Markdownでコピーしました`).catch(() => undefined)}
             >
               全部コピー
+            </Button>
+          )}
+          {selected !== undefined && (
+            // WHY キーを付けない: 取り消せないので、押し間違いで一覧が消えないよう、クリックだけにする
+            <Button key="clear" onPress={() => void saveReferences($, []).catch(() => undefined)}>
+              全部外す
             </Button>
           )}
           <Button

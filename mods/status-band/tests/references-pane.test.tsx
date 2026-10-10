@@ -68,6 +68,40 @@ test('remove_reference で、Claude が開けなくなった参照を外す。�
   expect(seen.store.get('refs:s1')).toEqual([{ url: FILE, title: '設計メモ', note: '' }])
 })
 
+test('clear_references で、Claude が一覧を空にする。空の一覧でも失敗しない', async ($, on) => {
+  const seen = world(on)
+  const CLEAR = 'mcp__status-band__clear_references'
+
+  await $.tool.call({ tool: TOOL, url: DOCS, title: 'Mods reference' })
+  await $.tool.call({ tool: TOOL, url: FILE, title: '設計メモ' })
+
+  const cleared = await $.tool.call({ tool: CLEAR })
+  expect(cleared.result).toBe('Cleared 2. The references pane is empty.')
+  expect(seen.store.get('refs:s1')).toEqual([])
+
+  const again = await $.tool.call({ tool: CLEAR })
+  expect(again.result).toBe('Cleared 0. The references pane is empty.')
+})
+
+test('「全部外す」を押すと、一覧からも保存からも全部を外す', async ($, on) => {
+  const seen = world(on, {
+    stored: {
+      'refs:s1': [
+        { url: DOCS, title: 'Mods reference', note: '' },
+        { url: FILE, title: '設計メモ', note: '' },
+      ],
+    },
+  })
+  await $.session.start(START)
+
+  const ui = await $.ui.mount(referencesPane)
+  await ui.press({ key: 'clear' })
+  expect(seen.store.get('refs:s1')).toEqual([])
+  expect(await ui.find({ type: 'Text', text: /^Mods reference$/ })).toBeUndefined()
+  expect(await ui.find({ key: 'clear' })).toBeUndefined()
+  await ui.unmount()
+})
+
 test('portless で起動した画面は、コマンドから url を作って一覧に入れる', async ($, on) => {
   const seen = world(on)
 

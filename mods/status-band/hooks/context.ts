@@ -29,6 +29,7 @@ PR の一覧:
 - WebFetch で読んだ URL は自動で一覧に入るが、一言は付かない。役に立ったものには、同じ url で add_reference を呼んで一言を足す
 - 利用者が開き直す画面も自動で入る。Bash で portless <名前> <コマンド> の形で起動したサーバー（difit もこの形）と、Write で tmp の下に書いた HTML（explain のページなど）。これらを add_reference で足し直さなくてよい
 - 開けなくなった参照は、mcp__status-band__remove_reference に url を渡して外す。起動したサーバーが終わったと知らされたとき（difit は、利用者がブラウザを閉じると終わる）と、生成したページを消したときに使う。根拠として残した文書は外さない
+- 利用者に「refs を空にして」「まっさらにして」と頼まれたら、mcp__status-band__clear_references で全部を外す。頼まれていないのに使わない
 
 保留の一覧:
 - 利用者に確かめていない前提で先へ進んだら（名前、既定値、しきい値、いくつかの案から選んだ動き）、mcp__status-band__add_question で残す。決めること（question）、説明（detail）、選択肢（options）、仮に置いた選択肢（assumed）を渡す

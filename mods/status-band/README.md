@@ -247,6 +247,8 @@ https://code.claude.com/docs/en/plugins/mods/reference
 
 開けなくなった参照は、Claudeが`remove_reference`ツール（`mcp__status-band__remove_reference`）にURLを渡して外す。difitは利用者がブラウザを閉じるとプロセスが終わり、URLが開けなくなる。終わったことを知らされるのはClaudeなので、Claudeの側に外す手段を持たせている。
 
+一覧を空にするには、paneの「全部外す」を押すか、Claudeに頼む。Claudeは`clear_references`ツール（`mcp__status-band__clear_references`）で全部を外す。「全部外す」は取り消せないので、キーを割り当てず、クリックだけにしている。
+
 選んでいる行には`▸`が付く。キーで動かす。
 
 | キー | 動き |
@@ -258,7 +260,7 @@ https://code.claude.com/docs/en/plugins/mods/reference
 | `a` | 一覧の全部を、Markdownの箇条書きでコピーする。PRの本文やメモに貼る用 |
 | `q` | 閉じる |
 
-題名と`×`は、クリックでも押せる。
+題名と`×`は、クリックでも押せる。「全部外す」はクリックだけで押す。
 
 一覧は、paneに収まる分だけを描く。選んでいる行の前後を出し、はみ出した分は「↑ あと 3 件」「↓ あと 5 件」と件数で示す。キーのヒント（下の2行のボタン）が、一覧に押されて流れないようにするためだ。一言は、選んでいる行だけ全文を出し、ほかの行は1行に切る。
 
