@@ -1,0 +1,630 @@
+# TypeScript 落とし穴・コンパイラ挙動メモ
+
+> **TL;DR**: 実装中に出会う TypeScript 固有の見落としやすい点と回避策。カテゴリ: [as禁止下の型付け代替](#as-キャスト禁止下の代替パターン)・[コンパイラの罠](#コンパイラの罠)（narrowing・satisfies・条件型）・[Zod/バリデーション](#zod-バリデーション)・[環境・ツール固有](#環境ツール固有)（Bun・import.meta・g-flag RegExp）。基本規約・設計パターン → `typescript.md`
+
+## `as` キャスト禁止下の代替パターン
+
+### `fetch` レスポンスは `z.discriminatedUnion` で検証する
+
+`Response.json()` の戻り値は `unknown`。`as { ok: boolean; data: T }` で型付けすると不正レスポンスがランタイムでエラーを出さずに通過し、サーバー contract 違反を検出できない。`z.discriminatedUnion("ok", [success, error])` で envelope を検証する。success バリアントには `data: dataSchema` を渡せば内側 payload も自動検証されて `as` 不要・型安全（"as キャスト禁止" 環境での標準 fetch ヘルパパターン）。
+```typescript
+const envelopeSchema = z.discriminatedUnion("ok", [
+  z.object({ ok: z.literal(true), data: z.unknown() }),
+  z.object({ ok: z.literal(false), error: z.unknown() }),
+]);
+async function fetchOk<T>(url: string, dataSchema: z.ZodType<T>): Promise<T> {
+  const env = envelopeSchema.parse(await (await fetch(url)).json());
+  if (!env.ok) throw new Error(`API error: ${JSON.stringify(env.error)}`);
+  return dataSchema.parse(env.data); // T を返す（as 不要）
+}
+```
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
+### `unknown` からの型ガードで `as` を使わない（`in` + `typeof` チェーン）
+
+型ガード関数（`function f(x: unknown): x is SomeType`）の内部で `(x as Record<string, unknown>).field` のようなキャストを使うのは `as` キャスト禁止ルール違反。代わりに `in` operator + `const obj = value` + typeof チェックの chain で書く。
+
+```typescript
+// NG: as キャスト禁止
+function isWhisperSegment(value: unknown): value is WhisperSegment {
+  return typeof value === "object" && value !== null &&
+    "start" in value && typeof (value as Record<string, unknown>).start === "number";
+}
+
+// OK: in operator で存在確認後、const に受けてから typeof で型チェック
+function isWhisperSegment(value: unknown): value is WhisperSegment {
+  if (typeof value !== "object" || value === null) return false;
+  const obj = value;
+  return "start" in obj && typeof obj.start === "number" &&
+         "end" in obj && typeof obj.end === "number" &&
+         "text" in obj && typeof obj.text === "string";
+}
+```
+
+TypeScript は `in` + `typeof` のチェーンで `obj.start` 等のアクセスを安全と判断するため、キャスト不要になる。
+
+**動的キー（変数）でアクセスしたい場合は `Reflect.get`**: リテラルキーではなく文字列変数でプロパティを取り出す必要があるとき、`Reflect.get(obj, key)` が `unknown` を返す唯一の `as` 不要な手段。
+
+```typescript
+// NG: string 変数キーで as を使う
+const val = (obj as Record<string, unknown>)[key];
+
+// OK: Reflect.get は unknown を返す。その後 typeof で絞り込む
+const val: unknown = Reflect.get(obj, key);
+if (typeof val === "string") { ... }
+
+// 実用例: 外部APIレスポンスの複数フィールドを動的に取り出す
+const strProp = (obj: unknown, key: string): string | undefined => {
+  if (typeof obj !== "object" || obj === null) return undefined;
+  const val: unknown = Reflect.get(obj, key);
+  return typeof val === "string" ? val : undefined;
+};
+```
+
+判断基準: `in + typeof` はリテラルキーで用いる。string 変数キーなら `Reflect.get`。
+<!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
+
+### `as` キャスト禁止下での型精度向上: `useRef` パターン
+
+`useState<A[]>` が特定のライフサイクル時点で実際には `B[]`（`B extends A`）を保持している場合、`as B[]` キャストは禁止。代わりに Promise/Generator の解決時に `useRef<B[]>` に格納する。
+
+```ts
+// NG: as キャスト
+const state = { phase: "done", steps: stream.steps as B[] };
+
+// OK: ref に格納して型精度を維持
+const doneResultRef = useRef<B[]>([]);
+// ...Promise 解決時:
+doneResultRef.current = result.steps; // result.steps: B[] なので型安全
+// state 構築時:
+const state = phase === "done"
+  ? { phase: "done", steps: doneResultRef.current }  // B[] として型付け
+  : { phase: "running", steps: state.steps };         // A[] のまま
+```
+
+判断基準: "この値は特定の状態変化の後にしか意味を持たない" → `useState` に入れず `useRef` に格納して discriminated union の型精度を保つ。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+
+### HTTP 境界で外部 SDK 型を `as` キャストせず型付けする: `z.custom<T>()`
+
+Route Handler などの HTTP 境界で `request.json()` を外部 SDK の複合型（例: `UIMessage[]`）に型付けするとき、`(await request.json()) as { messages: UIMessage[] }` は禁止。`z.custom<T>()` を使うと型推論のみ SDK 型を与えて、最低限のランタイム検査（object かどうか等）と組み合わせられる。
+```ts
+import type { UIMessage } from "ai";
+import { z } from "zod";
+
+// ✅ z.custom<T> で as キャストなしに UIMessage[] 型推論を得る
+const bodySchema = z.object({
+  messages: z.array(z.custom<UIMessage>((val) => typeof val === "object" && val !== null)),
+});
+
+const result = bodySchema.safeParse(await request.json());
+if (!result.success) {
+  return Response.json({ ok: false, error: { code: "BAD_REQUEST" } }, { status: 400 });
+}
+// result.data.messages は UIMessage[] として型推論される
+```
+実際のバリデーションは SDK 側（`convertToModelMessages` 等）に委ねる。クライアントが自社コードで信頼できる場合に適用する。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
+### `test.each` 行の型が行ごとに違う場合は `execute` クロージャで `as` を排除する
+
+`test.each` のテーブル行で factory の返り値型やアクセス先の型が行ごとに異なると、TypeScript が共通型を推論できず `as` キャストが必要になる。`execute: () => result` クロージャに閉じ込めると各行が自己完結し、`as` 完全不要になる。
+
+```ts
+// NG: 行ごとに型が違うため as キャストが必要
+test.each([
+  { factory: (() => ({ answer: 42 })) as () => object, access: (p: never) => (p as { answer: number }).answer, expected: 42 },
+])("$label", ({ factory, access, expected }) => { ... });
+
+// OK: execute クロージャで各行を自己完結させる
+test.each([
+  { label: "returns number", execute: () => lazyProxy(() => ({ answer: 42 })).answer, expected: 42 },
+  { label: "returns string", execute: () => lazyProxy(() => ({ name: "alice" })).name, expected: "alice" },
+])("$label", ({ execute, expected }) => {
+  expect(execute()).toBe(expected);
+});
+```
+
+**判断基準**: `test.each` 行の型を統一するために `as` を使いそうになったら `execute` クロージャ化を試みる。`factory` + `access` の 2 変数パターンは特に `as` が生まれやすい。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
+### AI SDK `TextStreamPart` のフィールド名は `as` キャストで誤魔化せない — 実機で確認する
+
+AI SDK v6 の `TextStreamPart<TOOLS>` discriminated union は型定義がバージョンによって変わりやすい。`as TextStreamPart<ToolSet>` で誤魔化すとテストが型的に通っても実際の `applyPart` 等に渡すと wrong field でエラーを出さずにスキップされる（`part.text` を読む実装に `{ textDelta: "hello" }` を渡してもイベントが生成されない）。
+
+**ai v6.0.x 実機確認済みのフィールド名** (`node_modules/ai/dist/index.d.ts` 参照)
+
+```typescript
+// text-delta: text フィールド（NOT textDelta / NOT delta）, id が必須
+{ type: "text-delta", id: "test-id", text: "hello" }
+
+// tool-result: DynamicToolResult は output + input + dynamic: true（NOT result）
+{ type: "tool-result", toolCallId: "tc-1", toolName: "foo", input: {}, output: someValue, dynamic: true }
+
+// error: error フィールド（unknown 型）
+{ type: "error", error: new Error("failed") }
+```
+
+テストヘルパーでは `as` キャストを使わず正確な型で構築する。
+```typescript
+// NG: as キャストで誤魔化す → 実際の実装でフィールドが読めず無音スキップ
+function makeTextPart(text: string): TextStreamPart<ToolSet> {
+  return { type: "text-delta", textDelta: text } as TextStreamPart<ToolSet>;
+}
+
+// OK: 実際のフィールド名で構築（typecheck がフィールド名の誤りを検出する）
+function makeTextPart(text: string): TextStreamPart<ToolSet> {
+  return { type: "text-delta", id: "test-id", text };
+}
+```
+
+バージョンアップ後はまず `node_modules/ai/dist/index.d.ts` の該当 union 定義を確認してから WHY コメントを書く（未確認の field 名断定は将来の誤りのもとになる）。
+<!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+
+---
+
+## コンパイラの罠
+
+### `let x: T | null = null` がクロージャ内で代入されると後続で `never` になる
+
+TypeScript は `let` 変数がコールバック/クロージャ内でのみ代入される場合、外側のフローで変数を `null` に保守的 narrow する。そのため `if (x === null) throw` で残りのブランチが `never` になり、プロパティアクセスで型エラーになる。
+
+```ts
+// NG: クロージャ内の代入を TS が追跡しない → after throw, observed: never
+let observed: Ctx | null = null;
+const handler = (ctx: Ctx) => { observed = ctx; };
+await run(handler);
+if (observed === null) throw new Error('not called');
+observed.field; // ❌ Property 'field' does not exist on type 'never'
+
+// OK: 配列に push → 取り出す（配列要素の型は T | undefined で narrow が保たれる）
+const observations: Ctx[] = [];
+const handler = (ctx: Ctx) => { observations.push(ctx); };
+await run(handler);
+const observed = observations[0];
+if (observed === undefined) throw new Error('not called');
+observed.field; // ✅
+```
+
+**判断基準**: テストやコールバックで値を capture したいとき、`null` 初期値変数ではなく配列 `[]` を使う。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
+### `satisfies T[]` は `.reduce()` コールバックの型を絞り込まない
+
+`satisfies T[]` はリテラル型を保持するが、`Array.prototype.reduce()` のコールバックパラメータ `t` の型は配列要素型として推論される。ベース型 `T.field: string` が広い場合、コールバック内で `t.field` が `string` のまま残り、`Partial<Record<LiteralUnion, V>>` へのインデックスアクセスで TS7053 エラーになる。
+
+```ts
+// NG: satisfies では絞り込まれない
+const ITEMS = [{ category: "A" }, { category: "B" }] satisfies Base[];
+ITEMS.reduce<Partial<Record<"A" | "B", Base[]>>>((acc, t) => {
+  acc[t.category] = []; // TS7053: 'string' can't index Partial<Record<"A"|"B",…>>
+}, {});
+
+// OK: 交差型で明示アノテーション
+type NarrowItem = Base & { category: "A" | "B" };
+const ITEMS: NarrowItem[] = [{ category: "A" }, { category: "B" }];
+ITEMS.reduce<Partial<Record<"A" | "B", NarrowItem[]>>>((acc, t) => {
+  acc[t.category] = []; // OK: t.category は "A" | "B"
+}, {});
+```
+
+### discriminated union のブランチ内 `??` フォールバックは dead code でも型エラーにならない
+
+discriminated union のブランチ内で保証されるフィールドに `??` フォールバックを書いても、TypeScript はエラーを出さない。
+
+```ts
+type Item =
+  | { inputMode: "text"; inputText: string }
+  | { inputMode: "file" };
+
+function handle(item: Item) {
+  if (item.inputMode === "text") {
+    // inputText は string が保証されている
+    // NG: フォールバックは dead code だが型エラーにならない
+    setInput(item.inputText ?? item.sourceName);
+    // OK
+    setInput(item.inputText);
+  }
+}
+```
+
+discriminated union ブランチ内に `??` や `||` フォールバックがあったら、それが意図的かを確認する。多くの場合は型を絞り込む前の名残（または型変更後の修正漏れ）。
+
+### `noUncheckedIndexedAccess` 下では index アクセスが常に `T | undefined`
+
+`noUncheckedIndexedAccess: true`（strict 相当）下では配列 / `match[n]` / `Record[key]` の index アクセスが常に `T | undefined`。理由: TS は「変数の型」のみ narrow し「index 演算子の結果型」は narrow しない。match を if guard しても、type predicate で key を絞っても index 結果は undefined を含む。対処: `?.` + `?? ""` / `?? false` で fail-closed にする（`!` アサートは禁止かつ noUncheckedIndexedAccess の目的と相反する）。
+
+- `as const` の配列の例: `const TABS = ["a", "b"] as const; TABS[index]` は `"a" | "b" | undefined`。`setState(TABS[next])` は型エラーなので、変数に受けてから `if (tab)` で絞る
+- regex 例: NG `const m = text.match(p); if (m) { const v: string = m[1]; }`（guard 後も `string | undefined`）／OK `const label = text.match(p)?.[1] ?? "";`
+- type predicate 例: NG `isKnownRole(user.role)` で narrow した後の `roles[user.role].allowed`（index 結果は `RoleLike | undefined` のまま）／OK `roles[user.role]?.allowed ?? false`
+<!-- importance: medium | mentions: 2 | first-seen: 2026-06 -->
+
+### 条件型と generic の組み合わせ落とし穴
+
+- **`Extract<Union, { field: ConditionalType<T> }>` を generic 関数から返すと型証明できない**: `T` が未解決のまま TS が条件型の evaluate を defer するため、関数本体の戻り値と宣言した戻り型 `ExtractedType<T>` が一致することを TS が証明できず型エラーになる。`as` キャストが必要になるが、`as` 禁止ルールに抵触する。
+
+  **対処**: generic 化を諦めて非 generic のまま実装し、JSDoc で「generic 化には `as` が必要で禁止ルール違反のため非 generic にした」と理由を記載する。ユースケースが増えて本当に必要になったら overload + 型テストで検証してから導入する。
+
+  ```typescript
+  // ❌ generic にすると型エラー（内部で as が必要になる）
+  function defineAnalyzer<T extends ServiceType>(spec: Spec<T>): Analyzer<T> {
+    return { analyze: () => ... }; // ← Analyzer<T> と証明できない
+  }
+
+  // ✅ 非 generic で実装。JSDoc に理由を記載
+  // NOTE: generic <T> にすると ServiceAnalysisResultFor<T> が Extract<…, ConditionalType<T>>
+  // の deferred evaluation になり as が必要。as 禁止ルールに従い非 generic。
+  function defineAnalyzer(spec: Spec): Analyzer {
+    return { analyze: () => ... };
+  }
+  ```
+  <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
+
+### `asserts x is T` は tautology になっていないか確認する
+
+`function f(x: T): asserts x is T` という形は意味がない（`x` がすでに `T` 型のため asserts は型情報を変えない）。副作用（エラーのスロー等）のみが目的の関数は `void` を使う。
+
+```typescript
+// NG: tautology — raw はすでに T 型なので何も変わらない
+function validateSegments(raw: TranslationResultRaw): asserts raw is TranslationResultRaw {
+  if (raw.segments.length !== expected) throw new Error("...");
+}
+
+// OK: 副作用専用なら void
+function validateSegments(raw: TranslationResultRaw, expectedCount: number): void {
+  if (raw.segments.length !== expectedCount) throw new Error("...");
+}
+```
+
+`asserts x is T` が有効なのは `x: unknown` のように入力型が不明確で、バリデーション後に型を絞り込む必要がある場合のみ。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+
+### 型ガードを `filter` に渡すとサイレントドロップになる
+
+`array.filter(isT)` は型ガードを predicate として使えるが、不一致要素がエラーを出さずに消える。外部データ（API レスポンス・LLM 出力）の場合、予期しない欠損が下流でわかりにくいバグになる。代わりに `map + throw` で早期に検出する。
+
+```typescript
+// NG: 意図しない欠損が無音で起きる
+const segments = rawSegments.filter(isWhisperSegment).map((s) => ({ ... }));
+
+// OK: 不一致を即時エラーにして欠損を防ぐ
+const segments = rawSegments.map((s) => {
+  if (!isWhisperSegment(s)) {
+    throw new Error(`Unexpected segment shape: ${JSON.stringify(s)}`);
+  }
+  return { start: s.start, end: s.end, text: s.text.trim() };
+});
+```
+
+判断基準: 内部データ（型安全なコードが返す値）なら `filter` で ok。外部境界（API・LLM・ユーザー入力）なら `map + throw`。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+
+### 有界ループの「全パス return/throw」は CFA が証明できない（TS2366）— リトライループは `for (;;)` で書く
+
+`for (let i = 0; i <= retries; i++)` の全 iteration が return か throw で終わっても、TS の制御フロー解析はループが最低 1 回回ることを証明できず、ループ後に到達しうると判定する（TS2366: Function lacks ending return statement）。このエラーを消すための末尾 `throw lastError` は `let lastError` との二重管理になり、しかも負の `retries` で `throw undefined` になる実バグを抱える（`tsc --strict` で検証済み・2026-07）。条件なしの `for (;;)` は「ループ後」が存在しないため CFA が clean に通り、`let` も末尾 throw も消える。
+
+```typescript
+// NG: 末尾 throw が TS 要求 + throw undefined の罠
+let lastError: unknown;
+for (let attempt = 0; attempt <= retries; attempt++) {
+  try { return await fn(); }
+  catch (error) { lastError = error; if (attempt === retries) throw error; }
+}
+throw lastError; // retries < 0 で throw undefined
+
+// OK: 出口は return と throw の 2 つだけ。let 不要
+for (let attempt = 0; ; attempt++) {
+  try { return await fn(); }
+  catch (error) { if (attempt >= retries) throw error; }
+}
+```
+
+停止性がループヘッダから catch 内のガードに移るので、attempt 回数を pin するテスト（retries=0 で 1 回・負値で 1 回）で保証を代替する。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-07 -->
+
+---
+
+## 設計・実装 Gotchas
+
+### `Object.keys()` と union 型のキャスト
+
+`Object.keys(x)` は常に `string[]` を返す。`keyof typeof x` の union に絞るために `as` キャストを使いたくなるが、`as` は禁止。
+
+**代替: 静的なキー列挙が分かっている場合はリテラル配列で管理する**
+
+```ts
+// NG: as キャスト
+const keys = Object.keys(CATEGORY_LABELS) as TemplateCategory[];
+
+// OK: 型付きリテラル配列（TypeScript がリテラル値を検証する）
+const keys: TemplateCategory[] = ["運送", "請求", "社内連絡"];
+```
+
+**トレードオフ**: 新しいキーを追加した際にリテラル配列も更新する必要がある（WHY コメントで注記推奨）。表示順の明示制御も兼ねるため、カテゴリ表示順が重要な UI では積極的に採用してよい。
+
+### `async` 関数のリファクタリング後に sync 化を確認する
+
+既存の `async function` が内部で呼んでいた非同期関数をリファクタリングで取り除いたとき、関数自体の `async` キーワードと戻り型 `Promise<T>` が不要になっても残りやすい。`await` が不要になったら `async` を外して同期関数に変えられる。判断: 関数本体に `await` が1つも残っていなければ sync 化できる（TypeScript は `await` なし `async` 関数を許容するが不要な Promise ラップを生成する）。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
+### バックエンドが常に初期化するフィールドは required にする
+
+バックエンドがジョブ作成時に `steps: []`・`sources: []` で初期化することが確定しているなら、TypeScript の型も `optional?` ではなく required にする。Optional にすると全参照箇所で `?? []` フォールバックが必要になり防衛的コードが増える。判断基準: "API が返す JSON にこのフィールドは必ず存在するか？" → Yes なら required。"クライアントがいつ設定するか決まっていない" → optional。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+
+### DB/サーバー関数に渡す型はフィールド名をスキーマと揃える
+
+DB カラムや Server Function の入力型と異なるフィールド名を持つ中間型を作ると、呼び出し側に変換ロジックが漏れる。
+
+```typescript
+// NG: LocationState.lat/lon が DB の latitude/longitude と名前が違う
+// → post-form.tsx で変換ロジックが必要になる
+const loc = await resolveLocationOnSubmit();
+createPost({ latitude: loc.lat, longitude: loc.lon }); // lat → latitude の変換が漏れる
+
+// OK: LocationState のフィールド名を DB スキーマに揃える
+interface LocationState { latitude: number; longitude: number; placeName: string; }
+// → 呼び出し側で変換不要
+createPost({ ...loc }); // またはスプレッドで直接渡せる
+```
+
+**判断基準**: 型が最終的に特定の schema / API に渡されることが確定しているなら、その schema のフィールド名をそのまま使う。中間的な「アプリ独自名」は変換コードを生む。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+
+### テストが analyzer の内部メソッドに直接依存するリスク
+
+- **公開 interface のメソッドをテストが呼ぶと、interface 変更で全壊する**: `ANALYZER.findFiles()`/`ANALYZER.parse()` のように analyzer オブジェクトのプロパティをテストが直接呼ぶと、interface が変わった時点で一斉に型エラーになる。
+
+  **対処**: 実装関数を `@internal export` で直接エクスポートし、テストは公開 interface 経由ではなく実装関数を直接呼ぶ。
+
+  ```typescript
+  // analyzer ファイル
+  /** @internal テスト用にエクスポート */
+  export async function parseApiRoutes(files: string[], pkg: Package): Promise<RestAPISchema> { ... }
+  export const ANALYZER: ServiceAnalyzer = { analyze: async (pkg, ctx) => { ... } };
+
+  // テストファイル
+  const result = await parseApiRoutes([filePath], pkg); // ✅ 実装関数を直接呼ぶ
+  // const result = await ANALYZER.parse([filePath], pkg); // ❌ interface 依存
+  ```
+
+  **判断基準**: テストが `ANALYZER.xxx()` という形で analyzer のプロパティにアクセスしていたら要注意。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+
+### optional 値の assertion は `if (x !== undefined)` でなく throw-guard で囲む（無音 pass を防ぐ）
+
+`expect` を `if (optionalValue !== undefined) { ... }` で囲むと、値が `undefined` のときブロックごとスキップされてテストがエラーを出さずに pass する。「検証したつもりで何も検証していない」false positive になる。`?.` でチェーンした値を直接 `expect` に渡すパターン（`expect(calls[0]?.opts?.expiresAt).toBeDefined()` の後で `calls[0]?.opts?.expiresAt.getTime()` を読む等）も同じ問題で、存在を assertion した「つもり」のまま optional chain が `undefined` を返し続ける。
+
+**対処**: 値を取り出して throw-guard で「無ければ即失敗」にしてから assertion を書く。throw 以降は型も narrowing され `?.` が不要になる。
+
+```typescript
+// ❌ x が undefined だとブロックごと skip され無音 pass
+const expiresAt = calls[0]?.opts?.expiresAt;
+if (expiresAt !== undefined) {
+  expect(expiresAt.getTime()).toBeGreaterThan(now);
+}
+
+// ✅ 無ければ即 throw → 以降 expiresAt は非 undefined に narrowing 済み
+const call = calls[0];
+if (!call) throw new Error("start が呼ばれているはず");
+const expiresAt = call.opts?.expiresAt;
+if (!expiresAt) throw new Error("expiresAt が設定されているはず");
+expect(expiresAt.getTime()).toBeGreaterThan(now);
+```
+
+**判断基準**: テスト内で `if (<optional> !== undefined)` や `?.` 経由の値を `expect` に渡していたら、その assertion は「値が無いとき何も検証しない」可能性がある。条件分岐が「ケースによって assertion 有無が変わる」正当な理由でない限り throw-guard に置き換える。
+<!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+
+### `spyOn(globalThis, ...)` はグローバルを書き換える — `afterEach` で必ず `mockRestore()` する
+
+`spyOn(globalThis, "fetch")`（や `Date`・`console` 等）はグローバルオブジェクトのメソッドを差し替えるため、restore しないと同じファイルの後続テストへ mock が漏れる。`fetch` を使わないつもりのテストがリークした mock を使ってしまい、無関係な失敗・偽の成功を生む。`spyOn` を module スコープの `let spy` に退避し、`afterEach` で `spy?.mockRestore()` する。
+
+```typescript
+let fetchSpy: { mockRestore: () => void } | undefined;
+function mockFetch() { fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(...); }
+afterEach(() => { fetchSpy?.mockRestore(); fetchSpy = undefined; });
+```
+
+**判断基準**: `spyOn(globalThis, ...)` / `spyOn(global, ...)` を書いたら、同ファイルに `afterEach` restore があるか必ず確認する。ローカルオブジェクトの `spyOn` はテスト終了で GC されるが、グローバルは残る。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
+### JSDoc の連続する `/** */` ブロックは最後のものだけが TSDoc として機能する
+
+関数の直前に `/** 説明 */` と `/** NOTE: ... */` を連続して置くと、最初のブロックが TSDoc から外れて孤立する。NOTE は `//` コメントにするか、1つの `/** */` ブロックに統合する。
+
+```typescript
+// ❌ 最初の /** */ が孤立する
+/** 関数の説明 */
+/** NOTE: この実装は〇〇の理由で非 generic にしてある */
+export function foo() { ... }
+
+// ✅ 1つのブロックに統合
+/**
+ * 関数の説明
+ *
+ * NOTE: この実装は〇〇の理由で非 generic にしてある
+ */
+export function foo() { ... }
+```
+<!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+
+---
+
+## Zod・バリデーション
+
+### LLM 出力の Zod スキーマ数値フィールドには `.nonnegative().finite()` を付ける
+
+LLM は `Infinity`・`NaN`・負数をごくまれに出力することがある。`z.number()` だけでは通過してしまい、下流の表示ロジックや計算で壊れる。タイムスタンプ・カウント・比率など「実用的に非負かつ有限であるべき」数値には制約を追加する。
+
+```typescript
+// NG: Infinity/-1 が通ってしまう
+z.number()
+
+// OK: 実用範囲に絞る
+z.number().nonnegative().finite()
+```
+
+`z.number().int().nonnegative()` も一般的なパターン（カウント・インデックス系）。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+
+### 環境変数から数値に変換するときは `Number.parseInt` を使う
+
+`Number("abc")` は `NaN` を返しエラーにならない。型は `number` なのでコンパイルエラーにもならない。環境変数（`process.env.PORT`）やフォーム入力など文字列から数値に変換するときは `Number.parseInt(value, 10)` または `Number.parseFloat(value)` を使う（基数 10 を明示）。
+```ts
+// ❌ NaN を黙過
+const port = Number(process.env.PORT ?? 3000); // process.env.PORT="abc" で NaN になる
+
+// ✅ 基数 10 明示
+const port = Number.parseInt(process.env.PORT ?? "3000", 10);
+
+// ✅ Zod を使う場合（入力バリデーションがある場所）
+const portSchema = z.coerce.number().int().positive();
+```
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
+### Zod スキーマの合成は `.shape` spread を使う
+
+zod v4 では schema 合成のプライマリ API が `.shape` の object spread。`.extend()` は型推論が浅くなる場面があり、v4 では非推奨方向。複数 schema を組み合わせるときは spread でフラットに合成する。
+```ts
+// ❌ extend
+const envSchema = dbEnvSchema.extend({
+  BETTER_AUTH_SECRET: z.string().min(1),
+});
+
+// ✅ shape spread
+const envSchema = z.object({
+  ...dbEnvSchema.shape,
+  BETTER_AUTH_SECRET: z.string().min(1),
+});
+```
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
+---
+
+## 環境・ツール固有
+
+### Bun 固有 API は TypeScript 型定義に含まれない
+
+`import.meta.dir`（カレントファイルのディレクトリ絶対パスを返す Bun 拡張）は TypeScript の `ImportMeta` 型に定義されていないため、`tsc --noEmit` や `bun run typecheck` で型エラーになる。
+
+```ts
+// NG: Bun 固有。TypeScript 型定義外のため型エラー
+const casesDir = import.meta.dir;
+
+// OK: Node.js / Bun 両対応の標準 API
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+const casesDir = dirname(fileURLToPath(import.meta.url));
+```
+
+`import.meta.url` は ECMAScript Module 仕様に含まれており TypeScript も認識する。Bun スクリプトでも動作する。
+<!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+
+### `import.meta.glob` を使うモジュールは `bun test` から import できない → 純粋ロジックを分離
+<!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+
+`import.meta.glob`（Vite のビルド時変換）はテストランナー（`bun test`）上では関数として存在しないため、それを評価するモジュールを直接 import するとロード時にクラッシュする。データソース読み込み（glob）とビジネスロジックが同一ファイルだと、ロジックを単体テストできない。
+
+対処: 純粋関数を別モジュールに切り出し、型は `import type` だけで取り込む。`import type` はランタイムで完全に消える（elision）ため、テストは glob モジュールを評価せずロジックだけ検証できる。デフォルト引数で実データを束ねる便利版は glob 側に置けば、アプリ呼び出しのエルゴノミクスも保てる。
+
+```ts
+// depends.ts — 純粋・テスト可能。型のみ import（ランタイムでは issues.ts を評価しない）
+import type { Issue } from "./issues";
+export function scheduleConflictsOf(issue: Issue, lookup: Map<number, Issue>): Issue[] { /* ... */ }
+
+// issues.ts — import.meta.glob で *.md を読む。実データを束ねた便利版を再公開
+import { scheduleConflictsOf as core } from "./depends";
+export const scheduleConflictsOf = (i: Issue, lookup = byNum) => core(i, lookup);
+```
+
+テストは合成フィクスチャ（合成 `Map` / 配列）を注入する。同根の一般原則は依存性注入: カリー化ファクトリパターン（`typescript.md`）と同じで、「実データへの依存をデフォルト引数に追い出し、コアは引数で受ける」というものだ。
+
+### `g` フラグ付き RegExp をモジュール定数にしない
+
+`/pattern/g` を `const` でモジュールスコープに置くと、`exec()` や `match()` が `lastIndex` を書き換えるため、2回目以降の呼び出しで結果がずれる。
+
+```ts
+// NG: lastIndex が呼び出し間で汚染される
+const PLACEHOLDER_RE = /\{\{([^}]+)\}\}/g;
+
+// OK: 毎回新しい RegExp インスタンスを返すファクトリ
+const placeholderPattern = () => /\{\{([^}]+)\}\}/g;
+```
+
+`replace()` は `lastIndex` をリセットするので定数でも問題ないが、`exec()` / `matchAll()` を使う場合は必ずファクトリ関数にする。
+
+### Biome `noAssignInExpressions` — `while ((match = re.exec(str)))` は書けない
+
+Biome の `noAssignInExpressions` ルールが `while ((match = regex.exec(text)) !== null)` を拒否する。
+
+```ts
+// NG: Biome lint error
+let match: RegExpExecArray | null;
+while ((match = pattern.exec(text)) !== null) {
+  foundLabels.add(match[1]);
+}
+
+// OK: matchAll + for-of
+for (const match of text.matchAll(pattern)) {
+  const label = match[1];
+  if (label !== undefined) {
+    foundLabels.add(label);
+  }
+}
+```
+
+（`match[1]` が `string | undefined` になる理由と `!` 禁止時の if guard 代替は noUncheckedIndexedAccess 節を参照）
+<!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
+### `AbortError` 判定は `signal.aborted` で
+
+`catch` ブロックで `err.name === "AbortError"` を使うと、同名の独自 Error クラスによる false positive が起きる。`AbortController` の signal が手元にある場合は `controller.signal.aborted` を参照する方が確実。
+
+```typescript
+// NG: 独自エラーが同名を持つと誤判定する
+} catch (err: unknown) {
+  if (err instanceof Error && err.name === "AbortError") { ... }
+}
+
+// OK: signal.aborted で確実に判定
+} catch (err: unknown) {
+  if (controller.signal.aborted) {
+    // cancelled
+  } else {
+    // failed
+  }
+}
+```
+
+- **`bun:test` の `mock.module` でモック引数を取得するとき、モック関数の引数型を具体化して `as` キャストを回避する**: `mock.module("./dep", () => ({ fn: (config: unknown) => ... }))` と引数型を `unknown` にすると、呼び出し引数を後で使う際に `config as { key: string }` が必要になる（`as` キャスト禁止環境では違反）。代わりに「引数として期待する形」を `MockConfig` 型で定義し、`mock.module` のファクトリ関数と受け取る変数セルの両方にその型を付ける。
+  ```typescript
+  type MockConfig = { messages: Array<{ role: string; content: string }>; model: unknown };
+  let capturedArgs: MockConfig | null = null;
+  mock.module("./dep", () => ({
+    fn: (config: MockConfig) => { capturedArgs = config; return result; },
+  }));
+  // 使う側: capturedArgs.messages — as キャスト不要
+  ```
+  注意: `import type { SomeType } from "./dep"` でモジュールが差し替えられていてもランタイム import は発生しないため `MockConfig` の定義ソースとして使える。`as const` テーブルでも型引数を揃えておくと `extend`・`spread` 時に明示キャスト不要になる。
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+
+- **`bun:test` の `mock.module` はテストファイルを跨いで残留する。実装をテストしたいなら依存注入で seam を作る**: bun test は複数テストファイルを同一プロセスで走らせるため、あるファイルの `mock.module("./dep", ...)` が別のテストファイルにも効き、モック対象モジュール自身のテスト（`dep.test.ts`）が実装の代わりにモックを読み込んで壊れる。壊れるのは自分のテストでなく既存の他ファイルなので、フルスイートを回すまで気づかない。対処: モジュール差し替えでなく、テスト対象関数に依存を引数注入する（`fn(config, deps = { git, gh })` のようなデフォルト引数 seam）。判断基準: 「mock したいモジュールに自分のテストファイルがあるか？」YES なら mock.module は使わない。実例: ある案件の PR で `mock.module('.../git')` が `git.test.ts`/`gh.test.ts` の 23 件を壊し、`SetupDeps` 引数注入に切り替えた（2026-08）。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-08 -->
+
+- **`get` トラップだけの Proxy ラッパーは consumer の `"x" in obj` チェックを破る**: 遅延初期化 Proxy（`new Proxy({} as T, { get: ... })`）は、`has` トラップ未実装だと `in` 演算子が target（空オブジェクト）を見て常に false を返す。ライブラリは duck-typing 分岐に `in` を使うことがあり（例: better-auth `toNextJsHandler` の `"handler" in auth ? auth.handler(req) : auth(req)`）、false 側の分岐に進んで「auth is not a function」のような不可解な実行時エラーになる。typecheck は通る（型上は T のまま）ため静的に検出できない。対処: 遅延 Proxy を書くときは `get` に加えて `has: (_t, p) => p in resolve()`（必要なら `ownKeys`/`getOwnPropertyDescriptor` も）を実装し、トラップを resolve 済み実体に委譲する。判断基準: 「この Proxy をライブラリ関数に渡すか？」→ YES なら get 以外のトラップも必須と考える。
+  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+
+- **union を switch する `default` に `value satisfies never;` を置いて exhaustive check を強制する**: variant 追加時に「型が `never` に代入できない」コンパイルエラーで検出できる。後続の `console.warn` + フォールバック return は DB 由来の予期外値へのランタイム防衛（WHY NOT throw のみ: throw はサービス全体が crash するため domain store は継続を選ぶ）。値が DB 由来でなく自前で組み立てた結果値（never 到達が真に不可能）なら `satisfies never;` + throw でよい。亜種: `map`/`reduce`/`flatMap` のコールバック内 switch は全 case が return しても TS が戻り値型に `undefined` を含めて推論するため Biome `useIterableCallbackReturn` が default を要求する。`default: return null` でも Biome は満たすが exhaustive check 機会を失うので、同じく `value satisfies never;` を 1 行入れる。
+  <!-- importance: medium | mentions: 2 | first-seen: 2026-06 -->
+
+- **`?.` は already `undefined` を返す。`?. ?? undefined` は冗長**: `input.file?.name` はチェーンが短絡したとき `undefined` を返す。`input.file?.name ?? undefined` は「undefined を undefined で置き換える」だけで意味がない。detect: `rg '\?\.\w.*\?\? undefined'`。
+  <!-- importance: low | mentions: 1 | first-seen: 2026-06 -->
+
+- **Biome auto-fix は中間 Edit 状態を誤検知する。Edit をまたいで壊れる**: ① `noUnusedVariables` の `_` prefix rename は TS6133（`noUnusedLocals` は `_` prefix を特別扱いしない）を消さない → 使われなくなった関数は rename でなく削除する（rename はコメントアウト相当。rename が出たら「本当に使うつもりか」を問い直す）。② `noUnusedImports` は「import 追加直後・使用箇所未記述」の中間状態を未使用として即削除する（PostToolUse hook が Edit ごとに走るため。import だけ先に Edit すると連続で消される）→ import 追加と使用箇所は必ず 1 つの Edit で同時に書く。
+  <!-- importance: high | mentions: 2 | first-seen: 2026-06 -->
+
+- **`z.discriminatedUnion` は `ZodObject[]` を要求するため `z.refine()` と組み合わせられない**: `.refine()` を呼ぶと `ZodObject` → `ZodEffects` に変換されるため `z.discriminatedUnion("action", [schema.refine(...), ...])` は TypeScript エラーになる。代替: `z.union([schema.refine(...), otherSchema])` を使う。`z.discriminatedUnion` の「action フィールドで早期終了」メリットは union が 2〜3 択の規模では体感差がないため `z.union` で十分。今回の事例: `action="resolve"` のスキーマに `z.refine((d) => d.kind !== "discount" || d.amount !== null)` を追加した結果 discriminatedUnion が落ちた。
+  <!-- importance: medium | mentions: 2 | first-seen: 2026-06 -->
+
+- **`T | null` を nullable にするとき optional（`?`）を付けると `undefined | null | T` の 3 値になる**: `amount?: number | null` は `undefined`・`null`・`number` の 3 状態を持ち、「null を明示的に渡す」と「省略する」を呼び出し側が区別できない。bridge 関数が `amount` を中継するとき「省略 = undefined → ?? null で null にできる」と思いがちだが、spread を使うと undefined のまま伝播してサーバー側の schema 検証が通る（optional にしているため）か silent bad state になる。対処: `amount: number | null`（required）にして全ての呼び出し箇所で `amount: null`（holdover/expense）または `amount: 数値`（discount）を明示的に渡す。detect: `rg ': (number|string) \| null\)'` が `?` を持つパターン。
+  <!-- importance: medium | mentions: 2 | first-seen: 2026-06 -->

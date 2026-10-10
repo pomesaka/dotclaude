@@ -1,0 +1,9 @@
+{
+  "name": "rich",
+  "version": "0.1.0",
+  "description": "show tool: the agent draws cards, a box-and-arrow diagram, tables and clickable questions inline in the transcript or in a pane",
+  "author": {
+    "name": "pomesaka"
+  },
+  "types": "./types/index.d.ts"
+}

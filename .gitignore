@@ -1,0 +1,5 @@
+skills/review-team-*/
+skills/synced/
+.playwright-cli/
+# push の前のチェックが読む、公開しない名前の一覧（scripts/check-public.sh）
+.private-names

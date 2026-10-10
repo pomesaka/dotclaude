@@ -1,0 +1,9 @@
+{
+  "name": "human-edit",
+  "version": "0.1.0",
+  "description": "human_edit tool: the agent asks the user to edit a file in a tmux split pane and waits until the editor exits",
+  "author": {
+    "name": "pomesaka"
+  },
+  "types": "./types/index.d.ts"
+}

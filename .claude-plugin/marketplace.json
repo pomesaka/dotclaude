@@ -1,0 +1,36 @@
+{
+  "name": "dotclaude",
+  "owner": { "name": "pomesaka" },
+  "plugins": [
+    {
+      "name": "human-edit",
+      "source": "./mods/human-edit",
+      "description": "human_edit tool: the agent asks the user to edit a file in a tmux split pane and waits until the editor exits"
+    },
+    {
+      "name": "next-step",
+      "source": "./mods/next-step",
+      "description": "After each turn, asks a small model for up to four prompts the user is likely to send next and shows them as cards above the prompt; clicking a card sends its prompt"
+    },
+    {
+      "name": "publish-guard",
+      "source": "./mods/publish-guard",
+      "description": "Before the agent pushes from a repository that has scripts/check-public.sh, runs that check and blocks the push when it finds names or keys that must not be published"
+    },
+    {
+      "name": "rich",
+      "source": "./mods/rich",
+      "description": "show tool: the agent draws cards, a box-and-arrow diagram, tables and clickable questions inline in the transcript or in a pane"
+    },
+    {
+      "name": "status-band",
+      "source": "./mods/status-band",
+      "description": "A line under the prompt that replaces the status line: model, context use, directory, jj counts and the pull requests this session created or edited, with panes for the jj log and the pull requests"
+    },
+    {
+      "name": "devrep",
+      "source": "./mods/devrep",
+      "description": "update_devrep tool: while turned on for a session, the agent keeps a short report of where the work stands (doing now, next, and free sections) in a pane, so the user can pick the session back up without reading the transcript"
+    }
+  ]
+}

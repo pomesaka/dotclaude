@@ -1,0 +1,9 @@
+{
+  "name": "devrep",
+  "version": "0.1.0",
+  "description": "update_devrep tool: while turned on for a session, the agent keeps a short report of where the work stands (doing now, next, and free sections) in a pane, so the user can pick the session back up without reading the transcript",
+  "author": {
+    "name": "pomesaka"
+  },
+  "types": "./types/index.d.ts"
+}

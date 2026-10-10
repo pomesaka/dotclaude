@@ -1,0 +1,287 @@
+<!--
+  explain スキル: 「決めてほしいこと」の部品（参考）
+
+  ページの上で答えてもらい、答えを 1 つのテキストにしてチャットに貼り戻してもらうための見本。
+  そのまま使っても、置き場所・見た目・作りをページに合わせて変えてもよい。
+  変えるときも、次の 2 点は残す。
+  - 答えのテキストに、どのページへの回答かと、問いごとの短い名前と答えが入ること
+  - クリップボードにコピーできない環境でも、テキストを手で写せること
+
+  見た目（最初はタブだけの畳んだ状態。タブを押すと開き、もう一度押すと閉じる）
+    | 決めてほしいこと        1 / 2  [回答をコピー] |
+    | Q1 短い名前 ● | Q2 短い名前 ○ | ...          |
+    | 押したタブの問いと選択肢                       |
+
+  そのまま使う場合
+  - <section class="q-block"> から </section> までを、ページの好きな場所に置く
+  - <style> と <script> は、ページに 1 回だけ入れる（<style> は head、<script> は body の最後）
+  - data-page にはページのファイル名を書く。回答の先頭に出る
+  - 問いは <div class="q"> を増やす。タブはスクリプトが data-key から作る
+  - name は問いごとに変える（q1, q2, ...）。value は回答のテキストにそのまま出る
+  - おすすめが無い問いでは <span class="q-rec"> を消す
+  - 色はページの --accent・--fg・--muted・--line・--surface があればそれを使う。無ければ下の既定値
+-->
+
+<section class="q-block" data-page="{{ページのファイル名}}" aria-labelledby="q-title">
+  <div class="q-head">
+    <h2 id="q-title">決めてほしいこと</h2>
+    <div class="q-actions">
+      <span class="q-count"></span>
+      <button type="button" class="q-copy">回答をコピー</button>
+    </div>
+  </div>
+  <p class="q-status" role="status" aria-live="polite"></p>
+
+  <div class="q-tabs" role="tablist" aria-labelledby="q-title"></div>
+
+  <div class="q" data-key="{{短い名前}}">
+    <p class="q-text"><strong>{{問い}}</strong>{{判断に要る説明}}</p>
+    <p class="q-ref">{{根拠: ファイルと行、ドキュメントへのリンク}}</p>
+    <fieldset>
+      <legend class="q-sr">{{短い名前}}</legend>
+      <label><input type="radio" name="q1" value="{{選択肢 A}}"> {{選択肢 A}}<span class="q-rec">おすすめ</span></label>
+      <label><input type="radio" name="q1" value="{{選択肢 B}}"> {{選択肢 B}}</label>
+      <input type="text" class="q-note" placeholder="補足（任意）" aria-label="{{短い名前}}の補足">
+    </fieldset>
+  </div>
+
+  <textarea class="q-fallback" readonly rows="5" aria-label="回答のテキスト" hidden></textarea>
+</section>
+
+<style>
+.q-block {
+  --q-accent: var(--accent, #3d5a80);
+  --q-fg: var(--fg, #1f2328);
+  --q-muted: var(--muted, #5f6670);
+  --q-line: var(--line, #d8dce1);
+  --q-surface: var(--surface, #ffffff);
+  --q-on-accent: #ffffff;
+  background: var(--q-surface);
+  color: var(--q-fg);
+  border: 1px solid var(--q-line);
+  border-inline-start: 3px solid var(--q-accent);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  /* ページ側の section への gap や padding の指定が部品の中に効かないよう、ここで決めておく */
+  gap: 0;
+  padding: 0;
+  margin: 0;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .q-block {
+    --q-accent: var(--accent, #9db4d6);
+    --q-fg: var(--fg, #e4e7eb);
+    --q-muted: var(--muted, #9aa2ad);
+    --q-line: var(--line, #30363d);
+    --q-surface: var(--surface, #1b1f24);
+    --q-on-accent: #11151a;
+  }
+}
+:root[data-theme="dark"] .q-block {
+  --q-accent: var(--accent, #9db4d6);
+  --q-fg: var(--fg, #e4e7eb);
+  --q-muted: var(--muted, #9aa2ad);
+  --q-line: var(--line, #30363d);
+  --q-surface: var(--surface, #1b1f24);
+  --q-on-accent: #11151a;
+}
+.q-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px 8px;
+}
+.q-head h2 { margin: 0; font-size: 1rem; line-height: 1.35; }
+.q-actions { display: flex; align-items: center; gap: 10px; }
+.q-count { color: var(--q-muted); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.q-copy {
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--q-on-accent);
+  background: var(--q-accent);
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+.q-status { margin: 0; padding: 0 16px 6px; color: var(--q-muted); font-size: 0.85rem; text-align: end; }
+.q-status:empty { display: none; }
+.q-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 8px;
+  overflow-x: auto;
+}
+.q-block.is-open .q-tabs { border-bottom: 1px solid var(--q-line); }
+.q-tab {
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--q-muted);
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: 8px 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.q-tab:hover { color: var(--q-fg); }
+.q-tab[aria-selected="true"] { color: var(--q-fg); border-bottom-color: var(--q-accent); font-weight: 500; }
+.q-tab .q-no { font-variant-numeric: tabular-nums; color: var(--q-muted); }
+.q-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--q-muted);
+  flex: none;
+}
+.q-tab[data-answered="true"] .q-dot { background: var(--q-accent); border-color: var(--q-accent); }
+.q { padding: 14px 16px 16px; }
+.q[hidden] { display: none; }
+.q-text { margin: 0; }
+.q-ref { margin: 4px 0 0; color: var(--q-muted); font-size: 0.85rem; }
+.q-block fieldset { border: 0; padding: 0; margin: 12px 0 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.q-block label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.q-rec {
+  font-size: 0.75rem;
+  color: var(--q-accent);
+  border: 1px solid var(--q-accent);
+  border-radius: 999px;
+  padding: 0 8px;
+}
+.q-note, .q-fallback {
+  font: inherit;
+  color: var(--q-fg);
+  background: var(--q-surface);
+  border: 1px solid var(--q-line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.q-fallback {
+  margin: 0 16px 16px;
+  width: auto;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 0.9rem;
+  resize: vertical;
+}
+.q-block :is(button, input, textarea):focus-visible { outline: 2px solid var(--q-accent); outline-offset: 2px; }
+.q-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style>
+
+<script>
+(function () {
+  document.querySelectorAll(".q-block").forEach(function (block, b) {
+    var items = Array.prototype.slice.call(block.querySelectorAll(".q"));
+    var tablist = block.querySelector(".q-tabs");
+    var copy = block.querySelector(".q-copy");
+    var count = block.querySelector(".q-count");
+    var status = block.querySelector(".q-status");
+    var fallback = block.querySelector(".q-fallback");
+
+    var tabs = items.map(function (item, i) {
+      var id = "q-" + b + "-" + i;
+      item.id = id + "-panel";
+      item.setAttribute("role", "tabpanel");
+      item.setAttribute("aria-labelledby", id + "-tab");
+      item.tabIndex = 0;
+
+      var tab = document.createElement("button");
+      tab.type = "button";
+      tab.className = "q-tab";
+      tab.id = id + "-tab";
+      tab.setAttribute("role", "tab");
+      tab.setAttribute("aria-controls", item.id);
+      tab.innerHTML = '<span class="q-dot" aria-hidden="true"></span><span class="q-no">Q' + (i + 1) + "</span>";
+      tab.appendChild(document.createTextNode(item.getAttribute("data-key")));
+      tab.addEventListener("click", function () { select(current === i ? -1 : i); });
+      tab.addEventListener("keydown", function (e) {
+        var next = e.key === "ArrowRight" ? i + 1 : e.key === "ArrowLeft" ? i - 1 : null;
+        if (next === null) return;
+        e.preventDefault();
+        next = (next + items.length) % items.length;
+        select(next);
+        tabs[next].focus();
+      });
+      tablist.appendChild(tab);
+      return tab;
+    });
+
+    // index が -1 なら全部を畳む。畳んでいる間も、最初のタブだけは Tab キーで届くようにする
+    var current = -1;
+    function select(index) {
+      current = index;
+      block.classList.toggle("is-open", index >= 0);
+      items.forEach(function (item, i) {
+        var on = i === index;
+        item.hidden = !on;
+        tabs[i].setAttribute("aria-selected", on ? "true" : "false");
+        tabs[i].tabIndex = on || (index < 0 && i === 0) ? 0 : -1;
+      });
+    }
+
+    function isAnswered(item) {
+      return Boolean(item.querySelector("input[type=radio]:checked"));
+    }
+
+    function update() {
+      var done = 0;
+      items.forEach(function (item, i) {
+        var a = isAnswered(item);
+        tabs[i].setAttribute("data-answered", a ? "true" : "false");
+        tabs[i].setAttribute("aria-label", "Q" + (i + 1) + " " + item.getAttribute("data-key") + (a ? "（回答済み）" : "（未回答）"));
+        if (a) done += 1;
+      });
+      count.textContent = done + " / " + items.length;
+      return done;
+    }
+
+    function answerText() {
+      var lines = ["【" + block.getAttribute("data-page") + " への回答】"];
+      items.forEach(function (item, i) {
+        var picked = item.querySelector("input[type=radio]:checked");
+        var note = item.querySelector(".q-note").value.trim();
+        var value = picked ? picked.value : "未回答";
+        lines.push((i + 1) + ". " + item.getAttribute("data-key") + ": " + value + (note ? "（" + note + "）" : ""));
+      });
+      return lines.join("\n");
+    }
+
+    function showFallback(text) {
+      fallback.value = text;
+      fallback.hidden = false;
+      fallback.select();
+      status.textContent = "コピーできませんでした。下の欄を選んで写してください。";
+    }
+
+    block.addEventListener("change", update);
+    select(-1);
+    update();
+
+    copy.addEventListener("click", function () {
+      var text = answerText();
+      var left = items.length - update();
+      if (!navigator.clipboard || !navigator.clipboard.writeText) {
+        showFallback(text);
+        return;
+      }
+      navigator.clipboard.writeText(text).then(function () {
+        fallback.hidden = true;
+        status.textContent = left > 0
+          ? "コピーしました。未回答が " + left + " 件あります。"
+          : "コピーしました。チャットに貼り付けてください。";
+      }, function () {
+        showFallback(text);
+      });
+    });
+  });
+})();
+</script>

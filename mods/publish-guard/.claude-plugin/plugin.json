@@ -1,0 +1,8 @@
+{
+  "name": "publish-guard",
+  "version": "0.1.0",
+  "description": "Before the agent pushes from a repository that has scripts/check-public.sh, runs that check and blocks the push when it finds names or keys that must not be published",
+  "author": {
+    "name": "pomesaka"
+  }
+}
