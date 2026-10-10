@@ -168,6 +168,48 @@ test('質問が 1 つなら、選んだ時点で送る', async ($, on) => {
   await ui.unmount()
 })
 
+test('選択肢になっているカードは、題名を押すと、そのカードの値を答えとして送る。質問の枠は別に描かない', async ($, on) => {
+  memoryStore(on, { 'open:toolu_4': true })
+  const sent: string[] = []
+  on('prompt.submit', (_$, e) => {
+    sent.push(e.text)
+    return { text: e.text }
+  })
+  const choices = {
+    title: '保存の方式',
+    blocks: [
+      {
+        type: 'cards',
+        key: 'plan',
+        question: 'どの案',
+        cards: [
+          { title: '案A（仮置き）', lines: ['保存が終わるまで待つ'], value: '案A' },
+          { title: '案B', lines: ['キューに積んで返す'] },
+        ],
+      },
+    ],
+  }
+  const ui = await $.ui.mount(row(choices, 'toolu_4'))
+  expect(await ui.find({ type: 'Text', text: /^\( \) 案A（仮置き）$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^選ぶと、そのまま送ります$/ })).toBeDefined()
+
+  await ui.press({ key: 'pick-plan-0' })
+  expect(sent).toEqual(['【保存の方式 への回答】\n1. どの案: 案A'])
+
+  await ui.unmount()
+})
+
+test('選択肢でないカードには、押せる題名を出さない', async ($, on) => {
+  memoryStore(on, {})
+  const plain = { title: '比較', blocks: [{ type: 'cards', cards: [{ title: '案A', lines: ['x'] }, { title: '案B', lines: ['y'] }] }] }
+  const ui = await $.ui.mount(row(plain, 'toolu_5'))
+
+  expect(await ui.find({ type: 'Text', text: /^案A$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Button' })).toBeUndefined()
+
+  await ui.unmount()
+})
+
 test('実行中の行と、読めない入力の行は、エンジンの描画に任せる', async ($, on) => {
   // テストの土台にはエンジンの描画が無い。next(e) が届いたことを、この目印で確かめる
   on('ui.render', ($$, e) => {

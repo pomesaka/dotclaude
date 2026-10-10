@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { answerText, parseDoc, type Doc } from '../hooks/doc'
+import { answerText, isTakenOver, parseDoc, type Doc } from '../hooks/doc'
 
 const REJECTED: { name: string; input: unknown; error: string }[] = [
   { name: 'オブジェクトでない', input: 'x', error: 'input must be an object' },
@@ -24,6 +24,29 @@ const REJECTED: { name: string; input: unknown; error: string }[] = [
   { name: '箱の id が重複', input: { title: 't', blocks: [{ type: 'diagram', nodes: [{ id: 'a', title: 'A' }, { id: 'a', title: 'B' }] }] }, error: 'blocks[0].nodes has the id "a" twice' },
   { name: '選択肢が 1 つ', input: { title: 't', blocks: [{ type: 'question', key: 'k', question: 'q', options: ['only'] }] }, error: 'blocks[0].options needs at least 2 options' },
   { name: '選択肢が重複', input: { title: 't', blocks: [{ type: 'question', key: 'k', question: 'q', options: ['a', 'a'] }] }, error: 'blocks[0].options has the same option twice' },
+  { name: '選択肢のカードに question が無い', input: { title: 't', blocks: [{ type: 'cards', key: 'k', cards: [{ title: 'a', lines: ['l'] }, { title: 'b', lines: ['l'] }] }] }, error: 'blocks[0].question must be a non-empty string' },
+  { name: '選択肢のカードが 1 枚', input: { title: 't', blocks: [{ type: 'cards', key: 'k', question: 'q', cards: [{ title: 'a', lines: ['l'] }] }] }, error: 'blocks[0].cards needs at least 2 cards to be choices' },
+  {
+    name: '選択肢のカードの値が重複',
+    input: { title: 't', blocks: [{ type: 'cards', key: 'k', question: 'q', cards: [{ title: 'a', lines: ['l'], value: 'x' }, { title: 'b', lines: ['l'], value: 'x' }] }] },
+    error: 'blocks[0].cards has the same value twice',
+  },
+  {
+    name: 'タブの中に選択肢のカード',
+    input: {
+      title: 't',
+      blocks: [{ type: 'tabs', tabs: [{ label: 'A', blocks: [{ type: 'cards', key: 'k', question: 'q', cards: [{ title: 'a', lines: ['l'] }, { title: 'b', lines: ['l'] }] }] }, { label: 'B', blocks: [{ type: 'text', text: 'b' }] }] }],
+    },
+    error: 'blocks[0].tabs[0].blocks[0] cannot take key or question inside a tab: cards that are choices go outside the tabs',
+  },
+  {
+    name: '質問とカードの key が重複',
+    input: {
+      title: 't',
+      blocks: [{ type: 'question', key: 'k', question: 'q', options: ['a', 'b'] }, { type: 'cards', key: 'k', question: 'r', cards: [{ title: 'a', lines: ['l'] }, { title: 'b', lines: ['l'] }] }],
+    },
+    error: 'two questions share the key "k"',
+  },
   {
     name: '質問の key が重複',
     input: { title: 't', blocks: [{ type: 'question', key: 'k', question: 'q', options: ['a', 'b'] }, { type: 'question', key: 'k', question: 'r', options: ['a', 'b'] }] },
@@ -54,7 +77,7 @@ test('parseDoc は省略された値を埋める', async () => {
       where: 'inline',
       title: 't',
       blocks: [
-        { type: 'cards', cards: [{ title: 'c', lines: [{ text: 'plain line', tone: 'plain' }, { text: 'good line', tone: 'good' }] }] },
+        { type: 'cards', cards: [{ title: 'c', lines: [{ text: 'plain line', tone: 'plain' }, { text: 'good line', tone: 'good' }], value: 'c' }], choice: null },
         { type: 'diagram', nodes: [{ id: 'a', title: 'A', note: '' }], edges: [] },
       ],
     },
@@ -83,6 +106,69 @@ for (const one of ANSWERS) {
   })
 }
 
+test('parseDoc は、key と question の付いたカードを選択肢にする。value が無ければ題名を値にする', async () => {
+  const parsed = parseDoc({
+    title: 't',
+    blocks: [{ type: 'cards', key: 'plan', question: 'どの案', cards: [{ title: '案A（仮置き）', lines: ['l'], value: '案A' }, { title: '案B', lines: ['l'] }] }],
+  })
+  expect(parsed).toEqual({
+    ok: true,
+    value: {
+      where: 'inline',
+      title: 't',
+      blocks: [
+        {
+          type: 'cards',
+          cards: [
+            { title: '案A（仮置き）', lines: [{ text: 'l', tone: 'plain' }], value: '案A' },
+            { title: '案B', lines: [{ text: 'l', tone: 'plain' }], value: '案B' },
+          ],
+          choice: { key: 'plan', question: 'どの案' },
+        },
+      ],
+    },
+  })
+})
+
+const CARD_DOC: Doc = {
+  where: 'inline',
+  title: '保存の方式',
+  blocks: [
+    {
+      type: 'cards',
+      cards: [
+        { title: '案A（仮置き）', lines: [{ text: 'l', tone: 'plain' }], value: '案A' },
+        { title: '案B', lines: [{ text: 'l', tone: 'plain' }], value: '案B' },
+      ],
+      choice: { key: 'plan', question: 'どの案' },
+    },
+  ],
+}
+
+const CARD_ANSWERS: { name: string; answers: { [key: string]: string }; text: string | undefined }[] = [
+  { name: '選んだカードの値を送る。題名ではない', answers: { plan: '案A' }, text: '【保存の方式 への回答】\n1. どの案: 案A' },
+  { name: '題名を答えにしても、値でなければ送れない', answers: { plan: '案A（仮置き）' }, text: undefined },
+  { name: '選んでいなければ送れない', answers: {}, text: undefined },
+]
+
+for (const one of CARD_ANSWERS) {
+  test(`answerText（選択肢のカード）: ${one.name}`, async () => {
+    expect(answerText(CARD_DOC, one.answers)).toBe(one.text)
+  })
+}
+
 test('answerText: 質問が無ければ送る文も無い', async () => {
   expect(answerText({ where: 'inline', title: 't', blocks: [{ type: 'text', text: 'x' }] }, {})).toBe(undefined)
 })
+
+const DROPPED: { name: string; reason: string; isTaken: boolean }[] = [
+  { name: 'questions が相談の結論として引き取った', reason: '相談の結論として受け取りました（要約を付けてメインへ送ります）', isTaken: true },
+  { name: 'ほかの理由で止められた', reason: 'blocked by policy', isTaken: false },
+  { name: '理由が空', reason: '', isTaken: false },
+]
+
+for (const one of DROPPED) {
+  test(`isTakenOver: ${one.name}`, async () => {
+    expect(isTakenOver(one.reason)).toBe(one.isTaken)
+  })
+}

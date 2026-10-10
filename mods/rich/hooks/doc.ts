@@ -1,12 +1,15 @@
 export type Tone = 'plain' | 'good' | 'warn' | 'dim'
 export type CardLine = { text: string; tone: Tone }
-export type Card = { title: string; lines: CardLine[] }
+// value は、このカードを選んだときに答えとして送る文。指定が無ければ題名
+export type Card = { title: string; lines: CardLine[]; value: string }
+// カードを選択肢にするときの、質問の id と問い
+export type Choice = { key: string; question: string }
 export type DiagramNode = { id: string; title: string; note: string }
 export type DiagramEdge = { from: string; to: string; label: string }
 
 export type Block =
   | { type: 'text'; text: string }
-  | { type: 'cards'; cards: Card[] }
+  | { type: 'cards'; cards: Card[]; choice: Choice | null }
   | { type: 'diagram'; nodes: DiagramNode[]; edges: DiagramEdge[] }
   | { type: 'question'; key: string; question: string; options: string[] }
   | { type: 'tabs'; tabs: Tab[] }
@@ -15,7 +18,8 @@ export type Tab = { label: string; blocks: Block[] }
 
 export type Where = 'inline' | 'pane'
 export type Doc = { where: Where; title: string; blocks: Block[] }
-export type Question = Extract<Block, { type: 'question' }>
+// 利用者が答える問い。question のブロックか、選択肢になっている cards のブロックから作る
+export type Question = { key: string; question: string; options: string[] }
 
 const TONES: readonly Tone[] = ['plain', 'good', 'warn', 'dim']
 
@@ -61,7 +65,9 @@ const card = (value: unknown, at: string): Parsed<Card> => {
   if (!title.ok) return title
   const lines = list(value.lines, `${at}.lines`, cardLine)
   if (!lines.ok) return lines
-  return ok({ title: title.value, lines: lines.value })
+  const chosen = value.value === undefined ? title : text(value.value, `${at}.value`)
+  if (!chosen.ok) return chosen
+  return ok({ title: title.value, lines: lines.value, value: chosen.value })
 }
 
 const node = (value: unknown, at: string): Parsed<DiagramNode> => {
@@ -116,6 +122,10 @@ const tab = (value: unknown, at: string): Parsed<Tab> => {
     if (isRecord(item) && (item.type === 'question' || item.type === 'tabs')) {
       return fail(`${where}.type must be one of text, cards, diagram inside a tab`)
     }
+    // WHY NOT 選択肢のカード: question と同じ。見えていないタブの選択肢が、未回答のまま残る
+    if (isRecord(item) && item.type === 'cards' && (item.key !== undefined || item.question !== undefined)) {
+      return fail(`${where} cannot take key or question inside a tab: cards that are choices go outside the tabs`)
+    }
     return block(item, where)
   })
   if (!blocks.ok) return blocks
@@ -137,7 +147,16 @@ const block = (value: unknown, at: string): Parsed<Block> => {
     }
     case 'cards': {
       const cards = list(value.cards, `${at}.cards`, card)
-      return cards.ok ? ok({ type: 'cards', cards: cards.value }) : cards
+      if (!cards.ok) return cards
+      // key と question を渡すと、カードが選択肢になる。片方だけでは、選んだ答えを送る文を作れない
+      if (value.key === undefined && value.question === undefined) return ok({ type: 'cards', cards: cards.value, choice: null })
+      const key = text(value.key, `${at}.key`)
+      if (!key.ok) return key
+      const question = text(value.question, `${at}.question`)
+      if (!question.ok) return question
+      if (cards.value.length < 2) return fail(`${at}.cards needs at least 2 cards to be choices`)
+      if (new Set(cards.value.map(one => one.value)).size !== cards.value.length) return fail(`${at}.cards has the same value twice`)
+      return ok({ type: 'cards', cards: cards.value, choice: { key: key.value, question: question.value } })
     }
     case 'diagram':
       return diagram(value, at)
@@ -167,16 +186,21 @@ export const parseDoc = (input: unknown): Parsed<Doc> => {
   const blocks = list(input.blocks, 'blocks', block)
   if (!blocks.ok) return blocks
   const keys = new Set<string>()
-  for (const one of blocks.value) {
-    if (one.type !== 'question') continue
+  for (const one of questionsIn(blocks.value)) {
     if (keys.has(one.key)) return fail(`two questions share the key "${one.key}"`)
     keys.add(one.key)
   }
   return ok({ where: input.where === 'pane' ? 'pane' : 'inline', title: title.value, blocks: blocks.value })
 }
 
-export const questionsOf = (doc: Doc): Question[] =>
-  doc.blocks.flatMap(one => (one.type === 'question' ? [one] : []))
+const questionsIn = (blocks: Block[]): Question[] =>
+  blocks.flatMap(one => {
+    if (one.type === 'question') return [{ key: one.key, question: one.question, options: one.options }]
+    if (one.type === 'cards' && one.choice !== null) return [{ ...one.choice, options: one.cards.map(card => card.value) }]
+    return []
+  })
+
+export const questionsOf = (doc: Doc): Question[] => questionsIn(doc.blocks)
 
 // 質問がすべて答えられていれば、送る文を返す。1 つでも欠けていれば undefined
 export const answerText = (doc: Doc, answers: { [key: string]: string }): string | undefined => {
@@ -190,3 +214,9 @@ export const answerText = (doc: Doc, answers: { [key: string]: string }): string
   }
   return [`【${doc.title} への回答】`, ...lines].join('\n')
 }
+
+// 答えを送ったとき、ほかの Mod の hook に止められた理由が「答えを引き取った」という意味か。
+// 引き取られた答えは、その Mod が届けるので、失われていない。
+// WHY 理由の文で見分ける: 止めた側から受け取れるのは、理由の文だけ。「受け取りました」を含む理由を、引き取った印として扱う。
+// mods/questions が、相談の会話の中の質問への答えを、この理由で引き取る
+export const isTakenOver = (reason: string): boolean => reason.includes('受け取りました')

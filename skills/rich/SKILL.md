@@ -53,22 +53,22 @@ allowed-tools: Read, Grep, Glob, mcp__rich__show
   "title": "保存の方式",
   "blocks": [
     { "type": "text", "text": "書き込みが失敗したときの扱いが違います。" },
-    { "type": "cards", "cards": [
+    { "type": "cards", "key": "plan", "question": "方式", "cards": [
       { "title": "案A 同期", "lines": ["保存が終わるまで待つ", { "text": "失敗がその場で分かる", "tone": "good" }, { "text": "遅い", "tone": "warn" }] },
-      { "title": "案B 非同期", "lines": ["キューに積んで返す", { "text": "速い", "tone": "good" }, { "text": "失敗を後で知る", "tone": "warn" }] }
+      { "title": "案B 非同期（いまの実装）", "value": "案B 非同期", "lines": ["キューに積んで返す", { "text": "速い", "tone": "good" }, { "text": "失敗を後で知る", "tone": "warn" }] }
     ] },
     { "type": "diagram",
       "nodes": [{ "id": "api", "title": "API", "note": "受け付ける" }, { "id": "q", "title": "Queue" }, { "id": "db", "title": "DB", "note": "保存する" }],
-      "edges": [{ "from": "api", "to": "q", "label": "積む" }, { "from": "q", "to": "db" }] },
-    { "type": "question", "key": "plan", "question": "方式", "options": ["案A 同期", "案B 非同期"] }
+      "edges": [{ "from": "api", "to": "q", "label": "積む" }, { "from": "q", "to": "db" }] }
   ]
 }
 ```
 
 - **`text`:** Markdown。段落、箇条書き、コード。表はなるべく書かない（下の「表を避ける」）
 - **`cards`:** 2〜3枚。`lines`の各行は文字列か`{ text, tone }`。`tone`は`plain` `good` `warn` `dim`
+- **カードで選ばせる:** `cards`のブロックに`key`と`question`を付けると、カードが選択肢になり、題名を押して選べる。答えとして送られるのは各カードの`value`で、無ければ題名。題名に「（いまの実装）」のような添え書きを付けるときや、答えの綴りが決まっているときは、`value`を別に書く
 - **`diagram`:** 箱（`nodes`）と矢印（`edges`）。位置はModが決めるので指定しない
-- **`question`:** `key`は説明の中で重複させない。`question`は答えの文に入る短い名前にする。`options`は2つ以上
+- **`question`:** カードで見せない選択肢を聞くときに使う。`key`は説明の中で重複させない。`question`は答えの文に入る短い名前にする。`options`は2つ以上。**カードで比べた案を選ばせるときは、同じ選択肢を`question`で並べ直さず、カードを選択肢にする**
 - **`tabs`:** `{ "type": "tabs", "tabs": [{ "label": "案A", "blocks": [...] }, ...] }`。見出しを押すと下の中身が入れ替わる。タブは2つ以上。中に置けるのは`text` `cards` `diagram`だけで、`question`と`tabs`は置けない
 
 ## 表を避ける

@@ -1,7 +1,7 @@
 import { atom, memberOf, read, update } from 'claude-code'
 import type { Elements, EngineInterface, Register, RenderElement } from 'claude-code'
 
-import { answerText, parseDoc, questionsOf, type Block, type Doc, type Tone } from './doc'
+import { answerText, isTakenOver, parseDoc, questionsOf, type Block, type Doc, type Tone } from './doc'
 import { cellsOf, layout } from './layout'
 
 const TOOL_NAME = 'show'
@@ -12,6 +12,7 @@ const DESCRIPTION = `Draw a short explanation in the terminal: cards, a box-and-
 Use it when a figure, a side-by-side comparison, or a clickable choice reads faster than prose. Plain reports stay as normal text.
 where "inline" (default) draws in the transcript at this point; "pane" keeps it beside the conversation until closed.
 Questions here do NOT block: the answer arrives as the user's next message. Use them only for a choice you hand over as your turn ends. When you need the answer to continue this turn, use AskUserQuestion instead.
+When the choice is between options you compare in cards, make the cards the choices (give the cards block key and question) rather than adding a question block that lists the same options again.
 After a call with questions, end your turn; do not repeat the question in text.`
 
 const INPUT_SCHEMA = {
@@ -39,11 +40,16 @@ const INPUT_SCHEMA = {
           text: { type: 'string', description: 'type=text: markdown (paragraphs, lists, code). Prefer a list to a table: a table is drawn wider than a pane and its lines wrap. In a pane, write each row as a list item (name first, then the rest). Inline, a table is fine only when every cell is a few words.' },
           cards: {
             type: 'array',
-            description: 'type=cards: 2-3 cards side by side.',
+            description:
+              'type=cards: 2-3 cards side by side. To let the user choose between the cards, also give this block key and question: each card title becomes a button, and no separate question block is needed for that choice.',
             items: {
               type: 'object',
               properties: {
                 title: { type: 'string' },
+                value: {
+                  type: 'string',
+                  description: 'When the cards are choices: what is sent as the answer for this card. Defaults to title. Set it when the answer must be spelled a given way and the title says more.',
+                },
                 lines: {
                   type: 'array',
                   description: 'Each a string, or { text, tone } with tone plain | good | warn | dim.',
@@ -71,8 +77,8 @@ const INPUT_SCHEMA = {
               required: ['from', 'to'],
             },
           },
-          key: { type: 'string', description: 'type=question: unique id of the question.' },
-          question: { type: 'string', description: 'type=question: short name of what is asked.' },
+          key: { type: 'string', description: 'type=question, or type=cards whose cards are the choices: unique id of the question.' },
+          question: { type: 'string', description: 'type=question, or type=cards whose cards are the choices: short name of what is asked.' },
           options: { type: 'array', description: 'type=question: 2 or more choices.', items: { type: 'string' } },
         },
         required: ['type'],
@@ -154,10 +160,11 @@ const draw = async ($: EngineInterface, ui: Elements['terminal'], doc: Doc, site
       .then(() => remember($, ANSWER_PREFIX, site.id, chosen, ANSWER_MAX))
       .then(() => update($, memberOf(sent, mine), () => text))
     // WHY asUser: 付けないと「plugin が送った」という枠付きでモデルに届く。本人の答えとして読ませる
-    // WHY toast: 送信を hook に止められたときに、答えを失わないよう画面に残す
+    // WHY toast: 送信を hook に止められたときに、答えを失わないよう画面に残す。
+    // WHY 引き取られたときは出さない: 止めた Mod が答えを届けるので、失われていない（2026-10-11 に利用者が決めた）
     $.prompt.submit({ text, asUser: true }).then(
       result => {
-        if (result.drop !== undefined) $.ui.toast(text, { timeoutMs: 15_000 })
+        if (result.drop !== undefined && !isTakenOver(result.drop)) $.ui.toast(text, { timeoutMs: 15_000 })
       },
       () => $.ui.toast(text, { timeoutMs: 15_000 }),
     )
@@ -185,11 +192,35 @@ const draw = async ($: EngineInterface, ui: Elements['terminal'], doc: Doc, site
               <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
                 {block.cards.map((card, at) => {
                   const color = CARD_COLORS[at % CARD_COLORS.length] ?? 'text'
+                  const choice = block.choice
+                  const mark = choice !== null && picked[choice.key] === card.value ? '(x) ' : '( ) '
                   return (
                     <Box flexDirection="column" borderStyle="round" borderColor={color} paddingX={1} width={cardWidth}>
-                      <Text bold color={color}>
-                        {card.title}
-                      </Text>
+                      {choice === null ? (
+                        <Text bold color={color}>
+                          {card.title}
+                        </Text>
+                      ) : isOpen ? (
+                        // 選択肢になっているカードは、題名を押して選ぶ。
+                        // WHY 題名だけを押せるようにする: Button の中に置けるのは文字だけで、枠の付いた箱ごとは押せない
+                        // （型定義の ButtonProps）。カードの下に、同じ選択肢の質問を別に並べなくて済む
+                        <Button
+                          key={`pick-${choice.key}-${at}`}
+                          plain
+                          hotkey={site.isPane && isSingle && at < 9 ? String(at + 1) : undefined}
+                          onPress={() => pick(choice.key, card.value)}
+                        >
+                          <Text bold color={color}>
+                            {mark}
+                            {card.title}
+                          </Text>
+                        </Button>
+                      ) : (
+                        <Text bold color={color} dimColor={picked[choice.key] !== card.value}>
+                          {mark}
+                          {card.title}
+                        </Text>
+                      )}
                       {card.lines.map(line => (
                         <Text color={TONE_COLOR[line.tone]} dimColor={line.tone === 'dim'}>
                           {line.text}
