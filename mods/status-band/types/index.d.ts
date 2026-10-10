@@ -52,10 +52,6 @@ export type PrStatus = {
 // PR の一覧の 1 行。status の null は、まだ 1 度も状態を取れていない
 export type PrRow = PrRef & { status: PrStatus | null }
 
-// このセッションが参照した文書や URL。url は、URL かファイルのパス。
-// title は短い題名、note は何が分かったかの一言。どちらも、無ければ空文字
-export type Reference = { url: string; title: string; note: string }
-
 // 仮に決めて先へ進んだこと。あとで利用者が決め直す
 export type OpenQuestion = {
   // 一覧と会話で使う番号（Q3 の 3）
@@ -97,8 +93,6 @@ declare module 'claude-code' {
       log: LogEntry[] | null
       // このセッションで作るか直すかした PR。最後に触った PR が先頭。帯と PR の pane が、この順で出す
       prs: PrRow[]
-      // このセッションが参照した文書や URL。最後に足したものが先頭
-      references: Reference[]
       // 仮に決めて先へ進んだこと。古いものが先頭（番号の順）
       questions: OpenQuestion[]
       // 開いている相談。null は、相談していない。セッションを開き直すと消える

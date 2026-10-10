@@ -29,12 +29,10 @@ const pane = (id: string, title: string, bodyRows = 40) => ({
 
 export const logPane = pane('jj-log', 'jj log')
 export const prPane = pane('pull-requests', 'pull requests')
-export const referencesPane = pane('references', 'references')
 export const questionsPane = pane('questions', 'open questions')
 export const consultPane = pane('consult', 'consult')
 // 一覧が収まらない、背の低い pane
 export const shortPrPane = pane('pull-requests', 'pull requests', 12)
-export const shortReferencesPane = pane('references', 'references', 14)
 
 // jj log のテンプレートが出す形。作業コピー、未push、push済みの 3 行
 const LOG = [

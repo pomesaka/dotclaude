@@ -73,6 +73,7 @@
     "lua-lsp@claude-plugins-official": true,
     "human-edit@dotclaude": true,
     "rich@dotclaude": true,
+    "refs@dotclaude": true,
     "status-band@dotclaude": true,
     "next-step@dotclaude": true,
     "rust-analyzer-lsp@claude-plugins-official": true,

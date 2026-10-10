@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderSurface, Timer } from 'claude-code'
 
-import type { Checks, JjCounts, OpenQuestion, PrRef, PrRow, PrStatus, Reference, Review, Status } from '../types'
+import type { Checks, JjCounts, OpenQuestion, PrRef, PrRow, PrStatus, Review, Status } from '../types'
 import { SUMMARY_PROMPT, commandOf, consultPrompt, handoffMessage, hasTalked, isReadOnlyCall, notifiedAgentOf, summaryOf, withTurn } from './consult'
 import { SESSION_CONTEXT } from './context'
 import { clampCursor, moveCursor, windowOf } from './cursor'
@@ -35,13 +35,11 @@ import {
   questionsOf,
   withAnswer,
 } from './questions'
-import { addReference, canOpen, headingOf, pageOf, parseReference, referencesOf, servedOf, toMarkdown } from './references'
 
 const status = atom({ plugin: 'status-band', key: 'status' } as const, null)
 const log = atom({ plugin: 'status-band', key: 'log' } as const, null)
 const pullRequests = atom({ plugin: 'status-band', key: 'prs' } as const, [])
 const pendingNotice = atom({ plugin: 'status-band', key: 'pendingNotice' } as const, null)
-const references = atom({ plugin: 'status-band', key: 'references' } as const, [])
 const questions = atom({ plugin: 'status-band', key: 'questions' } as const, [])
 const cursors = atom({ plugin: 'status-band', key: 'cursors' } as const, {})
 const consult = atom({ plugin: 'status-band', key: 'consult' } as const, null)
@@ -61,8 +59,6 @@ const CONSULT_NOTICE_DROPPED = '相談用のエージェントの終了の知ら
 const LOG_PANE = 'jj-log'
 const PR_PANE = 'pull-requests'
 const PR_PANE_TITLE = 'pull requests'
-const REFERENCES_PANE = 'references'
-const REFERENCES_PANE_TITLE = 'references'
 const QUESTIONS_PANE = 'questions'
 const QUESTIONS_PANE_TITLE = 'open questions'
 
@@ -70,7 +66,7 @@ const QUESTIONS_PANE_TITLE = 'open questions'
 const PR_PREFIX = 'prs:'
 // 1 つのセッションで覚える PR の数。古いものから落とす
 const PRS_MAX = 50
-// $.store に覚えておくセッションの数。PR の一覧と参照の一覧で、それぞれ数える。古いセッションから落とす
+// $.store に覚えておくセッションの数。PR の一覧と保留の一覧で、それぞれ数える。古いセッションから落とす
 const SESSIONS_MAX = 30
 // 一覧に残す、終わった PR（マージ済みか閉じた）の数
 const PRS_DONE_MAX = 3
@@ -80,11 +76,6 @@ const PRS_DONE_MAX = 3
 // grace は、実行中の PR が無くても続ける回数。push の直後は、CI がまだ GitHub に現れていないことがある
 const WATCH_INTERVAL_MS = 60_000
 const WATCH_LIMITS = { max: 10, grace: 2 }
-
-// $.store には、セッションごとに参照の配列を持つ。キーは refs:<セッションID>
-const REFERENCES_PREFIX = 'refs:'
-// 1 つのセッションで覚える参照の数。古いものから落とす
-const REFERENCES_MAX = 100
 
 // $.store には、セッションごとに保留の配列を持つ。キーは qs:<セッションID>
 const QUESTIONS_PREFIX = 'qs:'
@@ -107,9 +98,6 @@ const moveSelection = async ($: EngineInterface, pane: string, delta: number, le
 // WHY +3: 上と下の「あと N 件」の 2 行と、折り返しの見積もりが 1 行ずれたときの余り
 const listRoom = (bodyRows: number, overhead: number): number => Math.max(1, bodyRows - overhead - 3)
 
-// 文が、幅 width の中で何行になるかの見積もり。全角の文字が行の端で 1 桁余ることがあるので、幅を 1 桁狭く見る
-const wrappedLines = (text: string, width: number): number => Math.max(1, Math.ceil(cellWidth(text) / Math.max(1, width - 1)))
-
 // クリップボードへコピーして、結果を toast で知らせる。done は、できたときに出す文
 const copyText = async ($: EngineInterface, text: string, surface: RenderSurface, done: string): Promise<void> => {
   const copied = await $.ui.copy({ text, surface })
@@ -121,43 +109,6 @@ const openInBrowser = ($: EngineInterface, url: string): void => {
   void $.process.run(['open', url], { timeoutMs: 5_000 }).catch(() => undefined)
 }
 
-// Claude が、参照した文書や URL を一覧に残すためのツール
-const REFERENCE_TOOL_NAME = 'add_reference'
-const REFERENCE_TOOL = 'mcp__status-band__add_reference'
-const REFERENCE_TOOL_DESCRIPTION = `Record a document or URL this session relied on, with one line on what it told you, in the user's references pane.
-Call it for sources that shaped an answer, a design decision or a fix: a web page, a file in another repository, a local document outside the code being edited. Call it again with the same url to add or replace the note.
-URLs read with WebFetch are listed automatically, without a note; add the note here when the page turned out to matter. Do not record the files you are editing.`
-const REFERENCE_TOOL_SCHEMA = {
-  type: 'object',
-  properties: {
-    url: { type: 'string', description: 'The URL, or the file path for a local document.' },
-    title: { type: 'string', description: 'A short title the user will recognize it by.' },
-    note: { type: 'string', description: 'One line, in the language you answer the user in: what this source told you or why it mattered.' },
-  },
-  required: ['url', 'title'],
-}
-// Claude が、もう開けなくなった参照を一覧から外すためのツール。
-// WHY 外すツールを持つ: 自動で入るサーバーの url（difit、portless）は、プロセスが終わると開けなくなる。
-// 終わったことに気づけるのは、バックグラウンドのコマンドの終了を知らされる Claude だけ
-const UNREFERENCE_TOOL_NAME = 'remove_reference'
-const UNREFERENCE_TOOL = 'mcp__status-band__remove_reference'
-const UNREFERENCE_TOOL_DESCRIPTION = `Remove an entry from the user's references pane by its url.
-Use it when the entry no longer opens: a server you started (difit, portless) has exited, or a generated page was deleted. Do not remove sources the user may still want to trace.`
-const UNREFERENCE_TOOL_SCHEMA = {
-  type: 'object',
-  properties: {
-    url: { type: 'string', description: 'The url or file path of the entry, exactly as it is listed.' },
-  },
-  required: ['url'],
-}
-
-// WHY 全部外すツールを持つ: 話題が切り替わったときに、利用者が「refs をまっさらにして」と頼む。
-// 外すツールは url を 1 つずつ受けるだけで、Claude は一覧の中身を読めないので、まとめて消す道が無かった（2026-10-10）
-const CLEAR_REFERENCES_TOOL_NAME = 'clear_references'
-const CLEAR_REFERENCES_TOOL = 'mcp__status-band__clear_references'
-const CLEAR_REFERENCES_TOOL_DESCRIPTION = `Remove every entry from the user's references pane.
-Use it only when the user asks to clear the references. To drop single entries that no longer open, use remove_reference.`
-const CLEAR_REFERENCES_TOOL_SCHEMA = { type: 'object', properties: {} }
 
 // Claude が、仮に決めて先へ進んだことを一覧に残すためのツールと、決まった保留を外すためのツール
 const QUESTION_TOOL_NAME = 'add_question'
@@ -321,7 +272,7 @@ const refresh = async ($: EngineInterface, jj: JjMode | 'skip'): Promise<void> =
 
 // このセッションの値を $.store に書く。キーは <prefix><セッションID>。覚えておくセッションの数を超えたら、古いものから消す。
 // WHY 消してから書く: $.store.keys() の並びを「最後に書いた順」に保ち、古いセッションから落とせるようにする
-const saveForSession = async ($: EngineInterface, prefix: string, value: string[] | Reference[] | OpenQuestion[] | number): Promise<void> => {
+const saveForSession = async ($: EngineInterface, prefix: string, value: string[] | OpenQuestion[] | number): Promise<void> => {
   const key = `${prefix}${await $.session.id()}`
   await $.store.delete(key)
   await $.store.set(key, value)
@@ -333,34 +284,6 @@ const loadPrRefs = async ($: EngineInterface): Promise<PrRef[]> => refsOf(await 
 
 // このセッションの PR の一覧を書き直す。urls は、末尾がいちばん新しい
 const savePrRefs = async ($: EngineInterface, urls: string[]): Promise<void> => saveForSession($, PR_PREFIX, urls)
-
-const loadReferences = async ($: EngineInterface): Promise<Reference[]> =>
-  referencesOf(await $.store.get(`${REFERENCES_PREFIX}${await $.session.id()}`))
-
-// 参照の一覧を、$.store と画面の両方に書く
-const saveReferences = async ($: EngineInterface, list: Reference[]): Promise<void> => {
-  await saveForSession($, REFERENCES_PREFIX, list)
-  await update($, references, current => (JSON.stringify(current) === JSON.stringify(list) ? current : list))
-}
-
-// 参照を一覧の先頭に足す。同じ url があれば、題名と一言を足して 1 つにまとめる
-const rememberReference = async ($: EngineInterface, added: Reference): Promise<Reference[]> => {
-  const list = addReference(await loadReferences($), added, REFERENCES_MAX)
-  await saveReferences($, list)
-  return list
-}
-
-const dropReference = async ($: EngineInterface, url: string): Promise<void> =>
-  saveReferences(
-    $,
-    (await loadReferences($)).filter(reference => reference.url !== url),
-  )
-
-// セッションの開始時。開き直したセッションでは、$.store に残っている参照の一覧を戻す
-const restoreReferences = async ($: EngineInterface): Promise<void> => {
-  const list = await loadReferences($)
-  await update($, references, () => list)
-}
 
 const loadQuestions = async ($: EngineInterface): Promise<OpenQuestion[]> =>
   questionsOf(await $.store.get(`${QUESTIONS_PREFIX}${await $.session.id()}`))
@@ -712,61 +635,13 @@ const trackPrs = async ($: EngineInterface, command: string, result: unknown): P
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.tool.register({ name: TRACK_TOOL_NAME, description: TRACK_TOOL_DESCRIPTION, inputSchema: TRACK_TOOL_SCHEMA, isDeferred: false })
-    await $.tool.register({
-      name: REFERENCE_TOOL_NAME,
-      description: REFERENCE_TOOL_DESCRIPTION,
-      inputSchema: REFERENCE_TOOL_SCHEMA,
-      isDeferred: false,
-    })
-    await $.tool.register({
-      name: UNREFERENCE_TOOL_NAME,
-      description: UNREFERENCE_TOOL_DESCRIPTION,
-      inputSchema: UNREFERENCE_TOOL_SCHEMA,
-      isDeferred: false,
-    })
-    await $.tool.register({
-      name: CLEAR_REFERENCES_TOOL_NAME,
-      description: CLEAR_REFERENCES_TOOL_DESCRIPTION,
-      inputSchema: CLEAR_REFERENCES_TOOL_SCHEMA,
-      isDeferred: false,
-    })
     await $.tool.register({ name: QUESTION_TOOL_NAME, description: QUESTION_TOOL_DESCRIPTION, inputSchema: QUESTION_TOOL_SCHEMA, isDeferred: false })
     await $.tool.register({ name: LIST_TOOL_NAME, description: LIST_TOOL_DESCRIPTION, inputSchema: LIST_TOOL_SCHEMA, isDeferred: false })
     await $.tool.register({ name: RESOLVE_TOOL_NAME, description: RESOLVE_TOOL_DESCRIPTION, inputSchema: RESOLVE_TOOL_SCHEMA, isDeferred: false })
-    // WHY catch: PR、参照、保留の一覧を戻せなくても、帯は出す
-    await Promise.all([
-      refresh($, 'read'),
-      restorePrs($).catch(() => undefined),
-      restoreReferences($).catch(() => undefined),
-      restoreQuestions($).catch(() => undefined),
-    ])
+    // WHY catch: PR と保留の一覧を戻せなくても、帯は出す
+    await Promise.all([refresh($, 'read'), restorePrs($).catch(() => undefined), restoreQuestions($).catch(() => undefined)])
     return next(e)
   })
-
-  // Claude が、参照した文書や URL を一覧に残す
-  on('tool.call', { tool: REFERENCE_TOOL }, async ($, e) => {
-    const parsed = parseReference(e)
-    if (typeof parsed === 'string') return { deny: `add_reference failed: ${parsed}` }
-    const list = await rememberReference($, parsed)
-    return { result: `Recorded. The references pane now lists ${list.length}.` }
-  }).catch(($, e, next) => (next.called ? next(e) : { deny: `add_reference failed: ${next.error.message}` }))
-
-  // Claude が、もう開けなくなった参照を一覧から外す
-  on('tool.call', { tool: UNREFERENCE_TOOL }, async ($, e) => {
-    const parsed = parseReference(e)
-    if (typeof parsed === 'string') return { deny: `remove_reference failed: ${parsed}` }
-    const list = await loadReferences($)
-    if (!list.some(known => known.url === parsed.url)) return { deny: `remove_reference failed: ${parsed.url} is not on the list` }
-    await dropReference($, parsed.url)
-    return { result: `Removed. The references pane now lists ${list.length - 1}.` }
-  }).catch(($, e, next) => (next.called ? next(e) : { deny: `remove_reference failed: ${next.error.message}` }))
-
-  // Claude が、利用者に頼まれて参照の一覧を空にする
-  on('tool.call', { tool: CLEAR_REFERENCES_TOOL }, async $ => {
-    const list = await loadReferences($)
-    await saveReferences($, [])
-    return { result: `Cleared ${list.length}. The references pane is empty.` }
-  }).catch(($, e, next) => (next.called ? next(e) : { deny: `clear_references failed: ${next.error.message}` }))
 
   // Claude が、仮に決めて先へ進んだことを一覧に残す
   on('tool.call', { tool: QUESTION_TOOL }, async ($, e) => {
@@ -837,14 +712,6 @@ export const register: Register = on => {
     await refresh($, e.tool === 'Bash' ? 'read' : 'skip')
     // Bash の結果から、PR への操作（gh pr <動詞>）と push を拾う
     if (e.tool === 'Bash') await trackPrs($, e.command, ran.result)
-    // portless で起動した画面（difit もこれで開く）は、開き直せるように参照の一覧に入れる
-    const served = e.tool === 'Bash' ? servedOf(e.command) : null
-    if (served !== null) await rememberReference($, served)
-    // 一時ディレクトリに書いた HTML（explain のページなど）も、同じ理由で入れる
-    const page = e.tool === 'Write' ? pageOf(e.file_path) : null
-    if (page !== null) await rememberReference($, page)
-    // WebFetch で読んだ url は、題名も一言も無いまま参照の一覧に入れる。一言は、Claude が add_reference で足す
-    if (e.tool === 'WebFetch') await rememberReference($, { url: e.url, title: '', note: '' })
     return ran
     // WHY catch: この hook はすべてのツールの呼び出しを通る。集め直しで何が起きても、ツールの結果はそのまま返す
   }).catch(($, e, next) => next(e))
@@ -943,9 +810,6 @@ export const register: Register = on => {
       void $.ui.open({ id: PR_PANE, title: PR_PANE_TITLE, focus: true, closeOnEscape: true })
       void refreshPrsNow($).catch(() => undefined)
     }
-    const openReferences = () => {
-      void $.ui.open({ id: REFERENCES_PANE, title: REFERENCES_PANE_TITLE, focus: true, closeOnEscape: true })
-    }
     const openQuestions = () => {
       void $.ui.open({ id: QUESTIONS_PANE, title: QUESTIONS_PANE_TITLE, focus: true, closeOnEscape: true })
     }
@@ -958,7 +822,6 @@ export const register: Register = on => {
     const percent = now.contextPercent
     const filled = percent === undefined ? 0 : filledCells(percent)
     const prs = await read($, pullRequests)
-    const referenced = await read($, references)
     const waiting = await read($, questions)
     // 最後に触った PR から、幅に応じて 3 つまで出す
     const shownPrs = prs.slice(0, width >= WIDE ? 3 : width >= MEDIUM ? 2 : 1)
@@ -1026,11 +889,6 @@ export const register: Register = on => {
           {prs.length > 0 && (
             <Button key="pr" plain onPress={openPrs}>
               <Text {...pill('pr')}> pr </Text>
-            </Button>
-          )}
-          {referenced.length > 0 && (
-            <Button key="refs" plain onPress={openReferences}>
-              <Text {...pill('refs')}> refs </Text>
             </Button>
           )}
           {/* 保留は、件数も出す。決めることが残っていると、帯だけで分かるようにする */}
@@ -1229,148 +1087,6 @@ export const register: Register = on => {
             hotkey="q"
             onPress={() => {
               void $.ui.close({ id: PR_PANE })
-            }}
-          >
-            閉じる
-          </Button>
-        </Box>
-        </Box>
-      </Box>
-    )
-  })
-
-  on('ui.render', { component: 'Pane', requestId: REFERENCES_PANE }, async ($, e, next) => {
-    if (e.surface !== 'terminal') return next(e)
-    const { Box, Button, Text } = $.ui.resolve(e)
-    const list = await read($, references)
-    const width = e.props.bodyColumns
-    // キーで選んでいる行
-    const cursor = clampCursor((await read($, cursors))[REFERENCES_PANE] ?? 0, list.length)
-    const selected = list[cursor]
-    // 一言と url は、選んでいる印の幅（2 桁）だけ字下げして描く
-    const inner = Math.max(1, width - 2)
-    // 一言は、選んでいる行だけ全文を折り返して出す。ほかの行は 1 行に切る。
-    // WHY 選んでいる行だけ: 全部を折り返すと、行の高さが読めず、収まる件数を決められない
-    const noteLines = (reference: Reference, index: number): number =>
-      reference.note === '' ? 0 : index === cursor ? wrappedLines(reference.note, inner) : 1
-    // 一覧の外に描くもの: 空き 1、ヒント 2
-    const shown = windowOf(
-      list.map((reference, index) => 1 + noteLines(reference, index) + (reference.title !== '' ? 1 : 0)),
-      cursor,
-      listRoom(e.props.scroll.bodyRows, 3),
-      1,
-    )
-
-    return (
-      <Box flexDirection="column" gap={1} width={width}>
-        {list.length === 0 ? (
-          <Text dimColor>このセッションが参照した文書やURLは、まだありません</Text>
-        ) : (
-          <Box flexDirection="column" gap={1} width={width}>
-          {shown.start > 0 && <Text dimColor>{`  ↑ あと ${shown.start} 件`}</Text>}
-          {list.slice(shown.start, shown.end).map((reference, offset) => {
-            const index = shown.start + offset
-            return (
-            <Box key={`row-${reference.url}`} flexDirection="column" width={width}>
-              <Box flexDirection="row" justifyContent="space-between" width={width}>
-                <Box flexDirection="row" columnGap={1}>
-                  <Text color={ACCENT}>{index === cursor ? '▸' : ' '}</Text>
-                  {/* 押せるのは canOpen が通すものだけ。ほかのファイルのパスは押せない文字で出す */}
-                  <Box width={width - 4}>
-                    {canOpen(reference.url) ? (
-                      <Button key={`open-${reference.url}`} plain onPress={() => openInBrowser($, reference.url)}>
-                        <Text wrap="truncate-end" bold color={ACCENT}>
-                          {headingOf(reference)}
-                        </Text>
-                      </Button>
-                    ) : (
-                      <Text wrap="truncate-end" bold>
-                        {headingOf(reference)}
-                      </Text>
-                    )}
-                  </Box>
-                </Box>
-                <Button key={`drop-${reference.url}`} plain onPress={() => void dropReference($, reference.url).catch(() => undefined)}>
-                  <Text dimColor>×</Text>
-                </Button>
-              </Box>
-              {/* 一言と url は、選んでいる印の幅だけ字下げして、題名の下に揃える */}
-              {reference.note !== '' && (
-                <Box flexDirection="row">
-                  <Text>{'  '}</Text>
-                  <Box width={inner}>
-                    <Text wrap={index === cursor ? 'wrap' : 'truncate-end'}>{reference.note}</Text>
-                  </Box>
-                </Box>
-              )}
-              {/* 題名があるときだけ、url を別の行に出す。無いときは、見出しが url そのもの */}
-              {reference.title !== '' && (
-                <Box flexDirection="row">
-                  <Text>{'  '}</Text>
-                  <Box width={inner}>
-                    <Text wrap="truncate-end" dimColor>
-                      {reference.url}
-                    </Text>
-                  </Box>
-                </Box>
-              )}
-            </Box>
-            )
-          })}
-          {shown.end < list.length && <Text dimColor>{`  ↓ あと ${list.length - shown.end} 件`}</Text>}
-          </Box>
-        )}
-        {/* キーのヒント。2 行をまとめて、あいだに空きを入れない */}
-        <Box flexDirection="column">
-        {selected !== undefined && (
-          <Box flexDirection="row" columnGap={2}>
-            <Button key="down" hotkey="j" onPress={() => void moveSelection($, REFERENCES_PANE, 1, list.length).catch(() => undefined)}>
-              下
-            </Button>
-            <Button key="up" hotkey="k" onPress={() => void moveSelection($, REFERENCES_PANE, -1, list.length).catch(() => undefined)}>
-              上
-            </Button>
-            {canOpen(selected.url) && (
-              <Button key="open" hotkey="o" onPress={() => openInBrowser($, selected.url)}>
-                開く
-              </Button>
-            )}
-            <Button key="drop" hotkey="x" onPress={() => void dropReference($, selected.url).catch(() => undefined)}>
-              外す
-            </Button>
-          </Box>
-        )}
-        <Box flexDirection="row" columnGap={2}>
-          {selected !== undefined && (
-            <Button
-              key="copy"
-              hotkey="y"
-              onPress={press => void copyText($, toMarkdown([selected]), press.surface, '選んでいる1件を、Markdownでコピーしました').catch(() => undefined)}
-            >
-              コピー
-            </Button>
-          )}
-          {selected !== undefined && (
-            <Button
-              key="copy-all"
-              hotkey="a"
-              onPress={press => void copyText($, toMarkdown(list), press.surface, `参照を ${list.length} 件、Markdownでコピーしました`).catch(() => undefined)}
-            >
-              全部コピー
-            </Button>
-          )}
-          {selected !== undefined && (
-            // WHY キーを付けない: 取り消せないので、押し間違いで一覧が消えないよう、クリックだけにする
-            <Button key="clear" onPress={() => void saveReferences($, []).catch(() => undefined)}>
-              全部外す
-            </Button>
-          )}
-          <Button
-            key="close"
-            role="dismiss"
-            hotkey="q"
-            onPress={() => {
-              void $.ui.close({ id: REFERENCES_PANE })
             }}
           >
             閉じる

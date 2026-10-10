@@ -1,0 +1,9 @@
+{
+  "name": "refs",
+  "version": "0.1.0",
+  "description": "A list of the documents and URLs this session relied on, kept by the agent with add_reference and shown in a pane; adds a refs button to the line under the prompt",
+  "author": {
+    "name": "pomesaka"
+  },
+  "types": "./types/index.d.ts"
+}

@@ -1,7 +1,8 @@
 import { expect, test } from 'claude-code/testing'
+import { SESSION_CONTEXT } from '../hooks/context'
 import { START, line, referencesPane, shortReferencesPane, world } from './world'
 
-const TOOL = 'mcp__status-band__add_reference'
+const TOOL = 'mcp__refs__add_reference'
 const DOCS = 'https://example.com/docs'
 const FILE = '/Users/p/notes/design.md'
 
@@ -54,7 +55,7 @@ test('WebFetch で入った url に、あとから add_reference で一言を足
 
 test('remove_reference で、Claude が開けなくなった参照を外す。一覧に無い url は拒む', async ($, on) => {
   const seen = world(on)
-  const REMOVE = 'mcp__status-band__remove_reference'
+  const REMOVE = 'mcp__refs__remove_reference'
 
   await $.tool.call({ tool: TOOL, url: DOCS, title: 'Mods reference' })
   await $.tool.call({ tool: TOOL, url: FILE, title: '設計メモ' })
@@ -70,7 +71,7 @@ test('remove_reference で、Claude が開けなくなった参照を外す。�
 
 test('clear_references で、Claude が一覧を空にする。空の一覧でも失敗しない', async ($, on) => {
   const seen = world(on)
-  const CLEAR = 'mcp__status-band__clear_references'
+  const CLEAR = 'mcp__refs__clear_references'
 
   await $.tool.call({ tool: TOOL, url: DOCS, title: 'Mods reference' })
   await $.tool.call({ tool: TOOL, url: FILE, title: '設計メモ' })
@@ -296,30 +297,54 @@ test('参照が無ければ、その旨を出す。選ぶ操作とコピーの�
   await ui.unmount()
 })
 
-// 帯の refs ボタンは、参照が 1 件以上あるときだけ出る
+// プロンプトの下の行の refs の札は、参照が 1 件以上あるときだけ出る。下の層の表示は、どちらでも残す
 const BUTTONS: { name: string; stored: { [key: string]: unknown }; shows: boolean }[] = [
-  { name: '参照があれば、帯に refs が出る', stored: { 'refs:s1': [{ url: DOCS, title: 'Mods reference', note: '' }] }, shows: true },
-  { name: '参照が無ければ、帯に refs は出ない', stored: {}, shows: false },
+  { name: '参照があれば、プロンプトの下の行に refs が出る', stored: { 'refs:s1': [{ url: DOCS, title: 'Mods reference', note: '' }] }, shows: true },
+  { name: '参照が無ければ、refs は出ない', stored: {}, shows: false },
 ]
 
 for (const one of BUTTONS) {
-  test(one.name, async ($, on) => {
+  test(`${one.name}。下の層の表示は残す`, async ($, on) => {
     world(on, { stored: one.stored })
     await $.session.start(START)
-    const ui = await $.ui.mount(line(140))
+    const ui = await $.ui.mount(line)
 
     expect((await ui.find({ key: 'refs' })) !== undefined).toBe(one.shows)
+    expect(await ui.find({ type: 'Text', text: /^BELOW$/ })).toBeDefined()
     await ui.unmount()
   })
 }
 
-test('refs を押すと、コマンドを通さずに pane を開く', async ($, on) => {
+test('refs を押すと、pane を開く', async ($, on) => {
   const seen = world(on, { stored: { 'refs:s1': [{ url: DOCS, title: 'Mods reference', note: '' }] } })
   await $.session.start(START)
-  const ui = await $.ui.mount(line(140))
+  const ui = await $.ui.mount(line)
 
   await ui.press({ key: 'refs' })
   expect(seen.opened).toEqual(['references'])
-  expect(seen.commands).toEqual([])
   await ui.unmount()
 })
+
+const STARTED = { session_id: 's1', transcript_path: '/t.jsonl', cwd: '/repo', hook_event_name: 'SessionStart' } as const
+
+const STARTS: { name: string; agentId: string | undefined; context: string[] }[] = [
+  { name: 'メインのセッションには、ほかの説明の後ろに足す', agentId: undefined, context: ['OTHER', SESSION_CONTEXT] },
+  { name: 'サブエージェントには渡さない', agentId: 'a1', context: ['OTHER'] },
+]
+
+for (const one of STARTS) {
+  test(`セッションの始めの説明: ${one.name}`, async ($, on) => {
+    world(on, { otherContext: ['OTHER'] })
+
+    const result = await $.classic.SessionStart({ ...STARTED, source: 'startup', ...(one.agentId === undefined ? {} : { agent_id: one.agentId }) })
+    expect(result.additionalContext).toEqual(one.context)
+  })
+}
+
+const NAMED = ['mcp__refs__add_reference', 'mcp__refs__remove_reference', 'mcp__refs__clear_references']
+
+for (const name of NAMED) {
+  test(`説明は「${name}」に触れている`, async () => {
+    expect(SESSION_CONTEXT).toContain(name)
+  })
+}

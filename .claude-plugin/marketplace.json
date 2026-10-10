@@ -18,6 +18,11 @@
       "description": "Before the agent pushes from a repository that has scripts/check-public.sh, runs that check and blocks the push when it finds names or keys that must not be published"
     },
     {
+      "name": "refs",
+      "source": "./mods/refs",
+      "description": "A list of the documents and URLs this session relied on, kept by the agent with add_reference and shown in a pane; adds a refs button to the line under the prompt"
+    },
+    {
       "name": "rich",
       "source": "./mods/rich",
       "description": "show tool: the agent draws cards, a box-and-arrow diagram, tables and clickable questions inline in the transcript or in a pane"
