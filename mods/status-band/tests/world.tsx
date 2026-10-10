@@ -31,6 +31,7 @@ export const logPane = pane('jj-log', 'jj log')
 export const prPane = pane('pull-requests', 'pull requests')
 export const referencesPane = pane('references', 'references')
 export const questionsPane = pane('questions', 'open questions')
+export const consultPane = pane('consult', 'consult')
 // 一覧が収まらない、背の低い pane
 export const shortPrPane = pane('pull-requests', 'pull requests', 12)
 export const shortReferencesPane = pane('references', 'references', 14)
@@ -98,7 +99,12 @@ export type Given = {
   runsCommands?: boolean
   // ほかの hook が、セッションの始めに足した文脈
   otherContext?: string[]
+  // false は、エージェントを立てられない
+  spawnsAgents?: boolean
 }
+
+// world が立てるエージェントの ID
+export const AGENT = 'a1'
 
 // 問い合わせを前から読む。リポジトリの宣言の後に続く PR は、そのリポジトリのもの
 const ASKED = /(r\d+): repository\(owner: "([^"]+)", name: "([^"]+)"\)|(p\d+): pullRequest\(number: (\d+)\)/g
@@ -118,6 +124,11 @@ export const world = (on: On, given: Given = {}) => {
   const submitted: string[] = []
   // クリップボードへコピーした文
   const copied: string[] = []
+  // 立てたエージェントへの最初の依頼
+  const spawned: string[] = []
+  // エージェントへ送った文
+  const sent: string[] = []
+  const closed: string[] = []
   // $.clock.every が頼んだ待ち時間（ミリ秒）。1 周期ごとに 1 つ増える
   const periods: number[] = []
   // いま待っている周期を終わらせる関数。null は、待っている周期が無い
@@ -133,6 +144,9 @@ export const world = (on: On, given: Given = {}) => {
     commands,
     submitted,
     copied,
+    spawned,
+    sent,
+    closed,
     periods,
     // 時間を 1 周期ぶん進める。タイマーの関数が 1 回走る
     tick: () => {
@@ -219,6 +233,27 @@ export const world = (on: On, given: Given = {}) => {
     seen.toasts.push(e.text)
     return { value: undefined }
   })
+  on('ui.close', (_$, e) => {
+    closed.push(e.id)
+    return { value: undefined }
+  })
+  on('ui.scroll', () => ({}))
+  // WHY ID を一覧で答える: 土台は、ここで答えた agentId を捨てる（v2.1.296 の claude plugin test で確認）。
+  // 立てるたびに、新しい ID のエージェントを一覧に足す。1 つ目が AGENT
+  const agents: { id: string; description: string; type: string; status: 'running' }[] = []
+  on('agent.spawn', (_$, e) => {
+    if (given.spawnsAgents === false) return { deny: 'agents are off' }
+    spawned.push(e.prompt)
+    agents.push({ id: agents.length === 0 ? AGENT : `a${agents.length + 1}`, description: e.description, type: 'fork', status: 'running' })
+    return { model: 'opus' }
+  })
+  on('agent.list', () => ({ value: [...agents] }))
+  on('session.send', (_$, e) => {
+    sent.push(e.text)
+    return { isDelivered: true as const }
+  })
+  // 待ち時間は、テストのあいだ終わらない
+  on('clock.after', () => new Promise<{ value: undefined }>(() => undefined))
   on('ui.copy', (_$, e) => {
     copied.push(e.text)
     return { value: { isCopied: true } }

@@ -141,8 +141,8 @@ const EXPLAINED: { name: string; env: { [name: string]: string }; message: strin
 ]
 
 for (const one of EXPLAINED) {
-  test(`「詳しく聞く」: ${one.name}。答えの印は付けない`, async ($, on) => {
-    const seen = world(on, { stored: { 'qs:s1': [Q1, Q2] }, env: one.env })
+  test(`「詳しく聞く」で相談用のエージェントを立てられなければ、メインに頼む: ${one.name}。答えの印は付けない`, async ($, on) => {
+    const seen = world(on, { stored: { 'qs:s1': [Q1, Q2] }, env: one.env, spawnsAgents: false })
     await $.session.start(START)
     const ui = await $.ui.mount(questionsPane)
 

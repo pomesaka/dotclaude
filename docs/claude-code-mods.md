@@ -47,6 +47,22 @@ Mods（`plugins/mods`）は早期アクセスで、型定義の冒頭に「予�
 - **`turn.complete`のhookは、モデルの返事を待たずに戻ってよい**: `void think($, ...)`で投げておけば、hookが戻った後も問い合わせは走り切り、返事で`$.state`を書き換えると帯が描き直される（v2.1.295、2026-10-10に`mods/next-step`のforkで確認）。待つと、返事が来るまでの数秒、ターンが終わらない
 - **`Button`に`hotkey`を付けると、エンジンが札の前に「1: 」とキーを描く**: 自分でも番号を書くと「1: 1 …」と二重になる（`AbovePrompt`の帯で確認）
 - **`turn.complete`はサブエージェントのターンでも来る**: `e.agentId`があればサブエージェント。`turn.start`は、サブエージェントの実行では来ない
+- **会話を引き継いだエージェントを立てて、続けてやりとりできる**: `$.agent.spawn({ prompt, description, subagentType: 'fork' })`は、メインの会話とモデルを引き継いだフォークを立てて`{ model, agentId }`を返す。答えは、その`agentId`が付いた`turn.complete`の`e.answer`で届く。答え終わった後も`$.session.send({ to: { agentId }, text })`で続きを送ると、前のやりとりを覚えたまま答える。フォークはツールを使える。メインのターンの最中でも、paneの`Input`の`onSubmit`から立てることも送ることもできる。途中で立てたフォークは、進行中のターンのそこまでを見ている（v2.1.296、2026-10-11にスクラッチパッドの試作で確認。モデルはHaiku）
+  <!-- importance: high | mentions: 1 | first-seen: 2026-10 -->
+- **立てたフォークのツールは、`tool.call`のhookで絞れる**: フォークはメインと同じツールと権限で動くので、そのままだとファイルを書ける。`tool.call`の入力にはそのループの`e.agentId`が付く（メインでは無い）。自分が立てた`agentId`を覚えておき、その呼び出しのうち通したくないツールに`{ deny: 理由 }`を返すと、フォークは理由を読んで「拒否された」と答える。`Write`と`Bash`を止めて`Read`だけ通す形で確認した（v2.1.296、2026-10-11に同じ試作で確認）
+  <!-- importance: high | mentions: 1 | first-seen: 2026-10 -->
+- **複数のModが、同じ場所の描画を重ねて包める。ただし幅は下へ渡せない**: `ui.render`のhookは`await next(e)`で下の層の木を受け取り、包んで返せる。`PromptHint`で、status-bandの帯を受け取った試作のMod2つが、`<Box flexDirection="row">{inner}<Button/></Box>`で右にボタンを足すと、帯と同じ行の右端に積まれた。帯の箱は、足した分だけ縮んだ（200桁と100桁で確認）。次の2つは拒否される。`next({ ...e, viewport: 狭めた幅 })`は`next() passed an argument with a changed viewport (the envelope is the engine's; a rewrite keeps surface, component, requestId, viewport)`で例外になる。受け取った木を`width`を付けた`Box`の下に置くと、`ui.render (PromptHint) refused: engine node under a Box with prop "width"; the engine drew its own`と会話に出て、重ねたhookの全部が捨てられ、エンジンの元の表示だけになる（status-bandの帯も消える）。積む順は読み込みの順で、`--plugin-dir`で先に渡したModがいちばん外（右端）、入れてあるModがその内側だった。入れてあるModどうしの順は確かめていない（v2.1.296、2026-10-11にスクラッチパッドの試作で確認）
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-10 -->
+- **部品の`onPress`や`onSubmit`の中から立てたエージェントには、そのMod自身のhookが呼ばれない**: `Button`の`onPress`から`$.agent.spawn`したフォークのツールの呼び出しには、同じModの`tool.call`、`tool.check`、`agent.spawn`のhookが1度も呼ばれず、絞り込みが効かなかった（フォークの`touch`が通った）。`turn.complete`と終了の知らせの`prompt.submit`は届く。同じ処理を`on('ui.press', { plugin, component: 'Pane' }, ...)`のhookの中へ移すと、hookが呼ばれて拒否できた。`command.run`のhookから立てたときも呼ばれる。エージェントへの`$.session.send`も、`ui.input`のhookの中から送る形にしている。ボタンの動きがそのModのほかのhookに掛かるなら、`onPress`は空にして`ui.press`のhookに書く（v2.1.296、2026-10-11に`mods/status-band`の相談のpaneで確認）
+  <!-- importance: high | mentions: 1 | first-seen: 2026-10 -->
+- **`claude plugin test`の土台は、`agent.spawn`の答えの`agentId`を捨てる**: テストで`on('agent.spawn', ...)`が`{ model, agentId }`を返しても、Modが受け取るのは`{ model: 'inherit' }`になる（型定義に「agentIdはcoreが入れる」とある）。`on('agent.spawn')`を登録しないと`no implementation for agent.spawn`で失敗する。`mods/status-band`は、IDが無いときに`$.agent.list()`から説明の一致するエージェントを探す道を持ち、テストは`on('agent.list', ...)`でIDを答えている。`$.tool.call`にも`agentId`は渡せないので、サブエージェントのツールを絞るhookは、判定を関数に出して試す
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-10 -->
+- **動いている最中のエージェントに`$.session.send`した文は、そのターンの中で読まれる**: エージェントには「The coordinator sent a message while you were working: …」として届き、1回の`turn.complete`にまとめて答える。`Input`は送ると空になるので、待ち中の送信を断ると打った文が消える。断らずに送る（同じ確認）
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-10 -->
+- **`tool.check`のエンジンの判定は「読むだけ」の判定ではない**: `tool.check`のhookで`await next(e)`すると、エンジンの判定`{ decision, rule?, reason? }`が読める。`e.agentId`も付く。autoモードで見た判定は次のとおり。設定の許可ルールに合うコマンド（`ls`、`rg`、`cat`）は`allow`で`rule`にそのルールが入る。`rg x > out.txt`と`ls && touch x`は、許可ルールに合う部分があっても`ask`になる（リダイレクトと、つないだ先の書き込みをエンジンが見分ける）。許可ルールに無いコマンドは、`pwd`や`echo hi`でも`ask`になる。`sed -i.bak …`は`Bash(sed:*)`のルールで`allow`になる。`allow`は「利用者が確認なしで通すと決めた」という意味で、ファイルを書き換えるコマンドも含む。読み取り専用に絞るなら、自分で読むコマンドの一覧を持ち、エンジンの`allow`は「リダイレクトが無い」ことの確認に使う（v2.1.296、2026-10-11に同じ試作で確認）
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-10 -->
+- **Modが立てたエージェントが終わると、メインに知らせが届いてメインが1ターン動く**: `prompt.submit`に`origin.kind === 'task-notification'`で来る。文は`<task-notification><task-id>エージェントのID</task-id><tool-use-id>toolu_plugin_…`で始まる。メインが動いている最中は、ターンが終わるまで待たされてから届く。`prompt.submit`のhookが`next`を呼ばずに`{ drop: 理由 }`を返すと、メインは動かない。ただし会話の行に「Prompt dropped by a hook: 理由」が1行出る。バックグラウンドのシェルが終わった知らせも同じ出どころなので、止めるのは`task-id`が自分の立てたエージェントのものだけにする。観察では、知らせが届いたのは`session.send`で続きを送った後の答えのときだけで、最初の答えの後は4〜11秒待っても届かなかった（理由は調べていない。同じ試作で確認）
+  <!-- importance: high | mentions: 1 | first-seen: 2026-10 -->
 
 ## ツールの呼び出し（`tool.call`）
 

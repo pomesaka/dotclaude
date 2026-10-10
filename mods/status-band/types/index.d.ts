@@ -72,6 +72,22 @@ export type OpenQuestion = {
   answer: string | null
 }
 
+// 相談の 1 発言。user は利用者が pane で打った問い、claude は相談用のエージェントの答え
+export type ConsultTurn = { speaker: 'user' | 'claude'; text: string }
+
+// 保留 1 件についての相談。メインの会話を引き継いだ別のエージェントと、pane でやりとりする
+export type Consult = {
+  // 相談を始めた時点の保留
+  question: OpenQuestion
+  // 相談用のエージェント。null は、立てている最中
+  agentId: string | null
+  turns: ConsultTurn[]
+  // エージェントの答えを待っている
+  isWaiting: boolean
+  // 結論をメインへ送るために、エージェントの要約を待っている
+  isHandingOff: boolean
+}
+
 declare module 'claude-code' {
   interface PluginState {
     'status-band': {
@@ -85,6 +101,8 @@ declare module 'claude-code' {
       references: Reference[]
       // 仮に決めて先へ進んだこと。古いものが先頭（番号の順）
       questions: OpenQuestion[]
+      // 開いている相談。null は、相談していない。セッションを開き直すと消える
+      consult: Consult | null
       // pane の一覧で、キーで選んでいる行の位置。キーは pane の id。まだ動かしていない pane は、項目が無い
       cursors: { [pane: string]: number }
       // Claude へ送るのを待っている、マージの知らせ。null は、待っているものが無い。
