@@ -1,6 +1,6 @@
 # rich
 
-Claudeが`show`ツールを呼ぶと、カード、箱と矢印の図、Markdown、クリックで答える質問をターミナルに描くMod。ブラウザを開くほどではない説明に使う。使いどころは`skills/rich/SKILL.md`に書いてある。
+Claudeが`show`ツールを呼ぶと、カード、箱と矢印の図、Markdown、クリックで答える質問をターミナルに描くMod。ブラウザを開くほどではない説明に使う。使いどころと入力の書き方は`skills/explain/references/rich.md`に書いてある。
 
 ## 読み込み
 
