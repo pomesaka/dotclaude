@@ -5,7 +5,7 @@
     {
       "name": "danger-guard",
       "source": "./mods/danger-guard",
-      "description": "Before the agent runs a Bash command, blocks the ones that can wreck the machine or the user's data beyond the working repository: recursive deletes of broad places, disk erasure, shutdown, and pkill patterns that would also stop the user's applications"
+      "description": "Before the agent runs a Bash command, blocks the ones that can wreck the machine or the user's data beyond the working repository: sudo, deletes of broad places and precious files, disk erasure, shutdown, and process kills that would also stop the user's applications"
     },
     {
       "name": "human-edit",
