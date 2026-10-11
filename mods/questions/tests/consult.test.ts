@@ -1,6 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 import type { OpenQuestion } from '../types'
 import {
+  CONSULT_ANSWER_TAKEN,
   askedCount,
   commandOf,
   consultDescription,
@@ -11,7 +12,9 @@ import {
   isAnswering,
   isConsultDescription,
   isReadOnlyCommand,
+  hasToolUse,
   notifiedAgentOf,
+  pickedOption,
   summaryOf,
 } from '../hooks/consult'
 
@@ -211,3 +214,40 @@ for (const one of NOTICES) {
     expect(notifiedAgentOf(one.text)).toBe(one.agentId)
   })
 }
+
+const OPTIONS = ['押したときだけ開く', 'いつも自動で開く', '開く']
+const PICKED: { name: string; text: string; option: string | null }[] = [
+  { name: 'rich の答えの形', text: '【Q1 の選択肢 への回答】\n1. どれにしますか: いつも自動で開く', option: 'いつも自動で開く' },
+  { name: '末尾が同じ選択肢は、長いほうを取る', text: '【Q1 への回答】\n1. どれ: 押したときだけ開く', option: '押したときだけ開く' },
+  { name: '短い選択肢だけが合う', text: '【Q1 への回答】\n1. どれ: 開く', option: '開く' },
+  { name: '保留の選択肢に無い答え', text: '【別の質問 への回答】\n1. 色: 青', option: null },
+  { name: '選択肢が文の途中にあるだけ', text: 'いつも自動で開く、でお願い', option: null },
+  { name: '空', text: '', option: null },
+]
+
+for (const one of PICKED) {
+  test(`pickedOption: ${one.name}`, async () => {
+    expect(pickedOption(one.text, OPTIONS)).toBe(one.option)
+  })
+}
+
+const USED = [
+  { toolUses: [] },
+  { toolUses: [{ tool_use_id: 'toolu_1' }, { tool_use_id: 'toolu_2' }] },
+]
+const TOOL_USES: { name: string; id: string; has: boolean }[] = [
+  { name: 'その会話の呼び出し', id: 'toolu_2', has: true },
+  { name: 'ほかの会話の呼び出し', id: 'toolu_9', has: false },
+  { name: 'pane の ID', id: 'questions', has: false },
+]
+
+for (const one of TOOL_USES) {
+  test(`hasToolUse: ${one.name}`, async () => {
+    expect(hasToolUse(USED, one.id)).toBe(one.has)
+  })
+}
+
+// rich の isTakenOver が見る語。変えるなら、mods/rich の側も直す
+test('答えを受け取った理由は、rich が引き取りと見分ける語を含む', async () => {
+  expect(CONSULT_ANSWER_TAKEN).toContain('受け取りました')
+})

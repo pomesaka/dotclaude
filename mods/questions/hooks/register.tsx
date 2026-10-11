@@ -3,6 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { Consult, OpenQuestion } from '../types'
 import {
+  CONSULT_ANSWER_TAKEN,
   SUMMARY_PROMPT,
   askedCount,
   commandOf,
@@ -13,7 +14,9 @@ import {
   isAllowedInConsult,
   isAnswering,
   isConsultDescription,
+  hasToolUse,
   notifiedAgentOf,
+  pickedOption,
   summaryOf,
 } from './consult'
 import { SESSION_CONTEXT } from './context'
@@ -29,7 +32,7 @@ import {
   withAnswer,
 } from './questions'
 
-const questions = atom({ plugin: 'pending', key: 'questions' } as const, [])
+const questions = atom({ plugin: 'questions', key: 'questions' } as const, [])
 // $.store に覚えておくセッションの数。古いセッションから落とす
 const SESSIONS_MAX = 30
 
@@ -38,7 +41,7 @@ const ACCENT = '#6cb6ff'
 const GREEN = '#7ee0a1'
 const SURFACE = '#30363d'
 const SOFT = '#c9d1d9'
-const consult = atom({ plugin: 'pending', key: 'consult' } as const, null)
+const consult = atom({ plugin: 'questions', key: 'consult' } as const, null)
 const CONSULT_PANE = 'consult'
 const CONSULT_PANE_TITLE = 'consult'
 // $.store には、セッションごとに開いている相談（保留とエージェントの ID）を持つ。キーは consult:<セッションID>。
@@ -52,6 +55,14 @@ const SUMMARY_TIMEOUT_MS = 30_000
 const CONSULT_READ_ONLY = 'This side conversation does not change files: only Read, MCP tools and read-only shell commands (rg, fd, ls, cat, head, tail, wc, jq, jj log/diff/show/status) without redirection run here. Answer from what you can read.'
 // 相談用のエージェントの終了の知らせを捨てるときの理由。会話の行に「Prompt dropped by a hook: …」として出る
 const CONSULT_NOTICE_DROPPED = '相談用のエージェントの終了の知らせ（メインには渡さない）'
+// 相談の会話の中のボタンが押された時刻（ミリ秒）。直後に Mod が送る文を、相談の結論として受け取る。null は、押されていない。
+// WHY モジュール変数でよい: 消えると、ボタンの答えがメインへ直接届く前の動きに戻るだけで、壊れない
+let consultPressedAt: number | null = null
+// ボタンが押されてから、送られる文を待つ時間（ミリ秒）。過ぎた後の文は、関係の無い文として通す
+const CONSULT_PRESS_WINDOW_MS = 5_000
+// 会話の中のボタンで答えたときに、エージェントが答え終わるのを待つ上限と、確かめる間隔（ミリ秒）
+const IDLE_WAIT_MS = 20_000
+const IDLE_POLL_MS = 500
 const QUESTIONS_PANE = 'questions'
 const QUESTIONS_PANE_TITLE = 'open questions'
 
@@ -64,7 +75,7 @@ const QUESTIONS_MAX = 100
 
 // Claude が、仮に決めて先へ進んだことを一覧に残すためのツールと、決まった保留を外すためのツール
 const QUESTION_TOOL_NAME = 'add_question'
-const QUESTION_TOOL = 'mcp__pending__add_question'
+const QUESTION_TOOL = 'mcp__questions__add_question'
 const QUESTION_TOOL_DESCRIPTION = `Record a decision you made provisionally so work could continue, in the user's open questions pane, for the user to settle later by clicking one of the choices.
 Call it when you go ahead on an assumption the user has not confirmed: a name, a default, a threshold, a behaviour you picked between options. Not for things you can verify yourself, and not when you need the answer before continuing (ask instead).
 Calling it again with the same question replaces it. The result gives the number (Q3) the user will refer to it by.`
@@ -85,12 +96,12 @@ const QUESTION_TOOL_SCHEMA = {
 // WHY 読むツールを持つ: 保留は、残してから時間がたって答えが届く。会話が圧縮された後でも、問いと選択肢を取り戻せるようにする。
 // 利用者が「この問いを rich で説明して」と頼んだときにも、ここから中身を取る
 const LIST_TOOL_NAME = 'list_questions'
-const LIST_TOOL = 'mcp__pending__list_questions'
+const LIST_TOOL = 'mcp__questions__list_questions'
 const LIST_TOOL_DESCRIPTION = `Read the open questions on the user's open questions pane as JSON: id, question, detail, options, assumed, and answer (the choice the user clicked, or null).
 Use it when you need a question's wording or choices again, for example to explain one in more depth before the user decides.`
 const LIST_TOOL_SCHEMA = { type: 'object', properties: {} }
 const RESOLVE_TOOL_NAME = 'resolve_question'
-const RESOLVE_TOOL = 'mcp__pending__resolve_question'
+const RESOLVE_TOOL = 'mcp__questions__resolve_question'
 const RESOLVE_TOOL_DESCRIPTION = `Remove an open question from the user's open questions pane, once the user has settled it and you have applied the decision.`
 const RESOLVE_TOOL_SCHEMA = {
   type: 'object',
@@ -267,20 +278,35 @@ const hasTalked = async ($: EngineInterface, agentId: string): Promise<boolean> 
   return messages === null || 'deny' in messages || askedCount(messages) > 1
 }
 
+const isAgentAnswering = async ($: EngineInterface, agentId: string): Promise<boolean> =>
+  isAnswering((await $.agent.list().catch(() => [])).find(one => one.id === agentId)?.status)
+
+// エージェントが答え終わるまで待つ。IDLE_WAIT_MS たっても終わらなければ false
+const untilIdle = async ($: EngineInterface, agentId: string): Promise<boolean> => {
+  for (let waited = 0; waited < IDLE_WAIT_MS; waited += IDLE_POLL_MS) {
+    if (!(await isAgentAnswering($, agentId))) return true
+    await $.clock.sleep(IDLE_POLL_MS)
+  }
+  return !(await isAgentAnswering($, agentId))
+}
+
 // 相談の結論を、メインの Claude へ送る。option は選んだ選択肢で、null は選択肢に無い結論。
 // WHY 要約を付ける: 選んだ選択肢だけでは、相談の中で付いた条件（「案 A で、ただし上限は 10 件」）がメインに届かない。
 // WHY 問答をそのまま付けない: 長い相談を全部渡すと、メインの文脈を増やさないという目的と逆になる
-const handOffConsult = async ($: EngineInterface, option: string | null): Promise<void> => {
+// isCommitted は、答えをもうメインから取り上げてある（会話の中のボタンで答えた）。断らずに、最後まで送る。
+// WHY 答えている最中は要約を頼まない: 頼んだ文が、いまの答えの中で読まれて、要約がその答えに混ざる
+const handOffConsult = async ($: EngineInterface, option: string | null, isCommitted = false): Promise<void> => {
   const current = await currentConsult($)
   if (current === null || current.agentId === null || current.isHandingOff) return
   const agentId = current.agentId
-  const agent = (await $.agent.list().catch(() => [])).find(one => one.id === agentId)
-  if (isAnswering(agent?.status)) {
+  // WHY 取り上げた答えは待つ: 会話の中のボタンは、エージェントが続きの文を書いている最中にも押せる
+  const isIdle = isCommitted ? await untilIdle($, agentId) : !(await isAgentAnswering($, agentId))
+  if (!isIdle && !isCommitted) {
     $.ui.toast('相談用のエージェントが答えている最中です。答えが出てから押してください')
     return
   }
   await update($, consult, () => ({ ...current, isHandingOff: true }))
-  const summary = (await hasTalked($, agentId)) ? await summarize($, agentId) : ''
+  const summary = isIdle && (await hasTalked($, agentId)) ? await summarize($, agentId) : ''
   if (option === null && summary === '') {
     await update($, consult, latest => (latest === null ? latest : { ...latest, isHandingOff: false }))
     $.ui.toast('相談から結論を読み取れませんでした。選択肢を押すか、保留の一覧の「ほかの答えを書く」で書いてください', { timeoutMs: 8_000 })
@@ -355,7 +381,8 @@ export const register: Register = on => {
   // WHY tool.check と両方で止める: tool.check が、どの権限モードでも通るかを確かめていない。Write や Edit は、ここだけで止まる
   on('tool.call', async ($, e, next) => {
     if (!(await isConsultAgent($, e.agentId))) return next(e)
-    return isAllowedInConsult(e.tool, e.tool === 'Bash' ? e.command : '') ? next(e) : { deny: CONSULT_READ_ONLY }
+    if (!isAllowedInConsult(e.tool, e.tool === 'Bash' ? e.command : '')) return { deny: CONSULT_READ_ONLY }
+    return next(e)
   }).catch((_$, e, next) => next(e))
 
   // 相談用のエージェントの Bash は、読むコマンドの一覧に入っていて、エンジンも確認なしで通すものだけを通す。
@@ -373,7 +400,7 @@ export const register: Register = on => {
   // WHY hook で受ける: onPress の中から立てたエージェントのツールの呼び出しには、この Mod の tool.call と tool.check の hook が呼ばれず、
   // 読むだけの絞り込みが効かなかった（touch が通った）。hook の中から立てると呼ばれる（v2.1.296、2026-10-11 に実機で確認）。
   // WHY 結論を送る処理は待たない: 要約を 30 秒まで待つ。hook は 10 秒で打ち切られる
-  on('ui.press', { plugin: 'pending', component: 'Pane' }, async ($, e, next) => {
+  on('ui.press', { plugin: 'questions', component: 'Pane' }, async ($, e, next) => {
     if (e.requestId === QUESTIONS_PANE) {
       const id = /^explain-(\d+)$/.exec(e.element)?.[1]
       const question = id === undefined ? undefined : (await loadQuestions($)).find(one => one.id === Number(id))
@@ -388,12 +415,41 @@ export const register: Register = on => {
     return next(e)
   }).catch((_$, e, next) => next(e))
 
-  // 相談用のエージェントが終わると、メインに終了の知らせが届いて、メインが 1 ターン動く。その知らせを捨てる。
-  // WHY task-id を見る: バックグラウンドのシェルや、Claude が立てたエージェントの知らせも、同じ出どころで届く。
-  // 会話の行には「Prompt dropped by a hook: 理由」が 1 行出る（v2.1.296 で確認）
+  // 相談の会話の中に、ほかの Mod（rich の show など）が描いたボタンが押された。押された時刻を覚える。
+  // そのボタンの動きは止めない。直後にその Mod がメインへ送る文を、下の prompt.submit の hook で受け取る。
+  // WHY ほかの Mod の中身を見ない: ボタンの key の付け方は、その Mod の内側の事情。送られる文だけを読む
+  // WHY 会話の記録から見分ける: ボタンは、ツールの呼び出しの行に描かれ、その行の ID（requestId）が呼び出しの ID になる。
+  // 相談用のエージェントの会話に、その ID の呼び出しがあれば、相談の中のボタンだ。
+  // WHY NOT tool.call で ID を覚える: rich は設定でこの Mod より前（外側）にあり、show の呼び出しに自分で答える。
+  // この Mod の tool.call の hook には、その呼び出しが届かなかった（v2.1.296、2026-10-11 に実機で確認）
+  on('ui.press', async ($, e, next) => {
+    if (e.plugin === 'questions') return next(e)
+    const current = await currentConsult($)
+    if (current === null || current.agentId === null) return next(e)
+    const messages = await $.session.messages({ agentId: current.agentId }).catch(() => null)
+    if (messages !== null && !('deny' in messages) && hasToolUse(messages, e.requestId)) consultPressedAt = await $.clock.now()
+    return next(e)
+  }).catch((_$, e, next) => next(e))
+
+  // メインへ届く文のうち、相談に関わる 2 種類を、メインには渡さずに受け取る。
+  // 1. 相談用のエージェントが終わった知らせ。渡すと、メインが 1 ターン動く。
+  //    WHY task-id を見る: バックグラウンドのシェルや、Claude が立てたエージェントの知らせも、同じ出どころで届く。
+  // 2. 相談の会話の中の質問に、利用者がボタンで答えた文。保留の選択肢を選んでいれば、相談の pane で選んだのと同じに扱う。
+  //    WHY 受け取る: そのまま渡すと、相談の要約が付かず、相談も閉じない。
+  //    WHY 選択肢を読み取れなければ渡す: 保留と関係の無い質問への答えかもしれない。止めると、答えが消える。
+  // 捨てると、会話の行に「Prompt dropped by a hook: 理由」が 1 行出る（v2.1.296 で確認）
   on('prompt.submit', async ($, e, next) => {
-    if (e.origin.kind !== 'task-notification') return next(e)
-    return (await isConsultAgent($, notifiedAgentOf(e.text) ?? undefined)) ? { drop: CONSULT_NOTICE_DROPPED } : next(e)
+    if (e.origin.kind === 'task-notification') {
+      return (await isConsultAgent($, notifiedAgentOf(e.text) ?? undefined)) ? { drop: CONSULT_NOTICE_DROPPED } : next(e)
+    }
+    if (e.origin.kind !== 'plugin' || consultPressedAt === null) return next(e)
+    const isFresh = (await $.clock.now()) - consultPressedAt <= CONSULT_PRESS_WINDOW_MS
+    consultPressedAt = null
+    const current = isFresh ? await currentConsult($) : null
+    const option = current === null || current.isHandingOff ? null : pickedOption(e.text, current.question.options)
+    if (option === null) return next(e)
+    void handOffConsult($, option, true).catch(() => undefined)
+    return { drop: CONSULT_ANSWER_TAKEN }
   }).catch((_$, e, next) => next(e))
 
   // 相談用のエージェントに頼んだ要約が返ってきたら、待っている側へ渡す

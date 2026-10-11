@@ -3,9 +3,9 @@ import type { OpenQuestion } from '../types'
 import { SESSION_CONTEXT } from '../hooks/context'
 import { START, line, questionsPane, world } from './world'
 
-const ADD = 'mcp__pending__add_question'
-const LIST = 'mcp__pending__list_questions'
-const RESOLVE = 'mcp__pending__resolve_question'
+const ADD = 'mcp__questions__add_question'
+const LIST = 'mcp__questions__list_questions'
+const RESOLVE = 'mcp__questions__resolve_question'
 const ASKED = { question: '上限は何件か', detail: '一覧に覚える数', options: ['50 件', '100 件'], assumed: '100 件' }
 const Q1: OpenQuestion = { id: 1, ...ASKED, answer: null }
 const Q2: OpenQuestion = { id: 2, question: '名前をどうするか', detail: '', options: ['pending', 'todo'], assumed: 'pending', answer: null }
@@ -223,7 +223,7 @@ for (const one of STARTS) {
   })
 }
 
-const NAMED = ['mcp__pending__add_question', 'mcp__pending__resolve_question', 'mcp__pending__list_questions', '【保留への回答】', '相談で決まったこと', 'について相談した結論']
+const NAMED = ['mcp__questions__add_question', 'mcp__questions__resolve_question', 'mcp__questions__list_questions', '【保留への回答】', '相談で決まったこと', 'について相談した結論']
 
 for (const name of NAMED) {
   test(`説明は「${name}」に触れている`, async () => {

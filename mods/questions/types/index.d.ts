@@ -26,7 +26,7 @@ export type Consult = {
 
 declare module 'claude-code' {
   interface PluginState {
-    pending: {
+    questions: {
       // 仮に決めて先へ進んだこと。古いものが先頭（番号の順）
       questions: OpenQuestion[]
       // 開いている相談。null は、相談していない

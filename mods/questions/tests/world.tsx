@@ -10,7 +10,7 @@ export const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } 
 
 // プロンプトの下の行
 export const line = {
-  plugin: 'pending',
+  plugin: 'questions',
   surface: 'terminal' as const,
   component: 'PromptHint' as const,
   props: { isDraft: false, isWorking: false, hint: '? for shortcuts' },
@@ -19,7 +19,7 @@ export const line = {
 
 // viewed は、利用者がいま開いているエージェントの会話。無ければ、メインの会話を開いている
 const pane = (id: string, title: string, viewed?: string) => ({
-  plugin: 'pending',
+  plugin: 'questions',
   surface: 'terminal' as const,
   component: 'Pane' as const,
   requestId: id,

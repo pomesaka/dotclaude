@@ -3,6 +3,7 @@
   "env": {
     "QLIST_EXPLAIN_PROMPT": "/rich で説明してください",
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+    "CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION": "1",
     "CLAUDE_CODE_ENABLE_TELEMETRY": "1",
     "OTEL_METRICS_EXPORTER": "otlp",
     "OTEL_LOGS_EXPORTER": "otlp",
@@ -73,7 +74,7 @@
     "lua-lsp@claude-plugins-official": true,
     "human-edit@dotclaude": true,
     "rich@dotclaude": true,
-    "pending@dotclaude": true,
+    "questions@dotclaude": true,
     "refs@dotclaude": true,
     "status-band@dotclaude": true,
     "next-step@dotclaude": true,

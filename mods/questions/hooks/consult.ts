@@ -101,7 +101,7 @@ export const consultOf = (stored: unknown): Consult | null => {
 // WHY 前置きを禁じる: 分岐したエージェントは、依頼を「タスク: …」と言い直してから答えることがある（2026-10-11 に試作で見た）
 export const consultPrompt = (question: OpenQuestion, instruction: string | undefined): string =>
   [
-    '[pending: ここからは、利用者との相談用に分岐した会話です。メインの作業は、この会話とは別に進んでいます。]',
+    '[questions: ここからは、利用者との相談用に分岐した会話です。メインの作業は、この会話とは別に進んでいます。]',
     '',
     `利用者は、保留 ${labelOf(question)}「${question.question}」について、決める前に詳しく聞きたいと思っています。この会話を開いて、直接やりとりします。`,
     ...(question.detail === '' ? [] : [`保留の説明: ${question.detail}`]),
@@ -112,7 +112,8 @@ export const consultPrompt = (question: OpenQuestion, instruction: string | unde
     '',
     '決まり:',
     '- 読むだけにする。ファイルの編集、コミット、push、外部への送信はしない。Read と、rg、fd、ls、cat、jj log、jj diff、jj show のような読むコマンドだけが通る。Write、Edit、ほかのコマンドは仕組みで止められている',
-    '- MCP のツールとスキルは使える。図や比較で見せたほうが早い説明には、rich の show のような道具を使ってよい。描く先は、必ずこの会話の中にする（show なら where は "inline"）。pane に出すと、結論のボタンがある相談の pane が隠れる。クリックで答える質問は付けない（答えがメインの会話へ届いてしまう）',
+    '- MCP のツールとスキルは使える。図や比較で見せたほうが早い説明には、rich の show のような道具を使ってよい。描く先は、必ずこの会話の中にする（show なら where は "inline"）。pane に出すと、結論のボタンがある相談の pane が隠れる',
+    '- 選択肢をクリックで選べるようにするなら、問いは 1 つだけにして、答えとして送られる値を、この保留の選択肢と同じ綴りにする（rich の show なら、選択肢を比べる cards に key と question を付け、各カードの value に保留の選択肢をそのまま書く。同じ選択肢を question で並べ直さない）。利用者が押すと、その答えが結論としてメインへ送られ、相談が閉じる。ほかの問いは、クリックの質問にせず文で聞く',
     '- 依頼の言い直しや前置きを書かず、答えから始める',
     '- 保留を外す、答えを決める、といった操作はしない。決めるのは利用者で、結論は利用者が横の pane のボタンでメインへ送る',
   ].join('\n')
@@ -135,6 +136,16 @@ export const handoffMessage = (question: OpenQuestion, option: string | null, su
   return summary === '' ? answerMessage(question, option) : `${answerMessage(question, option)}\n相談で決まったこと: ${summary}`
 }
 
+// ほかの Mod が送ろうとした答えの文から、選ばれた保留の選択肢を読む。読めなければ null。
+// 「問い: 選択肢」の形の行を探す（rich の show の答えは「【題名 への回答】」の後に、この形の行が並ぶ）。
+// WHY 行の末尾で見る: 問いの文は、質問を描いたエージェントが決める。選択肢だけが、保留と同じ綴りだと分かっている。
+// WHY 長い選択肢から見る: 「案 A」と「別の案 A」のように、片方がもう片方の末尾になっていても取り違えない
+export const pickedOption = (text: string, options: readonly string[]): string | null => {
+  const lines = text.split('\n').map(line => line.trim())
+  const longestFirst = [...options].sort((left, right) => right.length - left.length)
+  return longestFirst.find(option => lines.some(line => line.endsWith(`: ${option}`))) ?? null
+}
+
 // 終了の知らせ（task-notification）の文から、終わったエージェントの ID を読む。読めなければ null
 export const notifiedAgentOf = (text: string): string | null => /<task-id>([^<]+)<\/task-id>/.exec(text)?.[1] ?? null
 
@@ -143,5 +154,14 @@ export const notifiedAgentOf = (text: string): string | null => /<task-id>([^<]+
 export const askedCount = (messages: readonly { role: string; text: string }[]): number =>
   messages.filter(message => message.role === 'user' && message.text.trim() !== '').length
 
+// その会話に、その ID のツールの呼び出しがあるか
+export const hasToolUse = (messages: readonly { toolUses: readonly { tool_use_id: string }[] }[], id: string): boolean =>
+  messages.some(message => message.toolUses.some(use => use.tool_use_id === id))
+
 // エージェントが、いま答えている最中か。最中に要約を頼むと、その答えに要約が混ざる
 export const isAnswering = (status: string | undefined): boolean => status === 'pending' || status === 'running' || status === 'waiting'
+
+// 相談の会話の中の質問への答えを、メインへ直接は送らずに受け取ったときの理由。会話の行に「Prompt dropped by a hook: …」として出る。
+// WHY 「受け取りました」を含める: 答えを送った Mod（rich）は、止められると答えの文を toast で残す。
+// rich は、理由にこの語があれば「引き取られた」と見て、toast を出さない（mods/rich の isTakenOver）。語を変えるなら、両方を直す
+export const CONSULT_ANSWER_TAKEN = '相談の結論として受け取りました（要約を付けてメインへ送ります）'
