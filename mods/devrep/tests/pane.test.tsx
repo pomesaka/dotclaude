@@ -419,3 +419,45 @@ for (const one of STARTS) {
     expect((result.additionalContext ?? []).map(text => (text.includes('mcp__devrep__update_devrep') ? 'DEVREP' : text))).toEqual(one.context)
   })
 }
+
+// プロンプトの下の行
+const line = {
+  plugin: 'devrep',
+  surface: 'terminal' as const,
+  component: 'PromptHint' as const,
+  props: { isDraft: false, isWorking: false, hint: '? for shortcuts' },
+  viewport: { columns: 142, rows: 40 },
+}
+
+// テストの土台にはエンジンの描画が無い。下の層の表示の代わりに、目印を返す
+const engineLine = (on: On) =>
+  on('ui.render', ($, e) => {
+    const { Text } = $.ui.resolve(e)
+    return <Text>ENGINE</Text>
+  })
+
+test('ON のあいだ、プロンプトの下の行に devrep の札が出る。下の層の表示は残す。押すと、フォーカスを移して pane を開く', async ($, on) => {
+  const seen = world(on)
+  engineLine(on)
+  await $.session.start(START)
+  await $.tool.call({ tool: TOOL, ...REPORT })
+  seen.opened.length = 0
+
+  const ui = await $.ui.mount(line)
+  expect(await ui.find({ type: 'Text', text: /^ devrep $/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^ENGINE$/ })).toBeDefined()
+  await ui.press({ key: 'devrep' })
+  expect(seen.opened).toEqual([{ id: 'devrep', focus: true }])
+  await ui.unmount()
+})
+
+test('OFF のあいだは、札を出さない。下の層の表示は残す', async ($, on) => {
+  world(on)
+  engineLine(on)
+  await $.session.start(START)
+
+  const ui = await $.ui.mount(line)
+  expect(await ui.find({ key: 'devrep' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^ENGINE$/ })).toBeDefined()
+  await ui.unmount()
+})

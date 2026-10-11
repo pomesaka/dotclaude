@@ -7,7 +7,7 @@ import { BAR_CELLS, filledCells, isSameStatus, levelOf, shortPath, type Level } 
 
 const status = atom({ plugin: 'status-band', key: 'status' } as const, null)
 
-// 帯の色。ほかの Mod（jj、pr、refs、questions）が帯の右に足す札も、この色に揃えている
+// 帯の色。ほかの Mod（jj、pr、refs、questions、devrep）が帯の右に足す札も、この色に揃えている
 const ACCENT = '#6cb6ff'
 const AMBER = '#e8a35c'
 const RED = '#ff7b72'

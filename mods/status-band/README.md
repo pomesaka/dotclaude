@@ -3,10 +3,10 @@
 プロンプトの下の行に、ステータス行の代わりになる帯を出すMod。モデル、コンテキストの使用率、場所を1行にまとめる。
 
 ```
-opus   ━━━━━───── 47%   ~/…/dotclaude                 ● 14 ↑ 1  commit  log  #14 #13  pr  refs  pending 2
+opus   ━━━━━───── 47%   ~/…/dotclaude                 ● 14 ↑ 1  commit  log  #14 #13  pr  refs  pending 2  devrep
 ```
 
-このModが描くのは左の3つだけ。右に並ぶ件数と札は、ほかのMod（`jj`、`pr`、`refs`、`questions`）が足している。
+このModが描くのは左の3つだけ。右に並ぶ件数と札は、ほかのMod（`jj`、`pr`、`refs`、`questions`、`devrep`）が足している。
 
 古いステータス行があった場所と同じ、プロンプトの下に出る。その行に元から出ている表示（`manual mode on`や`esc to interrupt`）は消さずに、帯の下に並べる。
 
@@ -44,6 +44,7 @@ opus   ━━━━━───── 47%   ~/…/dotclaude                 ● 
 | `pr` | このセッションのPRの番号、`pr` |
 | `refs` | `refs` |
 | `questions` | `pending N` |
+| `devrep` | `devrep`（ONのセッションだけ） |
 
 並ぶ順は、`settings.json`の`enabledPlugins`に書いた順で決まる。先に書いたModが外側（右）になる。`mods/README.md`に書き方がある。このModを入れていないときも、ほかのModの札は、エンジンの元の表示の右に出る。
 

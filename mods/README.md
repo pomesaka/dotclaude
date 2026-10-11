@@ -13,7 +13,7 @@ Claude CodeのMod（`plugins/mods`）の置き場。このリポジトリをフ�
 | `refs` | このセッションが参照した文書やURLの一覧。Claudeが`add_reference`で残し、paneに出す。プロンプトの下の行に`refs`の札を足す |
 | `rich` | カード、図、質問をターミナルに描く`show`ツール |
 | `status-band` | ステータス行の代わりの帯。モデル、コンテキスト、場所。ほかのModが、帯の右に自分の札を足す |
-| `devrep` | ONにしたセッションで、Claudeが作業の状況（いましていること、次にすること、自由な節）を書いてpaneに置く`update_devrep`ツール。5ターン書き直しが無いと催促する |
+| `devrep` | ONにしたセッションで、Claudeが作業の状況（いましていること、次にすること、自由な節）を書いてpaneに置く`update_devrep`ツール。5ターン書き直しが無いと催促する。ONのあいだ、プロンプトの下の行に`devrep`の札を足す |
 
 ## 読み込みの仕組み
 
@@ -39,7 +39,7 @@ claude plugin install status-band@dotclaude --scope user
 claude plugin install devrep@dotclaude --scope user
 ```
 
-プロンプトの下の行に札を足すMod（`jj`、`pr`、`refs`、`questions`）は、`settings.json`の`enabledPlugins`で`status-band@dotclaude`より前に書く。先に書いたModが外側になり、帯の右に札を並べる。札どうしも、先に書いたものが右になる。`questions`、`refs`、`pr`、`jj`、`status-band`の順に書くと、帯の右に、jjの件数とボタン、PRの番号と`pr`、`refs`、`pending 1`の順で並ぶ。`claude plugin install`は末尾に足すので、入れた後に行を移す。
+プロンプトの下の行に札を足すMod（`jj`、`pr`、`refs`、`questions`、`devrep`）は、`settings.json`の`enabledPlugins`で`status-band@dotclaude`より前に書く。先に書いたModが外側になり、帯の右に札を並べる。札どうしも、先に書いたものが右になる。`devrep`、`questions`、`refs`、`pr`、`jj`、`status-band`の順に書くと、帯の右に、jjの件数とボタン、PRの番号と`pr`、`refs`、`pending 1`、`devrep`の順で並ぶ。`claude plugin install`は末尾に足すので、入れた後に行を移す。
 
 `settings.json`をこのリポジトリから引き継いでいれば、`extraKnownMarketplaces`と`enabledPlugins`はすでに入っている。パスがマシンによって違う場合は、`extraKnownMarketplaces.dotclaude.source.path`を直す。
 

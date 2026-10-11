@@ -5,7 +5,7 @@
 export const SESSION_CONTEXT = `このセッションには status-band（Claude Code の Mod）が入っている。
 
 - プロンプトの下に帯が出ている。モデル、コンテキストの使用率、作業ディレクトリ
-- 帯の右には、ほかの Mod（jj、pr、refs、questions）が自分の札を足す。それぞれの説明は、その Mod が別に渡す
+- 帯の右には、ほかの Mod（jj、pr、refs、questions、devrep）が自分の札を足す。それぞれの説明は、その Mod が別に渡す
 - 帯に出ていることは、利用者がすでに見ている。コンテキストの使用率を、聞かれていないのに文章で報告し直さない
 
 詳しい仕様は ~/github.com/pomesaka/dotclaude/mods/status-band/README.md にある。`

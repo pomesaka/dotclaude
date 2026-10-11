@@ -74,6 +74,7 @@
     "lua-lsp@claude-plugins-official": true,
     "human-edit@dotclaude": true,
     "rich@dotclaude": true,
+    "devrep@dotclaude": true,
     "questions@dotclaude": true,
     "refs@dotclaude": true,
     "pr@dotclaude": true,
@@ -81,7 +82,6 @@
     "status-band@dotclaude": true,
     "next-step@dotclaude": true,
     "rust-analyzer-lsp@claude-plugins-official": true,
-    "devrep@dotclaude": true,
     "publish-guard@dotclaude": true
   },
   "extraKnownMarketplaces": {

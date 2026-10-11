@@ -11,6 +11,9 @@ const PANE = 'devrep'
 const COMMAND = 'devrep'
 
 const ACCENT = '#6cb6ff'
+// プロンプトの下の行に足す札の色。status-band の帯の、目立たせない札と同じ
+const SURFACE = '#30363d'
+const SOFT = '#c9d1d9'
 
 const DESCRIPTION = `Rewrite the report of where the work stands, shown in the user's devrep pane: what this session is doing now, what comes next, and any other sections the user needs.
 The user reads it when they come back to a session they left alone, instead of scrolling the transcript.
@@ -230,6 +233,36 @@ export const register: Register = on => {
     // context は Claude だけが読む文で、ターンは始めない。最初の状況は、利用者の次のプロンプトのターンで書かれる
     return isTurnedOn ? { text, context: [START_PROMPT] } : { text }
   })
+
+  // ON のあいだ、プロンプトの下の行に devrep の札を足す。下の層（エンジンの元の表示、status-band の帯、ほかの Mod の札）の右に並べる。
+  // WHY 札を持つ: pane を開く道が /devrep だけだと、ターンの途中に打ったときに、ターンが終わるまで開かない。
+  // 札から直接開けば、Claude が作業している最中でもすぐ出る。
+  // WHY ON のときだけ: devrep を使わないセッションで、札を増やさない。
+  // WHY Box に width を付けない: 下の層の木を width の付いた Box に入れると、エンジンが重ねた hook の全部を捨てる（v2.1.296 で確認）
+  on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
+    const inner = await next(e)
+    if (e.surface !== 'terminal' || !(await read($, record)).isOn) return inner
+    const { Box, Button, Text } = $.ui.resolve(e)
+    // 開いた時点の時刻で「何分前に更新」を出す
+    const open = () => {
+      void $.clock
+        .now()
+        .then(now => update($, clock, () => now))
+        .then(() => $.ui.open({ id: PANE, title: PANE, focus: true }))
+        .catch(() => undefined)
+    }
+    return (
+      <Box flexDirection="row" columnGap={1}>
+        {inner}
+        {/* WHY hotkey を付けない: plain の Button は hotkey があると「d: devrep」と描かれ、札の見た目が崩れる */}
+        <Button key="devrep" plain onPress={open}>
+          <Text backgroundColor={SURFACE} color={SOFT}>
+            {' devrep '}
+          </Text>
+        </Button>
+      </Box>
+    )
+  }).catch((_$, e, next) => next(e))
 
   // 結果の文（"Noted."）はモデル向け。利用者には pane が見えているので、会話の行には書き直したことを 1 行だけ出す
   on('ui.render', { component: 'ToolUse', props: { tool: TOOL } }, async ($, e, next) => {
