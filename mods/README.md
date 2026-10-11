@@ -5,6 +5,7 @@ Claude CodeのMod（`plugins/mods`）の置き場。このリポジトリをフ�
 | Mod | 内容 |
 |---|---|
 | `jj` | プロンプトの下の行に、jjの件数（未コミット、未push）と`commit`、`log`の札を足す。jjのログをpaneに出す |
+| `danger-guard` | ClaudeがBashで実行する前に、マシンや利用者のデータを広く壊しうるコマンド（広い場所の再帰的な削除、ディスクの消去、電源、利用者のアプリを巻き込む`pkill`など）を止める |
 | `human-edit` | 利用者にファイルを手で編集してもらう`human_edit`ツール |
 | `next-step` | ターンの終わりに、利用者が次に打ちそうな文をプロンプトの上に札として並べる。先頭はClaude Code自身の案、残りは会話を分岐させて聞いた案。押すとその文が送られる |
 | `questions` | Claudeが仮に決めて先へ進んだことの一覧。Claudeが`add_question`で残し、利用者がpaneで選んで答える。決める前に、会話を引き継いだ読むだけのエージェントと相談できる。プロンプトの下の行に`pending N`の札を足す |
@@ -27,6 +28,7 @@ Claude CodeのMod（`plugins/mods`）の置き場。このリポジトリをフ�
 
 ```bash
 claude plugin marketplace add ~/github.com/pomesaka/dotclaude
+claude plugin install danger-guard@dotclaude --scope user
 claude plugin install human-edit@dotclaude --scope user
 claude plugin install jj@dotclaude --scope user
 claude plugin install next-step@dotclaude --scope user

@@ -82,7 +82,8 @@
     "status-band@dotclaude": true,
     "next-step@dotclaude": true,
     "rust-analyzer-lsp@claude-plugins-official": true,
-    "publish-guard@dotclaude": true
+    "publish-guard@dotclaude": true,
+    "danger-guard@dotclaude": true
   },
   "extraKnownMarketplaces": {
     "claude-deck": {

@@ -1,0 +1,8 @@
+{
+  "name": "danger-guard",
+  "version": "0.1.0",
+  "description": "Before the agent runs a Bash command, blocks the ones that can wreck the machine or the user's data beyond the working repository: recursive deletes of broad places, disk erasure, shutdown, and pkill patterns that would also stop the user's applications",
+  "author": {
+    "name": "pomesaka"
+  }
+}
