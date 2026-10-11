@@ -160,7 +160,7 @@ const answerQuestion = async ($: EngineInterface, question: OpenQuestion, option
 // 相談用のエージェントを立てられなかったときに、保留の説明をメインの Claude に頼む。答えは付けない。
 // 頼み方は、環境変数 QLIST_EXPLAIN_PROMPT で差し替えられる。
 // WHY 環境変数: 説明の出し方（文章、rich の図）は利用者の好みで、Mod は rich に依存しない。
-// 「/rich で説明しろ」のように書けば、Claude がそのスキルで描く。
+// 「/explain-inline で説明しろ」のように書けば、Claude がそのスキルで描く。
 // WHY 待たない: answerQuestion と同じ
 const explainInMain = async ($: EngineInterface, question: OpenQuestion): Promise<void> => {
   const failed = (): void => $.ui.toast(`${labelOf(question)} の説明を頼めませんでした。もう一度押してください`, { timeoutMs: 8_000 })
@@ -214,6 +214,14 @@ const saveConsult = async ($: EngineInterface, next: Consult | null): Promise<vo
 const spawnedAgentOf = async ($: EngineInterface, description: string, used: string | null): Promise<string | undefined> =>
   (await $.agent.list().catch(() => [])).filter(agent => agent.description === description && agent.id !== used).at(-1)?.id
 
+// 相談用のエージェントが、エンジンの一覧からもう外されているか。一覧を読めなければ、残っているものとして扱う。
+// WHY 調べる: エンジンは、答え終わったエージェントを、その会話を開いていないと 30 秒で一覧から外す
+// （v2.1.296 の実行ファイルで確認）。外れた後は、利用者がその会話を開けない
+const isAgentGone = async ($: EngineInterface, agentId: string): Promise<boolean> => {
+  const listed = await $.agent.list().catch(() => null)
+  return listed !== null && !listed.some(agent => agent.id === agentId)
+}
+
 // 利用者が pane の「詳しく聞く」を押した保留について、相談を始める。
 // メインの会話を引き継いだエージェント（フォーク）を立て、最初の説明を頼んで、相談の pane を開く。
 // 利用者は、エンジンのエージェントの会話の画面を開いて、そこで直接やりとりする。
@@ -223,12 +231,13 @@ const spawnedAgentOf = async ($: EngineInterface, description: string, used: str
 // メインのターンの最中でも立てられ、進行中のターンのそこまでを見ている（v2.1.296 で確認）。
 // WHY 会話を pane に描かない: エンジンのエージェントの画面は、通常のセッションと同じ表示で、入力欄からそのエージェントへ直接送れる。
 // rich の show も会話の行に描かれる。pane に作り直すと、その全部を自分で描くことになる（2026-10-11 に実機で確認して決めた）。
-// 同じ保留の相談が開いていれば、立て直さずに pane を開き直す
+// 同じ保留の相談が開いていて、そのエージェントがまだ一覧にあれば、立て直さずに pane を開き直す。
+// 一覧から外されていたら、立て直す。前のやりとりは引き継げない
 const startConsult = async ($: EngineInterface, question: OpenQuestion): Promise<void> => {
   const open = await currentConsult($)
   // WHY フォーカスを移さない: 利用者はこの後、キーボードでエージェントの会話を開く
   await $.ui.open({ id: CONSULT_PANE, title: CONSULT_PANE_TITLE })
-  if (open !== null && open.question.id === question.id && open.agentId !== null) return
+  if (open !== null && open.question.id === question.id && open.agentId !== null && !(await isAgentGone($, open.agentId))) return
   await saveConsult($, { question, agentId: null, isHandingOff: false })
   const description = consultDescription(question)
   // $.env.get の名前は、文字列をその場に書く。定数で渡すと読み込みで弾かれる（v2.1.295）

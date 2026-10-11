@@ -128,6 +128,10 @@ export const world = (on: On, given: Given = {}) => {
     return { model: 'opus' }
   })
   on('agent.list', () => ({ value: [...agents] }))
+  // エンジンが、答え終わったエージェントを一覧から外した状態にする
+  const evict = (): void => {
+    agents.length = 0
+  }
   on('session.messages', () => ({
     value: (given.talk ?? [{ role: 'user' as const, text: '依頼' }, { role: 'assistant' as const, text: '説明' }]).map(one => ({ ...one, toolUses: [] })),
   }))
@@ -147,5 +151,5 @@ export const world = (on: On, given: Given = {}) => {
     const { Text } = $.ui.resolve(e)
     return <Text>BELOW</Text>
   })
-  return seen
+  return { ...seen, evict }
 }

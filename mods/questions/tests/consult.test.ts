@@ -97,7 +97,7 @@ test('consultPrompt は、説明の無い保留では説明の行を書かない
 
 const INSTRUCTED: { name: string; instruction: string | undefined; opening: string }[] = [
   { name: '頼み方が無ければ、既定の頼み方', instruction: undefined, opening: 'まず、この保留について、詳しく説明して。' },
-  { name: '頼み方があれば、その頼み方', instruction: ' /rich で説明して ', opening: 'まず、この保留について、/rich で説明して。' },
+  { name: '頼み方があれば、その頼み方', instruction: ' /explain-inline で説明して ', opening: 'まず、この保留について、/explain-inline で説明して。' },
 ]
 
 for (const one of INSTRUCTED) {

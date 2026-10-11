@@ -60,10 +60,10 @@ test('「詳しく聞く」を押すと、会話を引き継いだエージェ�
 })
 
 test('最初の説明の頼み方は、環境変数で差し替えられる', async ($, on) => {
-  const seen = world(on, { stored: STORED, env: { QLIST_EXPLAIN_PROMPT: '/rich で説明して' } })
+  const seen = world(on, { stored: STORED, env: { QLIST_EXPLAIN_PROMPT: '/explain-inline で説明して' } })
   await begin($)
 
-  expect(seen.spawned).toEqual([consultPrompt(Q2, '/rich で説明して')])
+  expect(seen.spawned).toEqual([consultPrompt(Q2, '/explain-inline で説明して')])
 })
 
 test('相談の会話を開いているあいだは、行き方の代わりに、戻り方を出す', async ($, on) => {
@@ -185,6 +185,19 @@ test('同じ保留の「詳しく聞く」をもう一度押しても、エー�
   // 別の保留なら、新しく立てる
   await list.press({ key: 'explain-1' })
   expect(seen.spawned).toEqual([consultPrompt(Q2, undefined), consultPrompt(Q1, undefined)])
+  await list.unmount()
+})
+
+test('相談用のエージェントが一覧から外されていたら、「詳しく聞く」で立て直す', async ($, on) => {
+  const seen = world(on, { stored: STORED })
+  await begin($)
+  expect(seen.spawned.length).toBe(1)
+
+  // エンジンは、答え終わったエージェントを、会話を開いていないと 30 秒で外す
+  seen.evict()
+  const list = await $.ui.mount(questionsPane)
+  await list.press({ key: 'explain-2' })
+  expect(seen.spawned).toEqual([consultPrompt(Q2, undefined), consultPrompt(Q2, undefined)])
   await list.unmount()
 })
 

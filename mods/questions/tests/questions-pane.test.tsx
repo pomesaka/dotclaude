@@ -136,8 +136,8 @@ const EXPLAINED: { name: string; env: { [name: string]: string }; message: strin
   { name: '設定が無ければ、既定の頼み方で送る', env: {}, message: 'Q2（名前をどうするか）について、詳しく説明して' },
   {
     name: '環境変数があれば、その頼み方で送る',
-    env: { QLIST_EXPLAIN_PROMPT: '/rich で説明しろ' },
-    message: 'Q2（名前をどうするか）について、/rich で説明しろ',
+    env: { QLIST_EXPLAIN_PROMPT: '/explain-inline で説明しろ' },
+    message: 'Q2（名前をどうするか）について、/explain-inline で説明しろ',
   },
 ]
 

@@ -70,7 +70,7 @@ export const isReadOnlyCommand = (command: string): boolean => {
 // command は Bash のコマンドで、ほかのツールでは空文字。
 // WHY MCP のツールを通す: 説明に rich の show などを使えるようにする（2026-10-11 に利用者が決めた）。
 // MCP のツールには書き込むものもあるが、ここでは見分けない。通すかどうかは、エンジンのふだんの権限の判定に任せる。
-// WHY Skill と ToolSearch: 利用者の頼み方（「/rich で説明して」）に従うにはスキルを読み込む。後から読み込む MCP のツールは ToolSearch で取る。
+// WHY Skill と ToolSearch: 利用者の頼み方（「/explain-inline で説明して」）に従うにはスキルを読み込む。後から読み込む MCP のツールは ToolSearch で取る。
 // WHY NOT Write、Edit、書く Bash: 相談の相手が、メインの作業と同じファイルを書き換えないようにする
 const LOADERS: ReadonlySet<string> = new Set(['Read', 'Skill', 'ToolSearch'])
 export const isAllowedInConsult = (tool: string, command: string): boolean =>

@@ -135,7 +135,7 @@ for (const one of MESSAGES) {
 const EXPLAINS: { name: string; instruction: string | undefined; message: string }[] = [
   { name: '頼み方が無い', instruction: undefined, message: 'Q3（名前をどうするか）について、詳しく説明して' },
   { name: '頼み方が空白だけ', instruction: '  ', message: 'Q3（名前をどうするか）について、詳しく説明して' },
-  { name: '頼み方がある', instruction: ' /rich で説明しろ ', message: 'Q3（名前をどうするか）について、/rich で説明しろ' },
+  { name: '頼み方がある', instruction: ' /explain-inline で説明しろ ', message: 'Q3（名前をどうするか）について、/explain-inline で説明しろ' },
 ]
 
 for (const one of EXPLAINS) {
