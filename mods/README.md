@@ -11,6 +11,7 @@ Claude CodeのMod（`plugins/mods`）の置き場。このリポジトリをフ�
 | `questions` | Claudeが仮に決めて先へ進んだことの一覧。Claudeが`add_question`で残し、利用者がpaneで選んで答える。決める前に、会話を引き継いだ読むだけのエージェントと相談できる。プロンプトの下の行に`pending N`の札を足す |
 | `pr` | このセッションで作るか直すかしたPRの一覧。CIとレビューの状態をpaneに出し、CIを見張って、マージとCIの失敗をClaudeへ知らせる。プロンプトの下の行に番号と`pr`の札を足す |
 | `publish-guard` | Claudeがpushする前に、リポジトリの`scripts/check-public.sh`を走らせて、公開してはいけない名前や鍵があればpushを止める |
+| `quiet-prompts` | ほかのModが自分から送った文（催促、知らせ）と、エージェントに宛てた依頼文の行を、会話の中で1行に畳む |
 | `refs` | このセッションが参照した文書やURLの一覧。Claudeが`add_reference`で残し、paneに出す。プロンプトの下の行に`refs`の札を足す |
 | `rich` | カード、図、質問をターミナルに描く`show`ツール |
 | `status-band` | ステータス行の代わりの帯。モデル、コンテキスト、場所。ほかのModが、帯の右に自分の札を足す |
@@ -35,6 +36,7 @@ claude plugin install next-step@dotclaude --scope user
 claude plugin install questions@dotclaude --scope user
 claude plugin install pr@dotclaude --scope user
 claude plugin install publish-guard@dotclaude --scope user
+claude plugin install quiet-prompts@dotclaude --scope user
 claude plugin install refs@dotclaude --scope user
 claude plugin install rich@dotclaude --scope user
 claude plugin install status-band@dotclaude --scope user

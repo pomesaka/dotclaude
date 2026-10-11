@@ -1,0 +1,8 @@
+{
+  "name": "quiet-prompts",
+  "version": "0.1.0",
+  "description": "Draws a prompt that another plugin submitted on its own (a reminder, a notice) as one line in the transcript, without the engine's framing; ctrl+o still shows it in full",
+  "author": {
+    "name": "pomesaka"
+  }
+}

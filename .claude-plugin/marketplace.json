@@ -38,6 +38,11 @@
       "description": "Before the agent pushes from a repository that has scripts/check-public.sh, runs that check and blocks the push when it finds names or keys that must not be published"
     },
     {
+      "name": "quiet-prompts",
+      "source": "./mods/quiet-prompts",
+      "description": "Draws a prompt that another plugin submitted on its own (a reminder, a notice) as one line in the transcript, without the engine's framing; ctrl+o still shows it in full"
+    },
+    {
       "name": "refs",
       "source": "./mods/refs",
       "description": "A list of the documents and URLs this session relied on, kept by the agent with add_reference and shown in a pane; adds a refs button to the line under the prompt"
