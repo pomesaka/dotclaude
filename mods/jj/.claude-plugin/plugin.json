@@ -1,0 +1,9 @@
+{
+  "name": "jj",
+  "version": "0.1.0",
+  "description": "Adds the jj counts (changed files, unpushed commits) and commit and log buttons to the line under the prompt, with a pane for the jj log",
+  "author": {
+    "name": "pomesaka"
+  },
+  "types": "./types/index.d.ts"
+}

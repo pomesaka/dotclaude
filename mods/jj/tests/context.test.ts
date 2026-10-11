@@ -31,7 +31,7 @@ test('サブエージェントには渡さない', async ($, on) => {
 })
 
 // 説明に出てくる名前が、実際の名前とずれていないことを固定する
-const NAMES = ['status-band', 'jj', 'pr', 'refs', 'questions']
+const NAMES = ['/jjcommit', 'pushしといて']
 
 for (const name of NAMES) {
   test(`説明は「${name}」に触れている`, async () => {

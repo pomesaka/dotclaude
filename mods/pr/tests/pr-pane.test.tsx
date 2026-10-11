@@ -182,7 +182,7 @@ test('push の後にマージに気づいたら、ターンの終わりに 1 回
   expect(seen.submitted.length).toBe(1)
 })
 
-const TRACK = 'mcp__status-band__track_pr'
+const TRACK = 'mcp__pr__track_pr'
 
 test('track_pr で、Claude が PR を一覧に足す', async ($, on) => {
   const seen = world(on, { stored: { 'prs:s1': [PR_2] }, views: { [PR_2]: view('a', 'OPEN'), [prUrl(7)]: view('b', 'OPEN', 'FAILURE') } })

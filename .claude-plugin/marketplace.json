@@ -8,6 +8,11 @@
       "description": "human_edit tool: the agent asks the user to edit a file in a tmux split pane and waits until the editor exits"
     },
     {
+      "name": "jj",
+      "source": "./mods/jj",
+      "description": "Adds the jj counts (changed files, unpushed commits) and commit and log buttons to the line under the prompt, with a pane for the jj log"
+    },
+    {
       "name": "next-step",
       "source": "./mods/next-step",
       "description": "After a turn, shows up to four prompts the user is likely to type next as cards above the prompt: Claude Code's own prompt suggestion first, then more from a fork of the conversation; clicking a card sends it"
@@ -16,6 +21,11 @@
       "name": "questions",
       "source": "./mods/questions",
       "description": "A list of the decisions the agent made provisionally so work could continue, kept with add_question and shown in a pane for the user to settle by clicking; a question can be talked over with a read-only fork of the conversation first. Adds a pending button to the line under the prompt"
+    },
+    {
+      "name": "pr",
+      "source": "./mods/pr",
+      "description": "A list of the pull requests this session created or edited, with CI and review state, shown in a pane; watches CI after a push, tells the agent about merges and CI failures, and adds the PR numbers and a pr button to the line under the prompt"
     },
     {
       "name": "publish-guard",
@@ -35,7 +45,7 @@
     {
       "name": "status-band",
       "source": "./mods/status-band",
-      "description": "A line under the prompt that replaces the status line: model, context use, directory, jj counts and the pull requests this session created or edited, with panes for the jj log and the pull requests"
+      "description": "A line under the prompt that replaces the status line: model, context use and directory. Other mods add their own buttons to its right"
     },
     {
       "name": "devrep",

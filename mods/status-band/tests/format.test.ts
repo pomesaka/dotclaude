@@ -1,5 +1,5 @@
 import { expect, test } from 'claude-code/testing'
-import { clip, filledCells, isSameStatus, levelOf, shortPath, type Level } from '../hooks/format'
+import { filledCells, isSameStatus, levelOf, shortPath, type Level } from '../hooks/format'
 import type { Status } from '../types'
 
 const CELLS: { percent: number; cells: number }[] = [
@@ -48,28 +48,13 @@ for (const one of PATHS) {
   })
 }
 
-const CLIPS: { name: string; text: string; max: number; clipped: string }[] = [
-  { name: '収まるならそのまま', text: 'fix: typo', max: 20, clipped: 'fix: typo' },
-  { name: 'ちょうど収まる', text: 'abcde', max: 5, clipped: 'abcde' },
-  { name: '半角を切る', text: 'abcdefgh', max: 5, clipped: 'abcd…' },
-  { name: '全角は 2 桁として切る', text: '説明をターミナルに描く', max: 9, clipped: '説明をタ…' },
-  { name: '全角の途中では切らない', text: '説明をターミナルに描く', max: 8, clipped: '説明を…' },
-]
-
-for (const one of CLIPS) {
-  test(`clip: ${one.name}`, async () => {
-    expect(clip(one.text, one.max)).toBe(one.clipped)
-  })
-}
-
-const BASE: Status ={ model: 'opus', contextPercent: 47, directory: '~/work', jj: { unpushed: 1, changed: 2 } }
+const BASE: Status = { model: 'opus', contextPercent: 47, directory: '~/work' }
 
 const SAME: { name: string; left: Status | null; right: Status | null; same: boolean }[] = [
-  { name: '同じ値', left: BASE, right: { ...BASE, jj: { unpushed: 1, changed: 2 } }, same: true },
+  { name: '同じ値', left: BASE, right: { ...BASE }, same: true },
   { name: 'コンテキストが違う', left: BASE, right: { ...BASE, contextPercent: 48 }, same: false },
   { name: 'モデルが違う', left: BASE, right: { ...BASE, model: 'sonnet' }, same: false },
-  { name: 'jj の件数が違う', left: BASE, right: { ...BASE, jj: { unpushed: 1, changed: 3 } }, same: false },
-  { name: 'jj が片方だけ null', left: BASE, right: { ...BASE, jj: null }, same: false },
+  { name: '場所が違う', left: BASE, right: { ...BASE, directory: '~/other' }, same: false },
   { name: 'どちらも null', left: null, right: null, same: true },
   { name: '片方だけ null', left: null, right: BASE, same: false },
 ]

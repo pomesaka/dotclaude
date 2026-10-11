@@ -1,0 +1,9 @@
+{
+  "name": "pr",
+  "version": "0.1.0",
+  "description": "A list of the pull requests this session created or edited, with CI and review state, shown in a pane; watches CI after a push, tells the agent about merges and CI failures, and adds the PR numbers and a pr button to the line under the prompt",
+  "author": {
+    "name": "pomesaka"
+  },
+  "types": "./types/index.d.ts"
+}

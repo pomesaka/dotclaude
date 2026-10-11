@@ -84,4 +84,4 @@ claude plugin validate mods/refs
 claude plugin test mods/refs
 ```
 
-`hooks/cursor.ts`は、`status-band`の同じ名前のファイルと同じ中身だ。Modは1つずつ入れる単位なので、ほかのModのファイルは読み込まず、写しを持っている。
+`hooks/cursor.ts`は、`pr`の同じ名前のファイルと同じ中身だ。Modは1つずつ入れる単位なので、ほかのModのファイルは読み込まず、写しを持っている。

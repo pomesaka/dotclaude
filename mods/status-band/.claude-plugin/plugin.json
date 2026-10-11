@@ -1,7 +1,7 @@
 {
   "name": "status-band",
   "version": "0.1.0",
-  "description": "A line under the prompt that replaces the status line: model, context use, directory, jj counts and the pull requests this session created or edited, with panes for the jj log and the pull requests",
+  "description": "A line under the prompt that replaces the status line: model, context use and directory. Other mods add their own buttons to its right",
   "author": {
     "name": "pomesaka"
   },
