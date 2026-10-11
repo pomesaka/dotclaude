@@ -416,25 +416,35 @@ test('一覧が pane より長くても、キーのヒントは流れずに残�
   await ui.unmount()
 })
 
-test('終わった PR は新しい 3 つだけ残し、古いものは一覧からも保存からも消す', async ($, on) => {
+test('終わった PR は新しい 10 個だけ残し、古いものは一覧からも保存からも消す', async ($, on) => {
+  // 末尾がいちばん新しい。1 は開いたまま、2 から 13 の 12 個は終わっている
+  const done = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
   const seen = world(on, {
-    // 末尾がいちばん新しい。1 は開いたまま、2 から 6 は終わっている
-    stored: { 'prs:s1': [prUrl(1), prUrl(2), prUrl(3), prUrl(4), prUrl(5), prUrl(6)] },
+    stored: { 'prs:s1': [prUrl(1), ...done.map(number => prUrl(number))] },
     views: {
       [prUrl(1)]: view('open', 'OPEN'),
-      [prUrl(2)]: view('old', 'MERGED'),
-      [prUrl(3)]: view('old', 'CLOSED'),
-      [prUrl(4)]: view('done', 'MERGED'),
-      [prUrl(5)]: view('done', 'CLOSED'),
-      [prUrl(6)]: view('done', 'MERGED'),
+      ...Object.fromEntries(done.map(number => [prUrl(number), view('done', number % 2 === 0 ? 'MERGED' : 'CLOSED')])),
     },
   })
 
   await $.session.start(START)
-  expect(seen.store.get('prs:s1')).toEqual([prUrl(1), prUrl(4), prUrl(5), prUrl(6)])
+  // 古い 2 と 3 が消え、開いている 1 は残る
+  expect(seen.store.get('prs:s1')).toEqual([
+    prUrl(1),
+    prUrl(4),
+    prUrl(5),
+    prUrl(6),
+    prUrl(7),
+    prUrl(8),
+    prUrl(9),
+    prUrl(10),
+    prUrl(11),
+    prUrl(12),
+    prUrl(13),
+  ])
 
   const ui = await $.ui.mount(prPane)
-  expect(await ui.find({ type: 'Text', text: /^#6$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^#13$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^#1$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^#3$/ })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: /^#2$/ })).toBeUndefined()
