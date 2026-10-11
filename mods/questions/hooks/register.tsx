@@ -53,8 +53,11 @@ let summaryWaiter: { agentId: string; resolve: (reply: string) => void } | null 
 const SUMMARY_TIMEOUT_MS = 30_000
 // 相談用のエージェントに、読む以外のツールを拒むときの理由。エージェントが読む
 const CONSULT_READ_ONLY = 'This side conversation does not change files: only Read, MCP tools and read-only shell commands (rg, fd, ls, cat, head, tail, wc, jq, jj log/diff/show/status) without redirection run here. Answer from what you can read.'
-// 相談用のエージェントの終了の知らせを捨てるときの理由。会話の行に「Prompt dropped by a hook: …」として出る
-const CONSULT_NOTICE_DROPPED = '相談用のエージェントの終了の知らせ（メインには渡さない）'
+// 相談用のエージェントが答え終えた知らせを捨てるときの理由。会話の行に「Prompt dropped by a hook: …」として出る。
+// エンジンは、エージェントが 1 回答え終えるたびに知らせを送るので、相談の 1 往復ごとに、この行が 1 つ出る。
+// WHY 「終了」と書かない: 相談が終わったように読める。利用者が、終了していないのに流れていると戸惑った（2026-10-11）。
+// 行そのものは消せない。止めた理由を出すのはエンジンの決まった動きで、行を描く部品にも hook が効かなかった（v2.1.296 で確認）
+const CONSULT_NOTICE_DROPPED = '相談の返事が出ました（メインには渡しません）'
 // 相談の会話の中のボタンが押された時刻（ミリ秒）。直後に Mod が送る文を、相談の結論として受け取る。null は、押されていない。
 // WHY モジュール変数でよい: 消えると、ボタンの答えがメインへ直接届く前の動きに戻るだけで、壊れない
 let consultPressedAt: number | null = null
