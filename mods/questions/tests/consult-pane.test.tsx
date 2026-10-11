@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 import type { TestBody } from 'claude-code/testing'
 import type { OpenQuestion } from '../types'
-import { SUMMARY_PROMPT, consultPrompt } from '../hooks/consult'
+import { consultPrompt, summaryPrompt } from '../hooks/consult'
 import { AGENT, END, START, consultPane, consultPaneViewing, questionsPane, world } from './world'
 import type { Given } from './world'
 
@@ -109,7 +109,7 @@ test('問いを送った相談で選択肢を押すと、エージェントに�
 
   await ui.press({ key: 'decide-1' })
   await until(ui, () => seen.sent.length > 0)
-  expect(seen.sent).toEqual([SUMMARY_PROMPT])
+  expect(seen.sent).toEqual([summaryPrompt('todo')])
   expect(seen.submitted).toEqual([])
   expect(await ui.find({ type: 'Text', text: /^相談の要約を作って、メインへ送ります…$/ })).toBeDefined()
 

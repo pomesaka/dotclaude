@@ -16,6 +16,7 @@ import {
   notifiedAgentOf,
   pickedOption,
   summaryOf,
+  summaryPrompt,
 } from '../hooks/consult'
 
 const Q3: OpenQuestion = { id: 3, question: '名前をどうするか', detail: '一覧の見出しに出る', options: ['pending', 'todo'], assumed: 'pending', answer: null }
@@ -250,4 +251,17 @@ for (const one of TOOL_USES) {
 // rich の isTakenOver が見る語。変えるなら、mods/rich の側も直す
 test('答えを受け取った理由は、rich が引き取りと見分ける語を含む', async () => {
   expect(CONSULT_ANSWER_TAKEN).toContain('受け取りました')
+})
+
+test('申し送りの頼み方は、選んだ選択肢を伝えて、選択のほかに要ることだけを頼む', async () => {
+  const prompt = summaryPrompt('todo')
+  expect(prompt).toContain('利用者は「todo」を選びました')
+  expect(prompt).toContain('選択のほかに、メインが作業を変えるために知る必要があることだけ')
+  expect(prompt).toContain('無ければ「なし」とだけ返してください')
+})
+
+test('選択肢に無い結論の申し送りは、最初の 1 文に結論を書かせる', async () => {
+  const prompt = summaryPrompt(null)
+  expect(prompt).toContain('最初の 1 文に結論を書き')
+  expect(prompt).toContain('結論が決まっていなければ「なし」とだけ返してください')
 })

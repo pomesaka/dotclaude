@@ -4,7 +4,6 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { Consult, OpenQuestion } from '../types'
 import {
   CONSULT_ANSWER_TAKEN,
-  SUMMARY_PROMPT,
   askedCount,
   commandOf,
   consultDescription,
@@ -18,6 +17,7 @@ import {
   notifiedAgentOf,
   pickedOption,
   summaryOf,
+  summaryPrompt,
 } from './consult'
 import { SESSION_CONTEXT } from './context'
 import {
@@ -256,8 +256,8 @@ const startConsult = async ($: EngineInterface, question: OpenQuestion): Promise
   await saveConsult($, { question, agentId, isHandingOff: false })
 }
 
-// 相談用のエージェントに、相談で決まったことの要約を頼んで待つ。答えが来なければ空文字
-const summarize = ($: EngineInterface, agentId: string): Promise<string> =>
+// 相談用のエージェントに、メインへの申し送りを頼んで待つ。option は選んだ選択肢。答えが来なければ空文字
+const summarize = ($: EngineInterface, agentId: string, option: string | null): Promise<string> =>
   new Promise(resolve => {
     const giveUp = (): void => {
       if (summaryWaiter === null || summaryWaiter.agentId !== agentId) return
@@ -272,7 +272,7 @@ const summarize = ($: EngineInterface, agentId: string): Promise<string> =>
         resolve(summaryOf(reply))
       },
     }
-    void $.session.send({ to: { agentId }, text: SUMMARY_PROMPT }).then(
+    void $.session.send({ to: { agentId }, text: summaryPrompt(option) }).then(
       sent => (sent.isDelivered ? undefined : giveUp()),
       () => giveUp(),
     )
@@ -315,7 +315,7 @@ const handOffConsult = async ($: EngineInterface, option: string | null, isCommi
     return
   }
   await update($, consult, () => ({ ...current, isHandingOff: true }))
-  const summary = isIdle && (await hasTalked($, agentId)) ? await summarize($, agentId) : ''
+  const summary = isIdle && (await hasTalked($, agentId)) ? await summarize($, agentId, option) : ''
   if (option === null && summary === '') {
     await update($, consult, latest => (latest === null ? latest : { ...latest, isHandingOff: false }))
     $.ui.toast('相談から結論を読み取れませんでした。選択肢を押すか、保留の一覧の「ほかの答えを書く」で書いてください', { timeoutMs: 8_000 })
