@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 import {
   adoptedPrOf,
-  hasPendingChecks,
+  hasOpenPrs,
   isMerge,
   isPush,
   keepsWatching,
@@ -237,25 +237,23 @@ const checked = (number: number, state: 'open' | 'closed' | 'merged', checks: 'p
 
 const RUNNING = [checked(5, 'open', 'pending'), checked(4, 'open', 'passing')]
 const SETTLED = [checked(5, 'open', 'passing'), checked(4, 'open', 'failing')]
-const LIMITS = { max: 10, grace: 2 }
 
-// ticks は、見張りを始めてから取り直した回数
-const WATCHES: { name: string; rows: PrRow[]; ticks: number; pending: boolean; keeps: boolean }[] = [
-  { name: '実行中の CI がある', rows: RUNNING, ticks: 3, pending: true, keeps: true },
-  { name: '実行中の CI があっても、上限の回数でやめる', rows: RUNNING, ticks: 10, pending: true, keeps: false },
-  { name: '上限の 1 回手前までは続ける', rows: RUNNING, ticks: 9, pending: true, keeps: true },
-  { name: '実行中の CI が無くなったら、やめる', rows: SETTLED, ticks: 3, pending: false, keeps: false },
-  { name: '始めた直後は、実行中の CI が無くても続ける（push の直後）', rows: SETTLED, ticks: 1, pending: false, keeps: true },
-  { name: '猶予の回数に達したら、実行中の CI が無ければやめる', rows: SETTLED, ticks: 2, pending: false, keeps: false },
-  { name: 'マージ済みの PR の CI は待たない', rows: [checked(5, 'merged', 'pending')], ticks: 3, pending: false, keeps: false },
-  { name: '閉じた PR の CI は待たない', rows: [checked(5, 'closed', 'pending')], ticks: 3, pending: false, keeps: false },
-  { name: '状態を取れていない PR は待たない', rows: [row(5, null)], ticks: 3, pending: false, keeps: false },
+// idleTicks は、Claude が止まってから取り直した回数。上限は 10
+const WATCHES: { name: string; rows: PrRow[]; idleTicks: number; open: boolean; keeps: boolean }[] = [
+  { name: '実行中の CI がある', rows: RUNNING, idleTicks: 3, open: true, keeps: true },
+  { name: 'CI が終わっていても、開いている PR があれば続ける', rows: SETTLED, idleTicks: 3, open: true, keeps: true },
+  { name: '開いている PR があっても、上限の回数でやめる', rows: RUNNING, idleTicks: 10, open: true, keeps: false },
+  { name: '上限の 1 回手前までは続ける', rows: RUNNING, idleTicks: 9, open: true, keeps: true },
+  { name: 'マージ済みの PR だけなら、やめる', rows: [checked(5, 'merged', 'pending')], idleTicks: 0, open: false, keeps: false },
+  { name: '閉じた PR だけなら、やめる', rows: [checked(5, 'closed', 'pending')], idleTicks: 0, open: false, keeps: false },
+  { name: '状態を取れていない PR は待たない', rows: [row(5, null)], idleTicks: 0, open: false, keeps: false },
+  { name: '一覧が空なら、やめる', rows: [], idleTicks: 0, open: false, keeps: false },
 ]
 
 for (const one of WATCHES) {
   test(`見張り: ${one.name}`, async () => {
-    expect(hasPendingChecks(one.rows)).toBe(one.pending)
-    expect(keepsWatching(one.rows, one.ticks, LIMITS)).toBe(one.keeps)
+    expect(hasOpenPrs(one.rows)).toBe(one.open)
+    expect(keepsWatching(one.rows, one.idleTicks, 10)).toBe(one.keeps)
   })
 }
 

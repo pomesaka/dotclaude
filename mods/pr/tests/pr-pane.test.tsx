@@ -1,4 +1,4 @@
-import { expect, test } from 'claude-code/testing'
+import { expect, test, type TestBody } from 'claude-code/testing'
 import { END, START, operated, prPane, prUrl, shortPrPane, view, world } from './world'
 
 const PR_2 = prUrl(2)
@@ -219,48 +219,68 @@ test('track_pr は、PR の url でない入力を拒む', async ($, on) => {
 })
 
 // 見張りを始めるか。periods は、タイマーが頼んだ待ち時間
-const WATCH_STARTS: { name: string; command: string; bash: unknown; rollup: string; periods: number[] }[] = [
-  { name: '実行中の CI がある PR を取り直したら、1 分おきの見張りを始める', command: 'gh pr edit 2', bash: operated(2, 'edited'), rollup: 'PENDING', periods: [60_000] },
-  { name: '実行中の CI が無ければ、見張らない', command: 'gh pr edit 2', bash: operated(2, 'edited'), rollup: 'SUCCESS', periods: [] },
-  // push の直後は、新しいコミットの CI がまだ現れていないことがある
-  { name: 'push の後は、実行中の CI が見えていなくても見張りを始める', command: 'jj git push', bash: { stdout: '' }, rollup: 'SUCCESS', periods: [60_000] },
+const WATCH_STARTS: { name: string; command: string; bash: unknown; state: 'OPEN' | 'MERGED'; periods: number[] }[] = [
+  { name: '開いている PR を取り直したら、1 分おきの見張りを始める', command: 'gh pr edit 2', bash: operated(2, 'edited'), state: 'OPEN', periods: [60_000] },
+  { name: 'push の後も、開いている PR があれば見張りを始める', command: 'jj git push', bash: { stdout: '' }, state: 'OPEN', periods: [60_000] },
+  { name: '開いている PR が無ければ、見張らない', command: 'gh pr edit 2', bash: operated(2, 'edited'), state: 'MERGED', periods: [] },
 ]
 
 for (const one of WATCH_STARTS) {
   test(`見張り: ${one.name}`, async ($, on) => {
-    const seen = world(on, { bash: one.bash, stored: { 'prs:s1': [PR_2] }, views: { [PR_2]: view('a', 'OPEN', one.rollup) } })
+    const seen = world(on, { bash: one.bash, stored: { 'prs:s1': [PR_2] }, views: { [PR_2]: view('a', one.state, 'SUCCESS') } })
 
     await $.tool.call({ tool: 'Bash', command: one.command })
     expect(seen.periods).toEqual(one.periods)
   })
 }
 
-test('見張りは 1 周期ごとに取り直し、CI が終わったらやめる', async ($, on) => {
+// 時間を 1 周期ぶん進めて、取り直しが済むのを待つ
+const tickAndSettle = async ($: Parameters<TestBody>[0], seen: { tick: () => void }): Promise<void> => {
+  seen.tick()
+  const ui = await $.ui.mount(prPane)
+  await ui.unmount()
+}
+
+test('見張りは 1 周期ごとに取り直し、開いている PR が無くなったらやめる', async ($, on) => {
   const views = { [PR_2]: view('a', 'OPEN', 'PENDING') }
   const seen = world(on, { stored: { 'prs:s1': [PR_2] }, views })
   await $.session.start(START)
   expect(seen.queried.length).toBe(1)
 
-  // 1 周期め。まだ実行中
-  seen.tick()
-  const running = await $.ui.mount(prPane)
-  expect(seen.queried.length).toBe(2)
-  expect(await running.find({ type: 'Text', text: /^●$/ })).toBeDefined()
-  await running.unmount()
-
-  // 2 周期め。CI が通った。実行中の PR が無くなったので、ここでやめる
+  // 1 周期め。CI が通っても、開いているので続ける
   views[PR_2] = view('a', 'OPEN', 'SUCCESS')
-  seen.tick()
-  const passed = await $.ui.mount(prPane)
+  await tickAndSettle($, seen)
+  expect(seen.queried.length).toBe(2)
+
+  // 2 周期め。マージされた。開いている PR が無くなったので、ここでやめる
+  views[PR_2] = view('a', 'MERGED')
+  await tickAndSettle($, seen)
   expect(seen.queried.length).toBe(3)
-  expect(await passed.find({ type: 'Text', text: /^✓$/ })).toBeDefined()
-  await passed.unmount()
 
   // やめた後は、時間が進んでも取り直さない
-  seen.tick()
-  const idle = await $.ui.mount(prPane)
+  await tickAndSettle($, seen)
   expect(seen.queried.length).toBe(3)
-  await idle.unmount()
+})
+
+test('Claude が止まってから 10 回取り直したら、見張りをやめる。ターンの最中は数えない', async ($, on) => {
+  const seen = world(on, { stored: { 'prs:s1': [PR_2] }, views: { [PR_2]: view('a', 'OPEN', 'SUCCESS') } })
+  await $.session.start(START)
+  await $.turn.start({ text: 'go', turnId: 't1' })
+
+  // ターンの最中は、12 回取り直しても続ける
+  for (let at = 0; at < 12; at++) await tickAndSettle($, seen)
+  expect(seen.queried.length).toBe(13)
+
+  // ターンが終わってから 10 回で、やめる
+  await $.turn.complete(END)
+  for (let at = 0; at < 12; at++) await tickAndSettle($, seen)
+  expect(seen.queried.length).toBe(23)
+
+  // 次のターンが始まると、見張りを始め直す
+  await $.turn.start({ text: 'again', turnId: 't2' })
+  await tickAndSettle($, seen)
+  expect(seen.queried.length).toBe(24)
+  await $.turn.complete(END)
 })
 
 test('見張りのあいだに CI が失敗したら、その場で 1 回だけ知らせる', async ($, on) => {

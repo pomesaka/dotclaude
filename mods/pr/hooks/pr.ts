@@ -118,15 +118,15 @@ export const noticeOf = (merged: PrRow[], failed: PrRow[]): string | null => {
   return lines.length === 0 ? null : lines.join('\n')
 }
 
-// CI の結果を待っている PR があるか。開いていて、チェックが実行中のもの
-export const hasPendingChecks = (rows: PrRow[]): boolean => rows.some(row => row.status?.state === 'open' && row.status.checks === 'pending')
+// 状態がこの先変わりうる PR があるか。開いている PR。
+// 状態を取れていない PR は数えない（URL の誤りなどで、取り直しても変わらない）
+export const hasOpenPrs = (rows: PrRow[]): boolean => rows.some(row => row.status?.state === 'open')
 
-// CI の見張り（一定の間隔での取り直し）を、まだ続けるか。ticks は、見張りを始めてから取り直した回数。
-// max 回で必ずやめる。実行中の PR が無くなったら、その時点でやめる。
-// WHY grace: push の直後は、新しいコミットの CI がまだ GitHub に現れていないことがある。
-// 始めてから grace 回までは、実行中の PR が無くても続ける
-export const keepsWatching = (rows: PrRow[], ticks: number, limits: { max: number; grace: number }): boolean =>
-  ticks < limits.max && (hasPendingChecks(rows) || ticks < limits.grace)
+// 見張り（一定の間隔での取り直し）を、まだ続けるか。idleTicks は、Claude が止まってから取り直した回数で、
+// ターンの最中は増えない。開いている PR が無くなったら、その時点でやめる。
+// WHY CI が実行中かを見ない: マージとレビューの変化も、一覧と番号の色に出す。
+// 取得は PR が何個あっても 1 回の問い合わせで済む（2026-10-13 に利用者が決めた）
+export const keepsWatching = (rows: PrRow[], idleTicks: number, idleMax: number): boolean => hasOpenPrs(rows) && idleTicks < idleMax
 
 // 問い合わせの中で PR を指す名前。リポジトリは r0、r1、…、PR は p<番号>。
 // 問い合わせを作る側と、答えを読む側で、同じ名前を使う

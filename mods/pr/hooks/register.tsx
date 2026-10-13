@@ -6,7 +6,7 @@ import { SESSION_CONTEXT } from './context'
 import { clampCursor, moveCursor, windowOf } from './cursor'
 import {
   adoptedPrOf,
-  hasPendingChecks,
+  hasOpenPrs,
   isMerge,
   isPush,
   keepsWatching,
@@ -39,11 +39,12 @@ const SESSIONS_MAX = 30
 // マージ済みの PR は問い合わせに入れないので、何件残しても、取得は増えない（2026-10-11 に利用者が決めた）
 const PRS_DONE_MAX = 10
 
-// CI の結果を待つあいだだけ、PR の状態を定期的に取り直す。間隔と、やめるまでの回数。
-// 1 分おきに 10 回で、およそ 10 分（2026-10-09 に利用者が決めた）。
-// grace は、実行中の PR が無くても続ける回数。push の直後は、CI がまだ GitHub に現れていないことがある
+// 開いている PR があるあいだ、PR の状態を定期的に取り直す。間隔と、Claude が止まってからやめるまでの回数。
+// ターンの最中は 1 分おきに取り直し続け、ターンが終わってからは 10 回（およそ 10 分）でやめる。
+// WHY 止まってから数える: 始めた時点から数えると、長いターンの途中で見張りが切れて、
+// 利用者が画面を見ている時間に誰も取り直していないことがある（2026-10-13 に利用者が決めた）
 const WATCH_INTERVAL_MS = 60_000
-const WATCH_LIMITS = { max: 10, grace: 2 }
+const WATCH_IDLE_MAX = 10
 
 // pane の一覧で、選んでいる行を delta だけ動かす。length は一覧の行数。
 // 一覧は、選んでいる行のまわりの収まる分だけを描くので、pane を送る必要は無い（windowOf）。
@@ -85,7 +86,7 @@ const TRACK_TOOL_SCHEMA = {
 
 // 色は、status-band の帯と揃えてある
 const ACCENT = '#6cb6ff'
-const AMBER = '#e8a35c'
+const AMBER = '#e6b450'
 const RED = '#ff7b72'
 const GREEN = '#7ee0a1'
 const PURPLE = '#c9a0ff'
@@ -183,7 +184,7 @@ const submitNotice = ($: EngineInterface, text: string): void => {
 // （git.abandon-unreachable-commits が true）。Claude の作業の最中に履歴が変わるのを避け、知らせるだけにする。
 // WHY ターンの終わりには呼ばない: ターンのたびに GitHub を叩くことになる（2026-10-09 に利用者が決めた）。
 // 呼ぶのは、セッションの開始時、gh pr <動詞> の後、push の後、利用者が頼んだとき（pr ボタン、r キー、track_pr）、
-// CI の見張りのあいだ。
+// 見張りのあいだ。
 // WHY ずっとは見張らない: 手元のセッションは GitHub のイベントを受け取れない（v2.1.295 のバイナリで確認。
 // Webhook が届くのは /autofix-pr が起こすクラウドのセッションだけ）。取りに行くしかないので、CI を待つあいだに限る。
 // 画面でのマージは、次に取り直すまで分からない
@@ -213,10 +214,12 @@ const refreshPrs = async ($: EngineInterface): Promise<{ rows: PrRow[]; merged: 
   return { rows: next, merged: newlyMerged(known, fetched), failed: newlyFailed(known, fetched) }
 }
 
-// いま動いている CI の見張り。null は、見張っていない。
+// いま動いている見張り。null は、見張っていない。idleTicks は、Claude が止まってから取り直した回数。
 // WHY モジュールの変数: タイマーの控え（cancel を持つ）は JSON にできず、$.state に置けない。
 // Mod を読み込み直すと、エンジンが古いタイマーを止める
-let watch: { timer: Timer; ticks: number } | null = null
+let watch: { timer: Timer; idleTicks: number } | null = null
+// ターンの最中か。最中は、見張りの回数を数えない
+let isWorking = false
 
 const stopWatching = (): void => {
   watch?.timer.cancel()
@@ -227,24 +230,29 @@ const stopWatching = (): void => {
 const watchTick = async ($: EngineInterface): Promise<void> => {
   const mine = watch
   if (mine === null) return
-  mine.ticks += 1
+  if (!isWorking) mine.idleTicks += 1
   const { rows, merged, failed } = await refreshPrs($)
   // タイマーはターンを止めていないので、その場で送る
   const text = noticeOf(merged, failed)
   if (text !== null) submitNotice($, text)
   // 取り直しているあいだに、新しい見張りに替わっていたら、そちらには手を出さない
-  if (watch === mine && !keepsWatching(rows, mine.ticks, WATCH_LIMITS)) stopWatching()
+  if (watch === mine && !keepsWatching(rows, mine.idleTicks, WATCH_IDLE_MAX)) stopWatching()
 }
 
-// CI の結果を待つ理由があれば、見張りを始める。すでに見張っていれば、回数を数え直す。
-// pushed は、push の直後か。そのときは、実行中の PR がまだ見えていなくても始める
-const watchIfWaiting = ($: EngineInterface, rows: PrRow[], pushed: boolean): void => {
-  if (rows.length === 0 || !(pushed || hasPendingChecks(rows))) return
-  stopWatching()
+// 開いている PR があれば、見張りを始める。すでに見張っていれば、タイマーはそのままで、回数を数え直す。
+// 開いている PR が無ければ、見張りをやめる。
+// WHY タイマーを立て直さない: ターンの始めと終わり、ツールの後と、何度も呼ばれる。
+// 立て直すと、1 分たつ前に呼ばれ続けるあいだ、1 度も取り直さない
+const watchIfOpen = ($: EngineInterface, rows: PrRow[]): void => {
+  if (!hasOpenPrs(rows)) return stopWatching()
+  if (watch !== null) {
+    watch.idleTicks = 0
+    return
+  }
   const timer = $.clock.every(WATCH_INTERVAL_MS, () => {
     void watchTick($).catch(() => undefined)
   })
-  watch = { timer, ticks: 0 }
+  watch = { timer, idleTicks: 0 }
 }
 
 // ツールの後に気づいたマージと CI の失敗を、ターンの終わりに送るために溜める。
@@ -269,14 +277,14 @@ const refreshPrsNow = async ($: EngineInterface): Promise<void> => {
   const { rows, merged, failed } = await refreshPrs($)
   const text = noticeOf(merged, failed)
   if (text !== null) submitNotice($, text)
-  watchIfWaiting($, rows, false)
+  watchIfOpen($, rows)
 }
 
 // セッションの開始時。開き直したセッションでは、$.store に残っている PR の一覧を戻す。
 // 状態は覚えていないので、ここで取る。前の状態が無いので、マージの知らせは出ない
 const restorePrs = async ($: EngineInterface): Promise<void> => {
   const { rows } = await refreshPrs($)
-  watchIfWaiting($, rows, false)
+  watchIfOpen($, rows)
 }
 
 // PR の一覧の pane を、利用者の操作を待たずに出す。フォーカスは移さない（入力欄で打ち続けられるように）。
@@ -304,7 +312,7 @@ const trackPrs = async ($: EngineInterface, command: string, result: unknown): P
       failed,
     ),
   )
-  watchIfWaiting($, rows, isPush(command, result))
+  watchIfOpen($, rows)
   // 一覧に新しく入った時点で、一覧を横に出す
   if (adopted !== null && !refs.some(known => known.url === adopted.url)) await showPrPane($, adopted)
 }
@@ -333,7 +341,7 @@ export const register: Register = on => {
     await rememberPr($, ref)
     const { rows, merged, failed } = await refreshPrs($)
     await queueNotice($, noticeOf(merged, failed))
-    watchIfWaiting($, rows, false)
+    watchIfOpen($, rows)
     if (isNew) await showPrPane($, ref)
     const added = rows.find(row => row.url === ref.url)?.status ?? null
     return {
@@ -352,8 +360,18 @@ export const register: Register = on => {
     // WHY catch: この hook はすべてのツールの呼び出しを通る。一覧を直せなくても、ツールの結果はそのまま返す
   }).catch(($, e, next) => next(e))
 
-  // ツールの後に気づいたマージと CI の失敗を、ターンの終わりに Claude へ知らせる
+  // ターンの最中は、見張りの回数を数えない。見張りが止まっていたら、ここで始め直す
+  on('turn.start', async ($, e, next) => {
+    isWorking = true
+    watchIfOpen($, await read($, pullRequests))
+    return next(e)
+  })
+
+  // ターンの終わりから、見張りの回数を数え直す。
+  // ツールの後に気づいたマージと CI の失敗も、ここで Claude へ知らせる
   on('turn.complete', async ($, e, next) => {
+    isWorking = false
+    watchIfOpen($, await read($, pullRequests))
     const waiting = await read($, pendingNotice)
     if (waiting !== null) {
       await update($, pendingNotice, () => null)

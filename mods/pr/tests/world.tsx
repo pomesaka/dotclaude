@@ -130,6 +130,7 @@ export const world = (on: On, given: Given = {}) => {
         release = () => resolve({ value: undefined })
       }),
   )
+  on('turn.start', (_$, e) => ({ turnId: e.turnId }))
   on('turn.complete', () => ({ text: '' }))
   on('tool.call', () => ({ result: given.bash ?? '' }))
 
