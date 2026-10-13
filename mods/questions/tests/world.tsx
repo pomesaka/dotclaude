@@ -42,6 +42,8 @@ export type Given = {
   stored?: { [key: string]: unknown }
   // HOME 以外の環境変数。無い名前は、設定されていない扱い
   env?: { [name: string]: string }
+  // 読めるファイル。道筋と中身。無い道筋は、読むと失敗する
+  files?: { [path: string]: string }
   // ほかの hook が、セッションの始めに足した文脈
   otherContext?: string[]
   // false は、エージェントを立てられない
@@ -75,6 +77,11 @@ export const world = (on: On, given: Given = {}) => {
   on('session.id', () => ({ value: 's1' }))
   on('session.start', () => ({ cwd: '/repo' }))
   on('env.get', (_$, e) => ({ value: given.env?.[e.name] }))
+  on('fs.read', (_$, e) => {
+    const text = given.files?.[e.path]
+    if (text === undefined) throw new Error(`ENOENT: ${e.path}`)
+    return { value: text }
+  })
   on('tool.register', (_$, e) => ({ value: { tool: e.name } }))
   on('classic.SessionStart', () => (given.otherContext === undefined ? {} : { additionalContext: given.otherContext }))
   on('turn.complete', () => ({ text: '' }))

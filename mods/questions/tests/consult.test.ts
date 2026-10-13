@@ -7,6 +7,8 @@ import {
   consultDescription,
   consultOf,
   consultPrompt,
+  guidePathsOf,
+  withoutFrontmatter,
   handoffMessage,
   isAllowedInConsult,
   isAnswering,
@@ -84,7 +86,7 @@ for (const one of INPUTS) {
 }
 
 test('consultPrompt は、保留の中身と、読むだけの決まりを渡す', async () => {
-  const prompt = consultPrompt(Q3, undefined)
+  const prompt = consultPrompt(Q3, undefined, [])
   expect(prompt).toContain('保留 Q3「名前をどうするか」')
   expect(prompt).toContain('保留の説明: 一覧の見出しに出る')
   expect(prompt).toContain('選択肢: pending / todo')
@@ -93,7 +95,7 @@ test('consultPrompt は、保留の中身と、読むだけの決まりを渡す
 })
 
 test('consultPrompt は、説明の無い保留では説明の行を書かない', async () => {
-  expect(consultPrompt({ ...Q3, detail: '' }, undefined)).not.toContain('保留の説明')
+  expect(consultPrompt({ ...Q3, detail: '' }, undefined, [])).not.toContain('保留の説明')
 })
 
 const INSTRUCTED: { name: string; instruction: string | undefined; opening: string }[] = [
@@ -103,7 +105,53 @@ const INSTRUCTED: { name: string; instruction: string | undefined; opening: stri
 
 for (const one of INSTRUCTED) {
   test(`consultPrompt の最初の説明: ${one.name}`, async () => {
-    expect(consultPrompt(Q3, one.instruction)).toContain(one.opening)
+    expect(consultPrompt(Q3, one.instruction, [])).toContain(one.opening)
+  })
+}
+
+test('consultPrompt は、手引きが無ければ、手引きのことを書かない', async () => {
+  expect(consultPrompt(Q3, undefined, [])).not.toContain('説明の手引き')
+})
+
+test('consultPrompt は、手引きを中身ごと末尾に載せ、読み直さないよう伝える', async () => {
+  const prompt = consultPrompt(Q3, undefined, [
+    { label: '~/a/SKILL.md', text: '全体から書く。' },
+    { label: '~/a/rich.md', text: 'カードで比べる。' },
+  ])
+  expect(prompt).toContain('そこにあるスキルやファイルは、呼んだり読んだりせず、載っている手順で説明してください。')
+  expect(prompt.endsWith('説明の手引き:\n\n===== ~/a/SKILL.md =====\n全体から書く。\n\n===== ~/a/rich.md =====\nカードで比べる。')).toBe(true)
+})
+
+const GUIDE_PATHS: { name: string; value: string | undefined; home: string | undefined; paths: { label: string; path: string }[] }[] = [
+  { name: '設定が無ければ空', value: undefined, home: '/Users/p', paths: [] },
+  { name: '空の区切りは飛ばす', value: ' : ', home: '/Users/p', paths: [] },
+  {
+    name: '~ をホームに読み替え、書いたままの道筋を label に残す',
+    value: '~/a/SKILL.md: /b/rich.md',
+    home: '/Users/p',
+    paths: [
+      { label: '~/a/SKILL.md', path: '/Users/p/a/SKILL.md' },
+      { label: '/b/rich.md', path: '/b/rich.md' },
+    ],
+  },
+  { name: 'ホームが分からなければ読み替えない', value: '~/a.md', home: undefined, paths: [{ label: '~/a.md', path: '~/a.md' }] },
+]
+
+for (const one of GUIDE_PATHS) {
+  test(`guidePathsOf: ${one.name}`, async () => {
+    expect(guidePathsOf(one.value, one.home)).toEqual(one.paths)
+  })
+}
+
+const FRONTMATTERS: { name: string; text: string; body: string }[] = [
+  { name: '先頭の frontmatter を除く', text: '---\nname: a\n---\n\n# a\n本文\n', body: '# a\n本文' },
+  { name: 'frontmatter が無ければ、そのまま', text: '# a\n本文\n', body: '# a\n本文' },
+  { name: '本文の中の区切り線は残す', text: '# a\n\n---\n\n本文\n\n---\n', body: '# a\n\n---\n\n本文\n\n---' },
+]
+
+for (const one of FRONTMATTERS) {
+  test(`withoutFrontmatter: ${one.name}`, async () => {
+    expect(withoutFrontmatter(one.text)).toBe(one.body)
   })
 }
 

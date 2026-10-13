@@ -96,10 +96,29 @@ export const consultOf = (stored: unknown): Consult | null => {
   return question === undefined || typeof agentId !== 'string' || agentId === '' ? null : { question, agentId, isHandingOff: false }
 }
 
+// 最初の依頼に載せる、説明の手引き。label は利用者が設定に書いた道筋、path は読む道筋
+export type GuidePath = { label: string; path: string }
+export type Guide = { label: string; text: string }
+
+// 設定の値（: で区切った道筋）を、読む道筋の並びにする。先頭の ~ はホームに読み替える。
+// WHY label に書いたままの道筋を残す: 手引きどうしは「~/.claude/skills/…/SKILL.md を読む」のように、その綴りで互いを指す
+export const guidePathsOf = (value: string | undefined, home: string | undefined): GuidePath[] =>
+  (value ?? '')
+    .split(':')
+    .map(label => label.trim())
+    .filter(label => label !== '')
+    .map(label => ({ label, path: home === undefined || home === '' ? label : label.replace(/^~(?=\/)/, home) }))
+
+// スキルのファイルの先頭にある frontmatter を除く。スキルの一覧のための項目で、説明の手順ではない
+export const withoutFrontmatter = (text: string): string => text.replace(/^---\n[\s\S]*?\n---\n/, '').trim()
+
 // 相談用のエージェントに渡す、最初の依頼。instruction は、最初の説明の頼み方（環境変数の値）で、空なら既定の頼み方。
+// guides は、依頼に中身ごと載せる説明の手引き。
 // WHY 決まりを文でも伝える: 止めるのは hook だが、理由を先に知らせておくと、拒まれたツールを別の手段で試さない。
-// WHY 前置きを禁じる: 分岐したエージェントは、依頼を「タスク: …」と言い直してから答えることがある（2026-10-11 に試作で見た）
-export const consultPrompt = (question: OpenQuestion, instruction: string | undefined): string =>
+// WHY 前置きを禁じる: 分岐したエージェントは、依頼を「タスク: …」と言い直してから答えることがある（2026-10-11 に試作で見た）。
+// WHY 手引きを中身ごと載せる: 頼み方にスキルの名前を書くだけだと、エージェントはスキルを読み込み、そのスキルが指すファイルを読んでから描く。
+// スキルの一覧に名前が無いと判断して、スキルを使わずに描くこともあった（2026-10-13 に相談の記録で確認）
+export const consultPrompt = (question: OpenQuestion, instruction: string | undefined, guides: readonly Guide[]): string =>
   [
     '[questions: ここからは、利用者との相談用に分岐した会話です。メインの作業は、この会話とは別に進んでいます。]',
     '',
@@ -109,6 +128,9 @@ export const consultPrompt = (question: OpenQuestion, instruction: string | unde
     `いまの仮置き: ${question.assumed}`,
     '',
     `まず、この保留について、${explainInstruction(instruction)}。何を決めるものか、それぞれの選択肢を選ぶと何が変わるか、仮置きをそれにした理由が分かるようにしてください。その後は、利用者の問いに答えてください。`,
+    ...(guides.length === 0
+      ? []
+      : ['説明の手順は、末尾の「説明の手引き」に中身ごと載せてあります。そこにあるスキルやファイルは、呼んだり読んだりせず、載っている手順で説明してください。']),
     '',
     '決まり:',
     '- 読むだけにする。ファイルの編集、コミット、push、外部への送信はしない。Read と、rg、fd、ls、cat、jj log、jj diff、jj show のような読むコマンドだけが通る。Write、Edit、ほかのコマンドは仕組みで止められている',
@@ -116,6 +138,7 @@ export const consultPrompt = (question: OpenQuestion, instruction: string | unde
     '- 選択肢をクリックで選べるようにするなら、問いは 1 つだけにして、答えとして送られる値を、この保留の選択肢と同じ綴りにする（rich の show なら、選択肢を比べる cards に key と question を付け、各カードの value に保留の選択肢をそのまま書く。同じ選択肢を question で並べ直さない）。利用者が押すと、その答えが結論としてメインへ送られ、相談が閉じる。ほかの問いは、クリックの質問にせず文で聞く',
     '- 依頼の言い直しや前置きを書かず、答えから始める',
     '- 保留を外す、答えを決める、といった操作はしない。決めるのは利用者で、結論は利用者が横の pane のボタンでメインへ送る',
+    ...(guides.length === 0 ? [] : ['', '説明の手引き:', ...guides.flatMap(guide => ['', `===== ${guide.label} =====`, guide.text])]),
   ].join('\n')
 
 // 結論をメインへ送る前に、相談用のエージェントへ頼む申し送り。option は利用者が選んだ選択肢で、null は選択肢に無い結論。

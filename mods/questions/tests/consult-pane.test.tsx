@@ -43,7 +43,7 @@ test('「詳しく聞く」を押すと、会話を引き継いだエージェ�
   const seen = world(on, { stored: STORED })
   await begin($)
 
-  expect(seen.spawned).toEqual([consultPrompt(Q2, undefined)])
+  expect(seen.spawned).toEqual([consultPrompt(Q2, undefined, [])])
   expect(seen.opened).toEqual(['consult'])
   expect(seen.submitted).toEqual([])
   // 開いている相談を、セッションごとに覚える
@@ -63,7 +63,18 @@ test('最初の説明の頼み方は、環境変数で差し替えられる', as
   const seen = world(on, { stored: STORED, env: { QLIST_EXPLAIN_PROMPT: '/explain-inline で説明して' } })
   await begin($)
 
-  expect(seen.spawned).toEqual([consultPrompt(Q2, '/explain-inline で説明して')])
+  expect(seen.spawned).toEqual([consultPrompt(Q2, '/explain-inline で説明して', [])])
+})
+
+test('説明の手引きのファイルは、中身を最初の依頼に載せる。読めないファイルは載せない', async ($, on) => {
+  const seen = world(on, {
+    stored: STORED,
+    env: { HOME: '/Users/p', QLIST_EXPLAIN_FILES: '~/skills/explain/SKILL.md:/nowhere/gone.md' },
+    files: { '/Users/p/skills/explain/SKILL.md': '---\nname: explain\n---\n\n# explain\n\n全体から書く。\n' },
+  })
+  await begin($)
+
+  expect(seen.spawned).toEqual([consultPrompt(Q2, undefined, [{ label: '~/skills/explain/SKILL.md', text: '# explain\n\n全体から書く。' }])])
 })
 
 test('相談の会話を開いているあいだは、行き方の代わりに、戻り方を出す', async ($, on) => {
@@ -184,7 +195,7 @@ test('同じ保留の「詳しく聞く」をもう一度押しても、エー�
 
   // 別の保留なら、新しく立てる
   await list.press({ key: 'explain-1' })
-  expect(seen.spawned).toEqual([consultPrompt(Q2, undefined), consultPrompt(Q1, undefined)])
+  expect(seen.spawned).toEqual([consultPrompt(Q2, undefined, []), consultPrompt(Q1, undefined, [])])
   await list.unmount()
 })
 
@@ -197,7 +208,7 @@ test('相談用のエージェントが一覧から外されていたら、「�
   seen.evict()
   const list = await $.ui.mount(questionsPane)
   await list.press({ key: 'explain-2' })
-  expect(seen.spawned).toEqual([consultPrompt(Q2, undefined), consultPrompt(Q2, undefined)])
+  expect(seen.spawned).toEqual([consultPrompt(Q2, undefined, []), consultPrompt(Q2, undefined, [])])
   await list.unmount()
 })
 

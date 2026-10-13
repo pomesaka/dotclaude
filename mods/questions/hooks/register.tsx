@@ -9,6 +9,7 @@ import {
   consultDescription,
   consultOf,
   consultPrompt,
+  guidePathsOf,
   handoffMessage,
   isAllowedInConsult,
   isAnswering,
@@ -18,6 +19,8 @@ import {
   pickedOption,
   summaryOf,
   summaryPrompt,
+  withoutFrontmatter,
+  type Guide,
 } from './consult'
 import { SESSION_CONTEXT } from './context'
 import {
@@ -225,6 +228,18 @@ const isAgentGone = async ($: EngineInterface, agentId: string): Promise<boolean
   return listed !== null && !listed.some(agent => agent.id === agentId)
 }
 
+// 相談の最初の依頼に載せる、説明の手引きを読む。環境変数 QLIST_EXPLAIN_FILES に、: で区切って道筋を書く。
+// 読めなかったファイルは載せない。手引きが無くても、相談は始められる
+const loadGuides = async ($: EngineInterface): Promise<Guide[]> => {
+  // $.env.get の名前は、文字列をその場に書く。定数で渡すと読み込みで弾かれる（v2.1.295）
+  const paths = guidePathsOf(await $.env.get('QLIST_EXPLAIN_FILES'), await $.env.get('HOME'))
+  const texts = await Promise.all(paths.map(one => $.fs.read(one.path).catch(() => null)))
+  return paths.flatMap((one, index) => {
+    const text = texts[index]
+    return text === null || text === undefined ? [] : [{ label: one.label, text: withoutFrontmatter(text) }]
+  })
+}
+
 // 利用者が pane の「詳しく聞く」を押した保留について、相談を始める。
 // メインの会話を引き継いだエージェント（フォーク）を立て、最初の説明を頼んで、相談の pane を開く。
 // 利用者は、エンジンのエージェントの会話の画面を開いて、そこで直接やりとりする。
@@ -245,7 +260,8 @@ const startConsult = async ($: EngineInterface, question: OpenQuestion): Promise
   const description = consultDescription(question)
   // $.env.get の名前は、文字列をその場に書く。定数で渡すと読み込みで弾かれる（v2.1.295）
   const instruction = await $.env.get('QLIST_EXPLAIN_PROMPT')
-  const started = await $.agent.spawn({ prompt: consultPrompt(question, instruction), description, subagentType: 'fork' }).catch(() => null)
+  const prompt = consultPrompt(question, instruction, await loadGuides($))
+  const started = await $.agent.spawn({ prompt, description, subagentType: 'fork' }).catch(() => null)
   const agentId =
     started === null || started.deny !== undefined ? undefined : (started.agentId ?? (await spawnedAgentOf($, description, open?.agentId ?? null)))
   if (agentId === undefined) {
