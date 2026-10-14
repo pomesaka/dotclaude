@@ -33,32 +33,40 @@ export const shortPrPane = pane('pull-requests', 'pull requests', 12)
 
 export const prUrl = (number: number, repo = 'o/r') => `https://github.com/${repo}/pull/${number}`
 
-// GitHub が 1 つの PR について返す値。failed は、失敗したチェックの名前
-export const view = (title: string, state: string, rollup: string | null = 'SUCCESS', failed: string[] = []) => ({
+// テストの土台が答える、いまの時刻（ミリ秒）。MERGED_AT の 1 分後
+export const NOW = 1_791_915_383_000
+export const MERGED_AT = '2026-10-13T18:15:23Z'
+
+// コミットの CI。failed は、失敗したチェックの名前
+const rollupOf = (rollup: string | null, failed: string[]) =>
+  rollup === null
+    ? null
+    : {
+        state: rollup,
+        contexts: {
+          nodes: [
+            { __typename: 'CheckRun', name: 'build', conclusion: 'SUCCESS' },
+            ...failed.map(name => ({ __typename: 'CheckRun', name, conclusion: 'FAILURE' })),
+          ],
+        },
+      }
+
+// GitHub が 1 つの PR について返す値。failed は、失敗したチェックの名前。
+// merge は、マージでベースのブランチに入ったコミットの CI。無ければ、マージの時刻もマージ後のコミットも返さない
+export const view = (
+  title: string,
+  state: string,
+  rollup: string | null = 'SUCCESS',
+  failed: string[] = [],
+  merge?: { rollup: string | null; failed?: string[] },
+) => ({
   title,
   state,
   isDraft: false,
   reviewDecision: 'APPROVED',
-  commits: {
-    nodes: [
-      {
-        commit: {
-          statusCheckRollup:
-            rollup === null
-              ? null
-              : {
-                  state: rollup,
-                  contexts: {
-                    nodes: [
-                      { __typename: 'CheckRun', name: 'build', conclusion: 'SUCCESS' },
-                      ...failed.map(name => ({ __typename: 'CheckRun', name, conclusion: 'FAILURE' })),
-                    ],
-                  },
-                },
-        },
-      },
-    ],
-  },
+  mergedAt: merge === undefined ? null : MERGED_AT,
+  commits: { nodes: [{ commit: { statusCheckRollup: rollupOf(rollup, failed) } }] },
+  mergeCommit: merge === undefined ? null : { statusCheckRollup: rollupOf(merge.rollup, merge.failed ?? []) },
 })
 
 // Bash の結果に Claude Code が付ける、PR への操作
@@ -130,6 +138,7 @@ export const world = (on: On, given: Given = {}) => {
         release = () => resolve({ value: undefined })
       }),
   )
+  on('clock.now', () => ({ value: NOW }))
   on('turn.start', (_$, e) => ({ turnId: e.turnId }))
   on('turn.complete', () => ({ text: '' }))
   on('tool.call', () => ({ result: given.bash ?? '' }))

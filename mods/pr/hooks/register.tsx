@@ -6,8 +6,9 @@ import { SESSION_CONTEXT } from './context'
 import { clampCursor, moveCursor, windowOf } from './cursor'
 import {
   adoptedPrOf,
-  hasOpenPrs,
+  hasChangingPrs,
   isMerge,
+  isMergeSettled,
   isPush,
   keepsWatching,
   newlyFailed,
@@ -36,7 +37,7 @@ const PRS_MAX = 50
 const SESSIONS_MAX = 30
 // 一覧に残す、終わった PR（マージ済みか閉じた）の数。
 // WHY 10: マージした PR を、後からもう一度開けるようにする。数を決めるのは一覧の長さで、取得の負荷ではない。
-// マージ済みの PR は問い合わせに入れないので、何件残しても、取得は増えない（2026-10-11 に利用者が決めた）
+// マージ後の CI が決まった PR は問い合わせに入れないので、何件残しても、取得は増えない（2026-10-11 に利用者が決めた）
 const PRS_DONE_MAX = 10
 
 // 開いている PR があるあいだ、PR の状態を定期的に取り直す。間隔と、Claude が止まってからやめるまでの回数。
@@ -108,10 +109,11 @@ const REVIEW_LABEL: { [review in Review]: { label: string; color: string | undef
 const PR_STATE_COLOR: { [state in PrStatus['state']]: string | undefined } = { open: GREEN, merged: PURPLE, closed: RED }
 
 // プロンプトの下の行に出す PR の番号の色。開いている PR は CI の結果、それ以外は PR の状態で決める。
+// マージ済みの PR は、マージ後の CI が失敗したときだけ赤にする。
 // undefined は「色を付けず、薄く出す」（状態をまだ取れていない、閉じた）
 const prColor = (row: PrRow): string | undefined => {
   if (row.status === null || row.status.state === 'closed') return undefined
-  if (row.status.state === 'merged') return PURPLE
+  if (row.status.state === 'merged') return row.status.checks === 'failing' ? RED : PURPLE
   switch (row.status.checks) {
     case 'passing':
       return GREEN
@@ -192,11 +194,15 @@ const refreshPrs = async ($: EngineInterface): Promise<{ rows: PrRow[]; merged: 
   // 一覧は、最後に触った PR を先頭にして持つ
   const refs = (await loadPrRefs($)).reverse()
   const known = await read($, pullRequests)
+  const now = await $.clock.now()
   const before = (ref: PrRef): PrStatus | null => known.find(row => row.url === ref.url)?.status ?? null
-  // マージ済みの PR は、もう状態が変わらない。問い合わせに入れない
+  // マージ後の CI が決まった PR は、もう状態が変わらない。問い合わせに入れない
   const statuses = await fetchPrStatuses(
     $,
-    refs.filter(ref => before(ref)?.state !== 'merged'),
+    refs.filter(ref => {
+      const status = before(ref)
+      return status === null || !isMergeSettled(status, now)
+    }),
   )
   // 取れなかった PR は、前に取れた状態を残す
   const fetched: PrRow[] = refs.map(ref => ({ ...ref, status: statuses[ref.url] ?? before(ref) }))
@@ -235,16 +241,19 @@ const watchTick = async ($: EngineInterface): Promise<void> => {
   // タイマーはターンを止めていないので、その場で送る
   const text = noticeOf(merged, failed)
   if (text !== null) submitNotice($, text)
+  const now = await $.clock.now()
   // 取り直しているあいだに、新しい見張りに替わっていたら、そちらには手を出さない
-  if (watch === mine && !keepsWatching(rows, mine.idleTicks, WATCH_IDLE_MAX)) stopWatching()
+  if (watch === mine && !keepsWatching(rows, mine.idleTicks, WATCH_IDLE_MAX, now)) stopWatching()
 }
 
-// 開いている PR があれば、見張りを始める。すでに見張っていれば、タイマーはそのままで、回数を数え直す。
-// 開いている PR が無ければ、見張りをやめる。
+// 状態が変わりうる PR（開いている PR、マージ後の CI が決まっていない PR）があれば、見張りを始める。
+// すでに見張っていれば、タイマーはそのままで、回数を数え直す。そういう PR が無ければ、見張りをやめる。
 // WHY タイマーを立て直さない: ターンの始めと終わり、ツールの後と、何度も呼ばれる。
 // 立て直すと、1 分たつ前に呼ばれ続けるあいだ、1 度も取り直さない
-const watchIfOpen = ($: EngineInterface, rows: PrRow[]): void => {
-  if (!hasOpenPrs(rows)) return stopWatching()
+const watchIfChanging = async ($: EngineInterface, rows: PrRow[]): Promise<void> => {
+  const now = await $.clock.now()
+  // WHY 時刻を取った後で watch を読む: 読んでから書くまでのあいだに await を挟むと、2 つの呼び出しが両方ともタイマーを立てる
+  if (!hasChangingPrs(rows, now)) return stopWatching()
   if (watch !== null) {
     watch.idleTicks = 0
     return
@@ -277,14 +286,14 @@ const refreshPrsNow = async ($: EngineInterface): Promise<void> => {
   const { rows, merged, failed } = await refreshPrs($)
   const text = noticeOf(merged, failed)
   if (text !== null) submitNotice($, text)
-  watchIfOpen($, rows)
+  await watchIfChanging($, rows)
 }
 
 // セッションの開始時。開き直したセッションでは、$.store に残っている PR の一覧を戻す。
 // 状態は覚えていないので、ここで取る。前の状態が無いので、マージの知らせは出ない
 const restorePrs = async ($: EngineInterface): Promise<void> => {
   const { rows } = await refreshPrs($)
-  watchIfOpen($, rows)
+  await watchIfChanging($, rows)
 }
 
 // PR の一覧の pane を、利用者の操作を待たずに出す。フォーカスは移さない（入力欄で打ち続けられるように）。
@@ -312,7 +321,7 @@ const trackPrs = async ($: EngineInterface, command: string, result: unknown): P
       failed,
     ),
   )
-  watchIfOpen($, rows)
+  await watchIfChanging($, rows)
   // 一覧に新しく入った時点で、一覧を横に出す
   if (adopted !== null && !refs.some(known => known.url === adopted.url)) await showPrPane($, adopted)
 }
@@ -341,7 +350,7 @@ export const register: Register = on => {
     await rememberPr($, ref)
     const { rows, merged, failed } = await refreshPrs($)
     await queueNotice($, noticeOf(merged, failed))
-    watchIfOpen($, rows)
+    await watchIfChanging($, rows)
     if (isNew) await showPrPane($, ref)
     const added = rows.find(row => row.url === ref.url)?.status ?? null
     return {
@@ -363,7 +372,7 @@ export const register: Register = on => {
   // ターンの最中は、見張りの回数を数えない。見張りが止まっていたら、ここで始め直す
   on('turn.start', async ($, e, next) => {
     isWorking = true
-    watchIfOpen($, await read($, pullRequests))
+    await watchIfChanging($, await read($, pullRequests))
     return next(e)
   })
 
@@ -371,7 +380,7 @@ export const register: Register = on => {
   // ツールの後に気づいたマージと CI の失敗も、ここで Claude へ知らせる
   on('turn.complete', async ($, e, next) => {
     isWorking = false
-    watchIfOpen($, await read($, pullRequests))
+    await watchIfChanging($, await read($, pullRequests))
     const waiting = await read($, pendingNotice)
     if (waiting !== null) {
       await update($, pendingNotice, () => null)
@@ -432,8 +441,8 @@ export const register: Register = on => {
     // キーで選んでいる行
     const at = clampCursor(await read($, cursor), list.length)
     const selected = list[at]
-    // 落ちたチェックの名前は、開いている PR にだけ出す。終わった PR では、もう直す相手ではない
-    const failedChecksOf = (row: PrRow): string[] => (row.status !== null && row.status.state === 'open' ? row.status.failedChecks : [])
+    // 落ちたチェックの名前は、開いている PR と、マージ後の CI が落ちた PR に出す。閉じた PR では、もう直す相手ではない
+    const failedChecksOf = (row: PrRow): string[] => (row.status !== null && row.status.state !== 'closed' ? row.status.failedChecks : [])
     // 一覧の外に描くもの: 空き 1、凡例 1、空き 1、ヒント 2
     const shown = windowOf(
       list.map(row => (failedChecksOf(row).length > 0 ? 2 : 1)),

@@ -97,14 +97,17 @@ export const pruneDone = (rows: PrRow[], max: number): PrRow[] => {
 export const newlyMerged = (before: PrRow[], after: PrRow[]): PrRow[] =>
   after.filter(row => row.status?.state === 'merged' && before.find(known => known.url === row.url)?.status?.state === 'open')
 
-// 今回の取り直しで、開いている PR の CI が失敗に変わったものを返す。
+// 今回の取り直しで、CI が失敗に変わったものを返す。開いている PR と、マージ済みの PR（マージ後の CI）が対象。
 // 実行中から失敗になった場合のほか、成功していた PR が新しい push で失敗した場合も入る。
+// 開いていた PR がマージ済みに変わったときは、見ているコミットが替わるので、前の CI が失敗でも知らせる。
 // WHY 前の状態が分かるものだけ: 一覧に入れた時点や、開き直した時点ですでに失敗していた PR は、
 // いつ失敗したのかが分からない。失敗したままの PR を、取り直すたびに知らせることもしない
 export const newlyFailed = (before: PrRow[], after: PrRow[]): PrRow[] =>
   after.filter(row => {
     const known = before.find(candidate => candidate.url === row.url)?.status
-    return row.status?.state === 'open' && row.status.checks === 'failing' && known !== undefined && known !== null && known.checks !== 'failing'
+    if (row.status === null || row.status.state === 'closed' || row.status.checks !== 'failing') return false
+    if (known === undefined || known === null) return false
+    return known.state !== row.status.state || known.checks !== 'failing'
   })
 
 // Claude に知らせる文。マージされた PR と、CI が失敗した PR を、1 行ずつ並べる。知らせるものが無ければ null。
@@ -113,20 +116,43 @@ export const newlyFailed = (before: PrRow[], after: PrRow[]): PrRow[] =>
 export const noticeOf = (merged: PrRow[], failed: PrRow[]): string | null => {
   const lines = [
     ...merged.map(row => `PR #${row.number}「${row.status?.title ?? ''}」がマージされました（${row.url}）`),
-    ...failed.map(row => `PR #${row.number}「${row.status?.title ?? ''}」の CI が失敗しました（${row.url}）`),
+    ...failed.map(
+      row => `PR #${row.number}「${row.status?.title ?? ''}」の${row.status?.state === 'merged' ? 'マージ後の ' : ' '}CI が失敗しました（${row.url}）`,
+    ),
   ]
   return lines.length === 0 ? null : lines.join('\n')
 }
 
-// 状態がこの先変わりうる PR があるか。開いている PR。
+// マージしてから、マージ後の CI のチェックが現れるのを待つ時間。過ぎてもチェックが 1 つも無ければ、CI は無いとみなす。
+// WHY 待つ: マージの直後は、ワークフローがまだ登録されておらず、チェックが無い（null）。
+// ベースのブランチに CI が無いリポジトリでも null なので、待つ時間で区切る。5 分は目安で、測っていない
+const MERGE_CHECKS_WAIT_MS = 5 * 60_000
+
+// マージ済みの PR のうち、マージ後の CI の結果がもう変わらないもの。成功か失敗に決まったか、待ってもチェックが現れなかった
+export const isMergeSettled = (status: PrStatus, now: number): boolean => {
+  if (status.state !== 'merged') return false
+  switch (status.checks) {
+    case 'passing':
+    case 'failing':
+      return true
+    case 'pending':
+      return false
+    case null:
+      return status.mergedAt === null || now - status.mergedAt >= MERGE_CHECKS_WAIT_MS
+  }
+}
+
+// 状態がこの先変わりうる PR があるか。開いている PR と、マージ後の CI が決まっていない PR。
 // 状態を取れていない PR は数えない（URL の誤りなどで、取り直しても変わらない）
-export const hasOpenPrs = (rows: PrRow[]): boolean => rows.some(row => row.status?.state === 'open')
+export const hasChangingPrs = (rows: PrRow[], now: number): boolean =>
+  rows.some(row => row.status !== null && (row.status.state === 'open' || (row.status.state === 'merged' && !isMergeSettled(row.status, now))))
 
 // 見張り（一定の間隔での取り直し）を、まだ続けるか。idleTicks は、Claude が止まってから取り直した回数で、
-// ターンの最中は増えない。開いている PR が無くなったら、その時点でやめる。
+// ターンの最中は増えない。状態が変わりうる PR が無くなったら、その時点でやめる。
 // WHY CI が実行中かを見ない: マージとレビューの変化も、一覧と番号の色に出す。
 // 取得は PR が何個あっても 1 回の問い合わせで済む（2026-10-13 に利用者が決めた）
-export const keepsWatching = (rows: PrRow[], idleTicks: number, idleMax: number): boolean => hasOpenPrs(rows) && idleTicks < idleMax
+export const keepsWatching = (rows: PrRow[], idleTicks: number, idleMax: number, now: number): boolean =>
+  hasChangingPrs(rows, now) && idleTicks < idleMax
 
 // 問い合わせの中で PR を指す名前。リポジトリは r0、r1、…、PR は p<番号>。
 // 問い合わせを作る側と、答えを読む側で、同じ名前を使う
@@ -139,8 +165,10 @@ const aliased = (refs: PrRef[]): { alias: string; repo: string; refs: PrRef[] }[
 
 // contexts は、個々のチェック。Actions のチェック（CheckRun）は name と conclusion、
 // コミットのステータス（StatusContext）は context と state を持つ。100 は 1 回に取れる上限
-const FRAGMENT =
-  'fragment f on PullRequest { title state isDraft reviewDecision commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 100) { nodes { __typename ... on CheckRun { name conclusion } ... on StatusContext { context state } } } } } } } }'
+const ROLLUP =
+  'statusCheckRollup { state contexts(first: 100) { nodes { __typename ... on CheckRun { name conclusion } ... on StatusContext { context state } } } }'
+// mergeCommit は、マージでベースのブランチに入ったコミット。マージされていなければ null
+const FRAGMENT = `fragment f on PullRequest { title state isDraft reviewDecision mergedAt commits(last: 1) { nodes { commit { ${ROLLUP} } } } mergeCommit { ${ROLLUP} } }`
 
 // PR の状態を、何個でも 1 回の呼び出しで取る問い合わせ。
 // WHY gh pr view でなく GraphQL: gh pr view は 1 個ずつしか見られず、PR の数だけ gh を呼ぶことになる。
@@ -196,8 +224,14 @@ const statusOf = (pr: unknown): PrStatus | null => {
   if (typeof title !== 'string' || state === undefined) return null
   const decision = field(pr, 'reviewDecision')
   const nodes = field(field(pr, 'commits'), 'nodes')
-  const rollup = field(field(Array.isArray(nodes) ? nodes[0] : undefined, 'commit'), 'statusCheckRollup')
+  // マージ済みの PR は、PR の最後のコミットでなく、マージでベースのブランチに入ったコミットの CI を見る
+  const rollup =
+    state === 'merged'
+      ? field(field(pr, 'mergeCommit'), 'statusCheckRollup')
+      : field(field(Array.isArray(nodes) ? nodes[0] : undefined, 'commit'), 'statusCheckRollup')
   const rollupState = field(rollup, 'state')
+  const mergedAt = field(pr, 'mergedAt')
+  const mergedTime = typeof mergedAt === 'string' ? Date.parse(mergedAt) : Number.NaN
   return {
     title,
     state,
@@ -205,6 +239,7 @@ const statusOf = (pr: unknown): PrStatus | null => {
     checks: typeof rollupState === 'string' ? (CHECKS[rollupState] ?? 'pending') : null,
     failedChecks: failedChecksOf(rollup),
     review: typeof decision === 'string' ? (REVIEWS[decision] ?? null) : null,
+    mergedAt: Number.isNaN(mergedTime) ? null : mergedTime,
   }
 }
 

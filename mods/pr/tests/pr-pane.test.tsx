@@ -1,5 +1,5 @@
 import { expect, test, type TestBody } from 'claude-code/testing'
-import { END, START, operated, prPane, prUrl, shortPrPane, view, world } from './world'
+import { END, START, line, operated, prPane, prUrl, shortPrPane, view, world } from './world'
 
 const PR_2 = prUrl(2)
 const PR_3 = prUrl(3, 'o/other')
@@ -347,7 +347,7 @@ test('CI が失敗した PR の下に、落ちたチェックの名前を出す'
   await ui.unmount()
 })
 
-test('マージ済みの PR には、落ちたチェックの名前を出さない', async ($, on) => {
+test('マージ済みの PR には、PR の最後のコミットで落ちたチェックの名前を出さない', async ($, on) => {
   world(on, { stored: { 'prs:s1': [PR_2] }, views: { [PR_2]: view('feat: a', 'MERGED', 'FAILURE', ['Rust lint']) } })
   await $.session.start(START)
 
@@ -355,6 +355,52 @@ test('マージ済みの PR には、落ちたチェックの名前を出さな�
   expect(await ui.find({ type: 'Text', text: /^merged$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /Rust lint/ })).toBeUndefined()
   await ui.unmount()
+})
+
+test('マージ後の CI が決まるまで見張り、失敗したら知らせて、番号を赤にし、落ちたチェックの名前を出す', async ($, on) => {
+  const views = { [PR_2]: view('feat: a', 'OPEN', 'SUCCESS') }
+  const seen = world(on, { stored: { 'prs:s1': [PR_2] }, views })
+  await $.session.start(START)
+
+  // マージされた。マージ後の CI は実行中なので、見張りを続ける
+  views[PR_2] = view('feat: a', 'MERGED', 'SUCCESS', [], { rollup: 'PENDING' })
+  await tickAndSettle($, seen)
+  expect(seen.submitted).toEqual([`PR #2「feat: a」がマージされました（${PR_2}）`])
+
+  // マージ後の CI が失敗した
+  views[PR_2] = view('feat: a', 'MERGED', 'SUCCESS', [], { rollup: 'FAILURE', failed: ['deploy'] })
+  await tickAndSettle($, seen)
+  expect(seen.submitted).toEqual([
+    `PR #2「feat: a」がマージされました（${PR_2}）`,
+    `PR #2「feat: a」のマージ後の CI が失敗しました（${PR_2}）`,
+  ])
+  expect(seen.queried.length).toBe(3)
+
+  const pane = await $.ui.mount(prPane)
+  expect(await pane.find({ type: 'Text', text: /^    deploy$/ })).toBeDefined()
+  await pane.unmount()
+  const hint = await $.ui.mount(line(140))
+  expect((await hint.find({ type: 'Text', text: '#2' }))?.props).toMatchObject({ color: '#ff7b72' })
+  await hint.unmount()
+
+  // CI が決まったので、見張りをやめる。マージ後の CI が決まった PR は、もう問い合わせに入れない
+  await tickAndSettle($, seen)
+  expect(seen.queried.length).toBe(3)
+})
+
+test('マージ後の CI が成功したら、知らせずに見張りをやめる', async ($, on) => {
+  const views = { [PR_2]: view('feat: a', 'MERGED', 'SUCCESS', [], { rollup: 'PENDING' }) }
+  const seen = world(on, { stored: { 'prs:s1': [PR_2] }, views })
+  await $.session.start(START)
+  expect(seen.periods).toEqual([60_000])
+
+  views[PR_2] = view('feat: a', 'MERGED', 'SUCCESS', [], { rollup: 'SUCCESS' })
+  await tickAndSettle($, seen)
+  expect(seen.submitted).toEqual([])
+  expect(seen.queried.length).toBe(2)
+
+  await tickAndSettle($, seen)
+  expect(seen.queried.length).toBe(2)
 })
 
 test('× を押すと、その PR を一覧からも保存からも外す。GitHub は叩かない', async ($, on) => {

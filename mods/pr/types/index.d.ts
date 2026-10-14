@@ -14,10 +14,14 @@ export type PrStatus = {
   title: string
   state: 'open' | 'closed' | 'merged'
   isDraft: boolean
+  // CI の状態。開いている PR と閉じた PR では、PR の最後のコミットのチェック。
+  // マージ済みの PR では、マージでベースのブランチに入ったコミット（squash なら squash したコミット）のチェック。
   // null は、チェックが 1 つも無い
   checks: Checks | null
-  // 失敗したチェックの名前（Rust lint、test など）。失敗が無ければ空
+  // 失敗したチェックの名前（Rust lint、test など）。失敗が無ければ空。どのコミットのチェックかは checks と同じ
   failedChecks: string[]
+  // マージされた時刻（エポックからのミリ秒）。マージされていなければ null
+  mergedAt: number | null
   // null は、レビューの判定がまだ無い
   review: Review | null
 }
