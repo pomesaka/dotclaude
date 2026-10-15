@@ -52,19 +52,22 @@ const rollupOf = (rollup: string | null, failed: string[]) =>
       }
 
 // GitHub が 1 つの PR について返す値。failed は、失敗したチェックの名前。
-// merge は、マージでベースのブランチに入ったコミットの CI。無ければ、マージの時刻もマージ後のコミットも返さない
+// merge は、マージでベースのブランチに入ったコミットの CI。無ければ、マージの時刻もマージ後のコミットも返さない。
+// mergeable は、ベースのブランチと競合しているか（MERGEABLE、CONFLICTING、UNKNOWN）
 export const view = (
   title: string,
   state: string,
   rollup: string | null = 'SUCCESS',
   failed: string[] = [],
   merge?: { rollup: string | null; failed?: string[] },
+  mergeable = 'MERGEABLE',
 ) => ({
   title,
   state,
   isDraft: false,
   reviewDecision: 'APPROVED',
   mergedAt: merge === undefined ? null : MERGED_AT,
+  mergeable,
   commits: { nodes: [{ commit: { statusCheckRollup: rollupOf(rollup, failed) } }] },
   mergeCommit: merge === undefined ? null : { statusCheckRollup: rollupOf(merge.rollup, merge.failed ?? []) },
 })

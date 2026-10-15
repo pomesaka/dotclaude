@@ -383,9 +383,45 @@ test('マージ後の CI が決まるまで見張り、失敗したら知らせ�
   expect((await hint.find({ type: 'Text', text: '#2' }))?.props).toMatchObject({ color: '#ff7b72' })
   await hint.unmount()
 
-  // CI が決まったので、見張りをやめる。マージ後の CI が決まった PR は、もう問い合わせに入れない
+  // 失敗は re-run で変わりうるので、問い合わせ続ける。re-run で成功したら、番号を紫に戻し、知らせない
+  views[PR_2] = view('feat: a', 'MERGED', 'SUCCESS', [], { rollup: 'SUCCESS' })
   await tickAndSettle($, seen)
-  expect(seen.queried.length).toBe(3)
+  expect(seen.queried.length).toBe(4)
+  expect(seen.submitted.length).toBe(2)
+  const rerun = await $.ui.mount(line(140))
+  expect((await rerun.find({ type: 'Text', text: '#2' }))?.props).toMatchObject({ color: '#c9a0ff' })
+  await rerun.unmount()
+
+  // 成功して決まったので、見張りをやめる。もう問い合わせに入れない
+  await tickAndSettle($, seen)
+  expect(seen.queried.length).toBe(4)
+})
+
+test('開いている PR が競合したら、1 回だけ知らせて、pane に conflict を出す', async ($, on) => {
+  const views = { [PR_2]: view('feat: a', 'OPEN', 'SUCCESS') }
+  const seen = world(on, { stored: { 'prs:s1': [PR_2] }, views })
+  await $.session.start(START)
+
+  // push の後で、GitHub が競合を計算し直しているあいだは分からない。前の「競合していない」を残す
+  views[PR_2] = view('feat: a', 'OPEN', 'SUCCESS', [], undefined, 'UNKNOWN')
+  await tickAndSettle($, seen)
+  expect(seen.submitted).toEqual([])
+
+  views[PR_2] = view('feat: a', 'OPEN', 'SUCCESS', [], undefined, 'CONFLICTING')
+  await tickAndSettle($, seen)
+  expect(seen.submitted).toEqual([`PR #2「feat: a」がベースのブランチと競合しています（${PR_2}）`])
+
+  // 競合したままなら、もう知らせない
+  await tickAndSettle($, seen)
+  expect(seen.submitted.length).toBe(1)
+
+  const pane = await $.ui.mount(prPane)
+  expect(await pane.find({ type: 'Text', text: /^conflict$/ })).toBeDefined()
+  await pane.unmount()
+  // 番号の色は CI の結果のまま
+  const hint = await $.ui.mount(line(140))
+  expect((await hint.find({ type: 'Text', text: '#2' }))?.props).toMatchObject({ color: '#7ee0a1' })
+  await hint.unmount()
 })
 
 test('マージ後の CI が成功したら、知らせずに見張りをやめる', async ($, on) => {

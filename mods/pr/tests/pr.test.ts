@@ -5,7 +5,9 @@ import {
   isMerge,
   isMergeSettled,
   isPush,
+  keepKnownConflicts,
   keepsWatching,
+  newlyConflicted,
   newlyFailed,
   newlyMerged,
   noticeOf,
@@ -18,7 +20,7 @@ import {
   touchRef,
   touchedRefOf,
 } from '../hooks/pr'
-import type { PrRef, PrRow, PrStatus } from '../types'
+import type { PrChanges, PrRef, PrRow, PrStatus } from '../types'
 
 const PR_2: PrRef = { url: 'https://github.com/o/r/pull/2', repo: 'o/r', number: 2 }
 const PR_3: PrRef = { url: 'https://github.com/o/r/pull/3', repo: 'o/r', number: 3 }
@@ -135,7 +137,7 @@ const row = (number: number, state: 'open' | 'closed' | 'merged' | null): PrRow 
   url: `https://github.com/o/r/pull/${number}`,
   repo: 'o/r',
   number,
-  status: state === null ? null : { title: 'x', state, isDraft: false, checks: null, failedChecks: [], review: null, mergedAt: null },
+  status: state === null ? null : { title: 'x', state, isDraft: false, checks: null, failedChecks: [], review: null, mergedAt: null, hasConflicts: null },
 })
 
 // 並びは、最後に触った PR が先頭
@@ -175,7 +177,7 @@ const ci = (number: number, state: 'open' | 'closed' | 'merged', checks: 'passin
   url: `https://github.com/o/r/pull/${number}`,
   repo: 'o/r',
   number,
-  status: { title: 'x', state, isDraft: false, checks, failedChecks: [], review: null, mergedAt: null },
+  status: { title: 'x', state, isDraft: false, checks, failedChecks: [], review: null, mergedAt: null, hasConflicts: null },
 })
 
 const FAILS: { name: string; before: PrRow[]; after: PrRow[]; failed: number[] }[] = [
@@ -200,22 +202,69 @@ for (const one of FAILS) {
   })
 }
 
-const NOTICES: { name: string; merged: PrRow[]; failed: PrRow[]; text: string | null }[] = [
-  { name: '知らせるものが無い', merged: [], failed: [], text: null },
-  { name: 'マージ', merged: [row(5, 'merged')], failed: [], text: 'PR #5「x」がマージされました（https://github.com/o/r/pull/5）' },
-  { name: 'CI の失敗', merged: [], failed: [ci(4, 'open', 'failing')], text: 'PR #4「x」の CI が失敗しました（https://github.com/o/r/pull/4）' },
-  { name: 'マージ後の CI の失敗', merged: [], failed: [ci(4, 'merged', 'failing')], text: 'PR #4「x」のマージ後の CI が失敗しました（https://github.com/o/r/pull/4）' },
+// 番号と、競合しているか（null は分からない）の組。開いている PR
+const conflict = (number: number, hasConflicts: boolean | null, state: 'open' | 'closed' | 'merged' = 'open'): PrRow => ({
+  url: `https://github.com/o/r/pull/${number}`,
+  repo: 'o/r',
+  number,
+  status: { title: 'x', state, isDraft: false, checks: null, failedChecks: [], review: null, mergedAt: null, hasConflicts },
+})
+
+const CONFLICTS: { name: string; before: PrRow[]; after: PrRow[]; conflicted: number[] }[] = [
+  { name: '競合していなかった PR が競合した', before: [conflict(5, false)], after: [conflict(5, true)], conflicted: [5] },
+  { name: '競合したままの PR は、もう知らせない', before: [conflict(5, true)], after: [conflict(5, true)], conflicted: [] },
+  { name: '競合が解けた', before: [conflict(5, true)], after: [conflict(5, false)], conflicted: [] },
+  { name: '前は分からなかった（足した直後）', before: [conflict(5, null)], after: [conflict(5, true)], conflicted: [] },
+  { name: '前の状態を取れていなかった', before: [row(5, null)], after: [conflict(5, true)], conflicted: [] },
+  { name: '前の一覧に無かった（開き直した直後）', before: [], after: [conflict(5, true)], conflicted: [] },
+  { name: '分からなくなった', before: [conflict(5, false)], after: [conflict(5, null)], conflicted: [] },
+]
+
+for (const one of CONFLICTS) {
+  test(`newlyConflicted: ${one.name}`, async () => {
+    expect(newlyConflicted(one.before, one.after).map(conflicted => conflicted.number)).toEqual(one.conflicted)
+  })
+}
+
+// 取り直した状態（after）と、前の状態（before）から、残す競合の値
+const KEEPS: { name: string; after: PrRow; before: PrRow | null; hasConflicts: boolean | null }[] = [
+  { name: '分からなければ、前に分かっていた値を残す', after: conflict(5, null), before: conflict(5, false), hasConflicts: false },
+  { name: '分かっていれば、新しい値を使う', after: conflict(5, true), before: conflict(5, false), hasConflicts: true },
+  { name: '前の状態が無ければ、分からないまま', after: conflict(5, null), before: null, hasConflicts: null },
+  { name: 'マージされた PR には残さない', after: conflict(5, null, 'merged'), before: conflict(5, true), hasConflicts: null },
+]
+
+for (const one of KEEPS) {
+  test(`keepKnownConflicts: ${one.name}`, async () => {
+    const after = one.after.status
+    expect(after === null ? undefined : keepKnownConflicts(after, one.before?.status ?? null).hasConflicts).toBe(one.hasConflicts)
+  })
+}
+
+const NOTICES: { name: string; changes: PrChanges; text: string | null }[] = [
+  { name: '知らせるものが無い', changes: { merged: [], failed: [], conflicted: [] }, text: null },
+  { name: 'マージ', changes: { merged: [row(5, 'merged')], failed: [], conflicted: [] }, text: 'PR #5「x」がマージされました（https://github.com/o/r/pull/5）' },
+  { name: 'CI の失敗', changes: { merged: [], failed: [ci(4, 'open', 'failing')], conflicted: [] }, text: 'PR #4「x」の CI が失敗しました（https://github.com/o/r/pull/4）' },
   {
-    name: '両方あれば、1 行ずつ並べる',
-    merged: [row(5, 'merged')],
-    failed: [ci(4, 'open', 'failing')],
-    text: 'PR #5「x」がマージされました（https://github.com/o/r/pull/5）\nPR #4「x」の CI が失敗しました（https://github.com/o/r/pull/4）',
+    name: 'マージ後の CI の失敗',
+    changes: { merged: [], failed: [ci(4, 'merged', 'failing')], conflicted: [] },
+    text: 'PR #4「x」のマージ後の CI が失敗しました（https://github.com/o/r/pull/4）',
+  },
+  {
+    name: '競合',
+    changes: { merged: [], failed: [], conflicted: [conflict(3, true)] },
+    text: 'PR #3「x」がベースのブランチと競合しています（https://github.com/o/r/pull/3）',
+  },
+  {
+    name: '全部あれば、1 行ずつ並べる',
+    changes: { merged: [row(5, 'merged')], failed: [ci(4, 'open', 'failing')], conflicted: [conflict(3, true)] },
+    text: 'PR #5「x」がマージされました（https://github.com/o/r/pull/5）\nPR #4「x」の CI が失敗しました（https://github.com/o/r/pull/4）\nPR #3「x」がベースのブランチと競合しています（https://github.com/o/r/pull/3）',
   },
 ]
 
 for (const one of NOTICES) {
   test(`noticeOf: ${one.name}`, async () => {
-    expect(noticeOf(one.merged, one.failed)).toBe(one.text)
+    expect(noticeOf(one.changes)).toBe(one.text)
   })
 }
 
@@ -245,7 +294,7 @@ const checked = (
   url: `https://github.com/o/r/pull/${number}`,
   repo: 'o/r',
   number,
-  status: { title: 'x', state, isDraft: false, checks, failedChecks: [], review: null, mergedAt },
+  status: { title: 'x', state, isDraft: false, checks, failedChecks: [], review: null, mergedAt, hasConflicts: null },
 })
 
 const RUNNING = [checked(5, 'open', 'pending'), checked(4, 'open', 'passing')]
@@ -259,7 +308,7 @@ const WATCHES: { name: string; rows: PrRow[]; idleTicks: number; changing: boole
   { name: '上限の 1 回手前までは続ける', rows: RUNNING, idleTicks: 9, changing: true, keeps: true },
   { name: 'マージ後の CI が実行中なら続ける', rows: [checked(5, 'merged', 'pending', 999_000_000)], idleTicks: 0, changing: true, keeps: true },
   { name: 'マージ後の CI が成功したら、やめる', rows: [checked(5, 'merged', 'passing', 999_000_000)], idleTicks: 0, changing: false, keeps: false },
-  { name: 'マージ後の CI が失敗したら、やめる', rows: [checked(5, 'merged', 'failing', 999_000_000)], idleTicks: 0, changing: false, keeps: false },
+  { name: 'マージ後の CI が失敗しても、re-run で変わりうるので続ける', rows: [checked(5, 'merged', 'failing', 999_000_000)], idleTicks: 0, changing: true, keeps: true },
   { name: 'マージから 5 分たつまでは、チェックが現れるのを待つ', rows: [checked(5, 'merged', null, 999_700_001)], idleTicks: 0, changing: true, keeps: true },
   { name: 'マージから 5 分たってもチェックが無ければ、やめる', rows: [checked(5, 'merged', null, 999_700_000)], idleTicks: 0, changing: false, keeps: false },
   { name: 'マージの時刻が分からなければ、待たない', rows: [checked(5, 'merged', null)], idleTicks: 0, changing: false, keeps: false },
@@ -279,6 +328,7 @@ const SETTLES: { name: string; row: PrRow; settled: boolean }[] = [
   { name: '開いている PR は、決まっていない', row: checked(5, 'open', 'passing'), settled: false },
   { name: '閉じた PR は、マージ後の CI を持たない', row: checked(5, 'closed', 'passing'), settled: false },
   { name: 'マージ後の CI が成功した', row: checked(5, 'merged', 'passing', 999_000_000), settled: true },
+  { name: 'マージ後の CI が失敗した（re-run で変わりうる）', row: checked(5, 'merged', 'failing', 999_000_000), settled: false },
   { name: 'マージ後の CI が実行中', row: checked(5, 'merged', 'pending', 0), settled: false },
   { name: 'チェックがまだ無く、マージから 5 分たっていない', row: checked(5, 'merged', null, 999_700_001), settled: false },
 ]
@@ -294,7 +344,7 @@ test('statusArgv は、リポジトリごとにまとめた 1 つの問い合わ
   const argv = statusArgv([PR_3, OTHER_2, PR_2])
   expect(argv.slice(0, 4)).toEqual(['gh', 'api', 'graphql', '-f'])
   expect(argv[4]).toBe(
-    'query=query { r0: repository(owner: "o", name: "r") { p3: pullRequest(number: 3) { ...f } p2: pullRequest(number: 2) { ...f } } r1: repository(owner: "o", name: "other") { p2: pullRequest(number: 2) { ...f } } } fragment f on PullRequest { title state isDraft reviewDecision mergedAt commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 100) { nodes { __typename ... on CheckRun { name conclusion } ... on StatusContext { context state } } } } } } } mergeCommit { statusCheckRollup { state contexts(first: 100) { nodes { __typename ... on CheckRun { name conclusion } ... on StatusContext { context state } } } } } }',
+    'query=query { r0: repository(owner: "o", name: "r") { p3: pullRequest(number: 3) { ...f } p2: pullRequest(number: 2) { ...f } } r1: repository(owner: "o", name: "other") { p2: pullRequest(number: 2) { ...f } } } fragment f on PullRequest { title state isDraft reviewDecision mergedAt mergeable commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 100) { nodes { __typename ... on CheckRun { name conclusion } ... on StatusContext { context state } } } } } } } mergeCommit { statusCheckRollup { state contexts(first: 100) { nodes { __typename ... on CheckRun { name conclusion } ... on StatusContext { context state } } } } } }',
   )
 })
 
@@ -308,12 +358,14 @@ const answered = (pr: {
   mergedAt?: string
   mergeRollup?: string
   mergeContexts?: unknown[]
+  mergeable?: string
 }) => ({
   title: 't',
   state: pr.state,
   isDraft: pr.isDraft ?? false,
   reviewDecision: pr.reviewDecision ?? null,
   mergedAt: pr.mergedAt ?? null,
+  mergeable: pr.mergeable ?? 'UNKNOWN',
   commits: {
     nodes: [{ commit: { statusCheckRollup: pr.rollup === undefined ? null : { state: pr.rollup, contexts: { nodes: pr.contexts ?? [] } } } }],
   },
@@ -323,7 +375,7 @@ const answered = (pr: {
       : { statusCheckRollup: pr.mergeRollup === undefined ? null : { state: pr.mergeRollup, contexts: { nodes: pr.mergeContexts ?? [] } } },
 })
 
-const status = (fields: Partial<PrStatus>): PrStatus => ({ title: 't', state: 'open', isDraft: false, checks: null, failedChecks: [], review: null, mergedAt: null, ...fields })
+const status = (fields: Partial<PrStatus>): PrStatus => ({ title: 't', state: 'open', isDraft: false, checks: null, failedChecks: [], review: null, mergedAt: null, hasConflicts: null, ...fields })
 
 const ANSWERS: { name: string; pr: unknown; status: PrStatus | undefined }[] = [
   { name: '開いている、チェック無し、判定無し', pr: answered({ state: 'OPEN' }), status: status({}) },
@@ -334,6 +386,11 @@ const ANSWERS: { name: string; pr: unknown; status: PrStatus | undefined }[] = [
   { name: 'CI 待ち（EXPECTED）', pr: answered({ state: 'OPEN', rollup: 'EXPECTED' }), status: status({ checks: 'pending' }) },
   { name: '知らない CI の値は、実行中として出す', pr: answered({ state: 'OPEN', rollup: 'SOMETHING_NEW' }), status: status({ checks: 'pending' }) },
   { name: 'ドラフト', pr: answered({ state: 'OPEN', isDraft: true }), status: status({ isDraft: true }) },
+  // mergeable の値は cli/cli の開いている PR で確かめた（2026-10-20）
+  { name: '競合している', pr: answered({ state: 'OPEN', mergeable: 'CONFLICTING' }), status: status({ hasConflicts: true }) },
+  { name: '競合していない', pr: answered({ state: 'OPEN', mergeable: 'MERGEABLE' }), status: status({ hasConflicts: false }) },
+  { name: '競合の計算がまだ', pr: answered({ state: 'OPEN', mergeable: 'UNKNOWN' }), status: status({ hasConflicts: null }) },
+  { name: '閉じた PR の競合は見ない', pr: answered({ state: 'CLOSED', mergeable: 'CONFLICTING' }), status: status({ state: 'closed', hasConflicts: null }) },
   {
     // 形は cli/cli のマージ済みの PR（#14650）で確かめた（2026-10-14）
     name: 'マージ済みの PR は、PR の最後のコミットでなく、マージ後のコミットの CI を読む',

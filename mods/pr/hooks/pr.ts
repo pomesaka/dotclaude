@@ -1,4 +1,4 @@
-import type { Checks, PrRef, PrRow, PrStatus, Review } from '../types'
+import type { Checks, PrChanges, PrRef, PrRow, PrStatus, Review } from '../types'
 
 // WHY 使える文字を絞る: owner と repo は、状態を取る GraphQL の問い合わせに文字列として埋め込む。
 // 引用符や改行を通すと、問い合わせを書き換えられる
@@ -110,15 +110,30 @@ export const newlyFailed = (before: PrRow[], after: PrRow[]): PrRow[] =>
     return known.state !== row.status.state || known.checks !== 'failing'
   })
 
-// Claude に知らせる文。マージされた PR と、CI が失敗した PR を、1 行ずつ並べる。知らせるものが無ければ null。
+// 今回の取り直しで、開いている PR がベースのブランチと競合するようになったものを返す。
+// WHY 前が「競合していない」と分かっているものだけ: 前の状態が分からない PR（足した直後、開き直した直後）は、
+// いつ競合したのかが分からない。CI の失敗と同じく、競合したままの PR を取り直すたびに知らせることもしない
+export const newlyConflicted = (before: PrRow[], after: PrRow[]): PrRow[] =>
+  after.filter(row => {
+    const known = before.find(candidate => candidate.url === row.url)?.status
+    return row.status?.state === 'open' && row.status.hasConflicts === true && known?.state === 'open' && known.hasConflicts === false
+  })
+
+// 取り直した状態で、競合が分からなかった（UNKNOWN）ときは、前に分かっていた値を残す。
+// WHY 残す: GitHub は、push の後に競合を計算し直すあいだ UNKNOWN を返す（cli/cli の開いている PR で、5 件のうち 4 件が
+// UNKNOWN だった。2026-10-20）。残さないと「競合していない → 分からない → 競合した」と変わったときに、前が分からず知らせられない
+export const keepKnownConflicts = (status: PrStatus, before: PrStatus | null): PrStatus =>
+  status.hasConflicts === null && status.state === 'open' && before?.state === 'open' ? { ...status, hasConflicts: before.hasConflicts } : status
+
+// Claude に知らせる文。マージされた PR、CI が失敗した PR、競合した PR を、1 行ずつ並べる。知らせるものが無ければ null。
 // WHY 何をするかを書かない: 知らせるだけにする。聞くか、自分で進めるかは、届いた Claude がその場で判断する
-// （2026-10-09 に利用者が決めた）
-export const noticeOf = (merged: PrRow[], failed: PrRow[]): string | null => {
+// （2026-10-09 に利用者が決めた）。競合も、届いた Claude が勝手に rebase を始めないよう、事実だけを書く（2026-10-20）
+export const noticeOf = (changes: PrChanges): string | null => {
+  const title = (row: PrRow) => `PR #${row.number}「${row.status?.title ?? ''}」`
   const lines = [
-    ...merged.map(row => `PR #${row.number}「${row.status?.title ?? ''}」がマージされました（${row.url}）`),
-    ...failed.map(
-      row => `PR #${row.number}「${row.status?.title ?? ''}」の${row.status?.state === 'merged' ? 'マージ後の ' : ' '}CI が失敗しました（${row.url}）`,
-    ),
+    ...changes.merged.map(row => `${title(row)}がマージされました（${row.url}）`),
+    ...changes.failed.map(row => `${title(row)}の${row.status?.state === 'merged' ? 'マージ後の ' : ' '}CI が失敗しました（${row.url}）`),
+    ...changes.conflicted.map(row => `${title(row)}がベースのブランチと競合しています（${row.url}）`),
   ]
   return lines.length === 0 ? null : lines.join('\n')
 }
@@ -128,13 +143,16 @@ export const noticeOf = (merged: PrRow[], failed: PrRow[]): string | null => {
 // ベースのブランチに CI が無いリポジトリでも null なので、待つ時間で区切る。5 分は目安で、測っていない
 const MERGE_CHECKS_WAIT_MS = 5 * 60_000
 
-// マージ済みの PR のうち、マージ後の CI の結果がもう変わらないもの。成功か失敗に決まったか、待ってもチェックが現れなかった
+// マージ済みの PR のうち、マージ後の CI の結果がもう変わらないもの。成功したか、待ってもチェックが現れなかった。
+// WHY 失敗は決まったとみなさない: 失敗したワークフローは、re-run で同じコミットのまま成功に変わる。
+// 決まったとみなすと問い合わせから外れ、r を押しても成功が一覧に出ない（2026-10-20 に利用者が報告）。
+// 失敗したままの PR は問い合わせに残るが、終わった PR は 10 個までで、gh を呼ぶ回数も増えない
 export const isMergeSettled = (status: PrStatus, now: number): boolean => {
   if (status.state !== 'merged') return false
   switch (status.checks) {
     case 'passing':
-    case 'failing':
       return true
+    case 'failing':
     case 'pending':
       return false
     case null:
@@ -167,8 +185,9 @@ const aliased = (refs: PrRef[]): { alias: string; repo: string; refs: PrRef[] }[
 // コミットのステータス（StatusContext）は context と state を持つ。100 は 1 回に取れる上限
 const ROLLUP =
   'statusCheckRollup { state contexts(first: 100) { nodes { __typename ... on CheckRun { name conclusion } ... on StatusContext { context state } } } }'
-// mergeCommit は、マージでベースのブランチに入ったコミット。マージされていなければ null
-const FRAGMENT = `fragment f on PullRequest { title state isDraft reviewDecision mergedAt commits(last: 1) { nodes { commit { ${ROLLUP} } } } mergeCommit { ${ROLLUP} } }`
+// mergeCommit は、マージでベースのブランチに入ったコミット。マージされていなければ null。
+// mergeable は、ベースのブランチと競合しているか（MERGEABLE、CONFLICTING、UNKNOWN）
+const FRAGMENT = `fragment f on PullRequest { title state isDraft reviewDecision mergedAt mergeable commits(last: 1) { nodes { commit { ${ROLLUP} } } } mergeCommit { ${ROLLUP} } }`
 
 // PR の状態を、何個でも 1 回の呼び出しで取る問い合わせ。
 // WHY gh pr view でなく GraphQL: gh pr view は 1 個ずつしか見られず、PR の数だけ gh を呼ぶことになる。
@@ -203,6 +222,9 @@ const CHECKS: { [state: string]: Checks } = {
   EXPECTED: 'pending',
 }
 
+// GitHub の mergeable（MergeableState）。UNKNOWN は、まだ計算していない（cli/cli の開いている PR で 3 つとも見た。2026-10-20）
+const CONFLICTS: { [mergeable: string]: boolean } = { CONFLICTING: true, MERGEABLE: false }
+
 // 失敗として名前を出すチェックの結果。実行中（conclusion が null）と、成功、スキップは入れない
 const FAILED_CHECK = ['FAILURE', 'ERROR', 'CANCELLED', 'TIMED_OUT', 'ACTION_REQUIRED', 'STARTUP_FAILURE']
 
@@ -232,6 +254,7 @@ const statusOf = (pr: unknown): PrStatus | null => {
   const rollupState = field(rollup, 'state')
   const mergedAt = field(pr, 'mergedAt')
   const mergedTime = typeof mergedAt === 'string' ? Date.parse(mergedAt) : Number.NaN
+  const mergeable = field(pr, 'mergeable')
   return {
     title,
     state,
@@ -240,6 +263,8 @@ const statusOf = (pr: unknown): PrStatus | null => {
     failedChecks: failedChecksOf(rollup),
     review: typeof decision === 'string' ? (REVIEWS[decision] ?? null) : null,
     mergedAt: Number.isNaN(mergedTime) ? null : mergedTime,
+    // WHY 開いている PR だけ: 終わった PR の競合は、もう直す相手ではない。UNKNOWN と知らない値は、分からないとして扱う
+    hasConflicts: state === 'open' && typeof mergeable === 'string' ? (CONFLICTS[mergeable] ?? null) : null,
   }
 }
 

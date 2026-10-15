@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderSurface, Timer } from 'claude-code'
 
-import type { Checks, PrRef, PrRow, PrStatus, Review } from '../types'
+import type { Checks, PrChanges, PrRef, PrRow, PrStatus, Review } from '../types'
 import { SESSION_CONTEXT } from './context'
 import { clampCursor, moveCursor, windowOf } from './cursor'
 import {
@@ -10,7 +10,9 @@ import {
   isMerge,
   isMergeSettled,
   isPush,
+  keepKnownConflicts,
   keepsWatching,
+  newlyConflicted,
   newlyFailed,
   newlyMerged,
   noticeOf,
@@ -106,7 +108,11 @@ const REVIEW_LABEL: { [review in Review]: { label: string; color: string | undef
   review_required: { label: 'review', color: undefined },
 }
 
-const PR_STATE_COLOR: { [state in PrStatus['state']]: string | undefined } = { open: GREEN, merged: PURPLE, closed: RED }
+// ベースのブランチと競合している PR に付ける札。
+// WHY 番号の色は変えない: 番号の色は CI の結果を表す。競合を色に混ぜると、CI が失敗したのか競合したのかが区別できない
+const CONFLICT_LABEL = 'conflict'
+
+const PR_STATE_COLOR:{ [state in PrStatus['state']]: string | undefined } = { open: GREEN, merged: PURPLE, closed: RED }
 
 // プロンプトの下の行に出す PR の番号の色。開いている PR は CI の結果、それ以外は PR の状態で決める。
 // マージ済みの PR は、マージ後の CI が失敗したときだけ赤にする。
@@ -178,8 +184,7 @@ const submitNotice = ($: EngineInterface, text: string): void => {
 }
 
 // PR の一覧を $.store から作り直し、状態を取り直す。PR が何個あっても、gh を呼ぶのは 1 回。
-// 返すのは、取り直した後の一覧（rows）と、今回、開いていたのがマージ済みに変わった PR（merged）、
-// CI が失敗に変わった PR（failed）。
+// 返すのは、取り直した後の一覧（rows）と、今回、Claude に知らせる変化があった PR（changes）。
 // 知らせるかどうかは呼んだ側が決める。
 // WHY rows を返す: 同じ hook の中で状態を読み直しても、書く前の値が返る（1 回の dispatch の get は、同じ時点を読む）。
 // WHY マージに気づいても jj git fetch しない: リモートのブランチが消えていると、fetch で手元のコミットが abandon される
@@ -190,7 +195,7 @@ const submitNotice = ($: EngineInterface, text: string): void => {
 // WHY ずっとは見張らない: 手元のセッションは GitHub のイベントを受け取れない（v2.1.295 のバイナリで確認。
 // Webhook が届くのは /autofix-pr が起こすクラウドのセッションだけ）。取りに行くしかないので、CI を待つあいだに限る。
 // 画面でのマージは、次に取り直すまで分からない
-const refreshPrs = async ($: EngineInterface): Promise<{ rows: PrRow[]; merged: PrRow[]; failed: PrRow[] }> => {
+const refreshPrs = async ($: EngineInterface): Promise<{ rows: PrRow[]; changes: PrChanges }> => {
   // 一覧は、最後に触った PR を先頭にして持つ
   const refs = (await loadPrRefs($)).reverse()
   const known = await read($, pullRequests)
@@ -205,7 +210,10 @@ const refreshPrs = async ($: EngineInterface): Promise<{ rows: PrRow[]; merged: 
     }),
   )
   // 取れなかった PR は、前に取れた状態を残す
-  const fetched: PrRow[] = refs.map(ref => ({ ...ref, status: statuses[ref.url] ?? before(ref) }))
+  const fetched: PrRow[] = refs.map(ref => {
+    const status = statuses[ref.url]
+    return { ...ref, status: status === undefined ? before(ref) : keepKnownConflicts(status, before(ref)) }
+  })
   // 終わった PR が溜まらないよう、新しいものだけを残す。消したぶんは $.store からも消す
   const next = pruneDone(fetched, PRS_DONE_MAX)
   if (next.length < fetched.length) {
@@ -217,7 +225,10 @@ const refreshPrs = async ($: EngineInterface): Promise<{ rows: PrRow[]; merged: 
   // WHY 同じなら書かない: 書くたびに、プロンプトの下の行と pane が描き直される
   await update($, pullRequests, current => (JSON.stringify(current) === JSON.stringify(next) ? current : next))
   // WHY 消す前の fetched で比べる: マージされた PR が、終わった PR の上限を超えてすぐ消えることがある
-  return { rows: next, merged: newlyMerged(known, fetched), failed: newlyFailed(known, fetched) }
+  return {
+    rows: next,
+    changes: { merged: newlyMerged(known, fetched), failed: newlyFailed(known, fetched), conflicted: newlyConflicted(known, fetched) },
+  }
 }
 
 // いま動いている見張り。null は、見張っていない。idleTicks は、Claude が止まってから取り直した回数。
@@ -237,9 +248,9 @@ const watchTick = async ($: EngineInterface): Promise<void> => {
   const mine = watch
   if (mine === null) return
   if (!isWorking) mine.idleTicks += 1
-  const { rows, merged, failed } = await refreshPrs($)
+  const { rows, changes } = await refreshPrs($)
   // タイマーはターンを止めていないので、その場で送る
-  const text = noticeOf(merged, failed)
+  const text = noticeOf(changes)
   if (text !== null) submitNotice($, text)
   const now = await $.clock.now()
   // 取り直しているあいだに、新しい見張りに替わっていたら、そちらには手を出さない
@@ -264,7 +275,7 @@ const watchIfChanging = async ($: EngineInterface, rows: PrRow[]): Promise<void>
   watch = { timer, idleTicks: 0 }
 }
 
-// ツールの後に気づいたマージと CI の失敗を、ターンの終わりに送るために溜める。
+// ツールの後に気づいたマージ、CI の失敗、競合を、ターンの終わりに送るために溜める。
 // WHY 溜める: tool.call の hook の中からは送れない
 const queueNotice = async ($: EngineInterface, text: string | null): Promise<void> => {
   if (text === null) return
@@ -281,10 +292,10 @@ const dropPr = async ($: EngineInterface, url: string): Promise<void> => {
   await update($, pullRequests, current => current.filter(row => row.url !== url))
 }
 
-// 利用者の操作（pr ボタン、r キー）で取り直す。マージや CI の失敗に気づいたら、その場で Claude に知らせる
+// 利用者の操作（pr ボタン、r キー）で取り直す。マージ、CI の失敗、競合に気づいたら、その場で Claude に知らせる
 const refreshPrsNow = async ($: EngineInterface): Promise<void> => {
-  const { rows, merged, failed } = await refreshPrs($)
-  const text = noticeOf(merged, failed)
+  const { rows, changes } = await refreshPrs($)
+  const text = noticeOf(changes)
   if (text !== null) submitNotice($, text)
   await watchIfChanging($, rows)
 }
@@ -312,15 +323,9 @@ const trackPrs = async ($: EngineInterface, command: string, result: unknown): P
   if (touched !== null) await rememberPr($, touched)
   // 一覧に関係の無いコマンドでは、GitHub を叩かない。push は、一覧に PR があるときだけ取り直す
   if (touched === null && !(isPush(command, result) && refs.length > 0)) return
-  const { rows, merged, failed } = await refreshPrs($)
+  const { rows, changes } = await refreshPrs($)
   // Claude が自分でマージした PR は、知らせなくても分かっている
-  await queueNotice(
-    $,
-    noticeOf(
-      merged.filter(row => !(isMerge(result) && row.url === touched?.url)),
-      failed,
-    ),
-  )
+  await queueNotice($, noticeOf({ ...changes, merged: changes.merged.filter(row => !(isMerge(result) && row.url === touched?.url)) }))
   await watchIfChanging($, rows)
   // 一覧に新しく入った時点で、一覧を横に出す
   if (adopted !== null && !refs.some(known => known.url === adopted.url)) await showPrPane($, adopted)
@@ -348,8 +353,8 @@ export const register: Register = on => {
     if (ref === null) return { deny: 'track_pr failed: url must look like https://github.com/<owner>/<repo>/pull/<number>' }
     const isNew = !(await loadPrRefs($)).some(known => known.url === ref.url)
     await rememberPr($, ref)
-    const { rows, merged, failed } = await refreshPrs($)
-    await queueNotice($, noticeOf(merged, failed))
+    const { rows, changes } = await refreshPrs($)
+    await queueNotice($, noticeOf(changes))
     await watchIfChanging($, rows)
     if (isNew) await showPrPane($, ref)
     const added = rows.find(row => row.url === ref.url)?.status ?? null
@@ -377,7 +382,7 @@ export const register: Register = on => {
   })
 
   // ターンの終わりから、見張りの回数を数え直す。
-  // ツールの後に気づいたマージと CI の失敗も、ここで Claude へ知らせる
+  // ツールの後に気づいたマージ、CI の失敗、競合も、ここで Claude へ知らせる
   on('turn.complete', async ($, e, next) => {
     isWorking = false
     await watchIfChanging($, await read($, pullRequests))
@@ -466,9 +471,20 @@ export const register: Register = on => {
               const number = `#${row.number}`
               const state = prStatus === null ? '' : prStatus.isDraft && prStatus.state === 'open' ? 'draft' : prStatus.state
               const reviewLabel = review === null ? '' : REVIEW_LABEL[review].label
-              // 選んでいる印 1、CI の印 1、番号、リポジトリ、右側の 2 つの札と × のボタン、あいだの空き 1 桁ずつを引いた残りを、題名に使う
+              const conflictLabel = prStatus?.hasConflicts === true ? CONFLICT_LABEL : ''
+              // 選んでいる印 1、CI の印 1、番号、リポジトリ、右側の札と × のボタン、あいだの空き 1 桁ずつを引いた残りを、題名に使う
               const taken =
-                2 + 1 + 1 + number.length + 1 + (showsRepo ? row.repo.length + 1 : 0) + 1 + state.length + (reviewLabel === '' ? 0 : reviewLabel.length + 1) + 2
+                2 +
+                1 +
+                1 +
+                number.length +
+                1 +
+                (showsRepo ? row.repo.length + 1 : 0) +
+                1 +
+                state.length +
+                (reviewLabel === '' ? 0 : reviewLabel.length + 1) +
+                (conflictLabel === '' ? 0 : conflictLabel.length + 1) +
+                2
               const isDone = prStatus !== null && prStatus.state !== 'open'
               const failedChecks = failedChecksOf(row)
               return (
@@ -489,6 +505,7 @@ export const register: Register = on => {
                     </Box>
                   </Box>
                   <Box flexDirection="row" columnGap={1}>
+                    {conflictLabel !== '' && <Text color={RED}>{conflictLabel}</Text>}
                     {review !== null && <Text color={REVIEW_LABEL[review].color}>{reviewLabel}</Text>}
                     {prStatus !== null && (
                       <Text color={state === 'draft' ? undefined : PR_STATE_COLOR[prStatus.state]} dimColor={state === 'draft'}>

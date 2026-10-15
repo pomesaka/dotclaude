@@ -22,12 +22,24 @@ export type PrStatus = {
   failedChecks: string[]
   // マージされた時刻（エポックからのミリ秒）。マージされていなければ null
   mergedAt: number | null
+  // 開いている PR が、ベースのブランチと競合しているか。null は、分からない（GitHub がまだ計算していない、開いていない）
+  hasConflicts: boolean | null
   // null は、レビューの判定がまだ無い
   review: Review | null
 }
 
 // PR の一覧の 1 行。status の null は、まだ 1 度も状態を取れていない
 export type PrRow = PrRef & { status: PrStatus | null }
+
+// 1 回の取り直しで、Claude に知らせる変化があった PR
+export type PrChanges = {
+  // 開いていた PR が、マージ済みになった
+  merged: PrRow[]
+  // CI が失敗に変わった（マージ後の CI も含む）
+  failed: PrRow[]
+  // 開いている PR が、ベースのブランチと競合するようになった
+  conflicted: PrRow[]
+}
 
 declare module 'claude-code' {
   interface PluginState {
@@ -36,7 +48,7 @@ declare module 'claude-code' {
       prs: PrRow[]
       // pane の一覧で、キーで選んでいる行の位置
       cursor: number
-      // Claude へ送るのを待っている、マージと CI の失敗の知らせ。null は、待っているものが無い。
+      // Claude へ送るのを待っている、マージ、CI の失敗、競合の知らせ。null は、待っているものが無い。
       // ツールの後に気づいた分をここに溜め、ターンの終わりに送る
       pendingNotice: string | null
     }
