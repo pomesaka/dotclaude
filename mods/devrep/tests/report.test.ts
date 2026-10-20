@@ -13,6 +13,8 @@ const REJECTED: { name: string; input: unknown; error: string }[] = [
     input: { now: 'a', next: ['1', '2', '3', '4', '5', '6', '7'] },
     error: 'next lists at most 6 items; keep the ones the user needs to pick the work back up',
   },
+  { name: 'todo が配列でない', input: { now: 'a', next: ['b'], todo: 'c' }, error: 'todo must be a list of at least one string' },
+  { name: 'todo に空の項目', input: { now: 'a', next: ['b'], todo: ['c', ''] }, error: 'every item of todo must be a non-empty string' },
   { name: 'sections が配列でない', input: { now: 'a', next: ['b'], sections: 'c' }, error: 'sections must be a list' },
   {
     name: 'sections が 7 つ',
@@ -43,18 +45,26 @@ for (const one of REJECTED) {
   })
 }
 
-test('parseReport は、省かれた sections を空にし、前後の空白を落とす', async () => {
+test('parseReport は、省かれた todo と sections を空にし、前後の空白を落とす', async () => {
   expect(parseReport({ now: ' 帯の幅を直している ', next: [' テストを足す '] })).toEqual({
     now: '帯の幅を直している',
     next: ['テストを足す'],
+    todo: [],
     sections: [],
   })
 })
 
-test('parseReport は、自由な節を並びのまま読む', async () => {
-  expect(parseReport({ now: 'a', next: ['b'], sections: [{ title: ' 決まったこと ', items: ['c'] }, { title: '待っていること', items: ['d', 'e'] }] })).toEqual({
+test('parseReport は、空の todo を空のまま読む', async () => {
+  expect(parseReport({ now: 'a', next: ['b'], todo: [] })).toEqual({ now: 'a', next: ['b'], todo: [], sections: [] })
+})
+
+test('parseReport は、利用者がすることと自由な節を並びのまま読む', async () => {
+  expect(
+    parseReport({ now: 'a', next: ['b'], todo: [' f '], sections: [{ title: ' 決まったこと ', items: ['c'] }, { title: '待っていること', items: ['d', 'e'] }] }),
+  ).toEqual({
     now: 'a',
     next: ['b'],
+    todo: ['f'],
     sections: [
       { title: '決まったこと', items: ['c'] },
       { title: '待っていること', items: ['d', 'e'] },
@@ -62,13 +72,18 @@ test('parseReport は、自由な節を並びのまま読む', async () => {
   })
 })
 
-const REPORT = { now: 'a', next: ['b'], sections: [], updatedAt: 5, turns: 2 }
+const REPORT = { now: 'a', next: ['b'], todo: ['c'], sections: [], updatedAt: 5, turns: 2 }
 
 const STORED: { name: string; stored: unknown; record: unknown }[] = [
   { name: '何も無い', stored: undefined, record: { isOn: false, report: null, unchecked: 0 } },
   { name: 'ON で、まだ書かれていない', stored: { isOn: true, report: null, unchecked: 3 }, record: { isOn: true, report: null, unchecked: 3 } },
   { name: '書かれた状況がある', stored: { isOn: true, report: REPORT, unchecked: 1 }, record: { isOn: true, report: REPORT, unchecked: 1 } },
   { name: 'OFF にした後も、状況は残る', stored: { isOn: false, report: REPORT, unchecked: 0 }, record: { isOn: false, report: REPORT, unchecked: 0 } },
+  {
+    name: 'todo を足す前に書いた状況は、todo を空にして読む',
+    stored: { isOn: true, report: { now: 'a', next: ['b'], sections: [], updatedAt: 5, turns: 2 }, unchecked: 1 },
+    record: { isOn: true, report: { now: 'a', next: ['b'], todo: [], sections: [], updatedAt: 5, turns: 2 }, unchecked: 1 },
+  },
   {
     name: '状況に時刻が無い',
     stored: { isOn: true, report: { now: 'a', next: ['b'], sections: [], turns: 0 }, unchecked: 0 },

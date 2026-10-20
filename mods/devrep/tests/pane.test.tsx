@@ -10,8 +10,9 @@ const TOOL = 'mcp__devrep__update_devrep'
 const REPORT = {
   now: '帯の幅の計算を直している',
   next: ['テストを足す', 'READMEに反映する'],
+  todo: ['/reload-plugins を打つ', 'Q3 に答える'],
   sections: [
-    { title: '待っていること', items: ['幅のしきい値を決める'] },
+    { title: '知っておいてほしいこと', items: ['幅のしきい値は仮に決めた'] },
     { title: '決まったこと', items: ['表は使わない'] },
   ],
 }
@@ -143,8 +144,10 @@ test('update_devrep を呼ぶと ON になり、状況が pane に出て、$.sto
   expect(await ui.find({ type: 'Text', text: /^いま（\d{4}-\d{2}-\d{2} \d{2}:\d{2}）$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^次にすること$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^READMEに反映する$/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /^待っていること$/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /^幅のしきい値を決める$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^あなたがすること$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^\/reload-plugins を打つ$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^知っておいてほしいこと$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^幅のしきい値は仮に決めた$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^決まったこと$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^たったいま更新$/ })).toBeDefined()
   await ui.unmount()
@@ -448,6 +451,31 @@ test('ON のあいだ、プロンプトの下の行に devrep の札が出る。
   expect(await ui.find({ type: 'Text', text: /^ENGINE$/ })).toBeDefined()
   await ui.press({ key: 'devrep' })
   expect(seen.opened).toEqual([{ id: 'devrep', focus: true }])
+  await ui.unmount()
+})
+
+test('札には、利用者がすることの件数が出る。無くなったら消える', async ($, on) => {
+  world(on)
+  engineLine(on)
+  await $.session.start(START)
+  await $.tool.call({ tool: TOOL, ...REPORT })
+
+  const ui = await $.ui.mount(line)
+  expect(await ui.find({ type: 'Text', text: /^2 $/ })).toBeDefined()
+  await $.tool.call({ tool: TOOL, ...REPORT, todo: [] })
+  expect(await ui.find({ type: 'Text', text: /^2 $/ })).toBeUndefined()
+  await ui.unmount()
+})
+
+test('利用者がすることが無ければ、pane にその節を出さない', async ($, on) => {
+  world(on)
+  await $.session.start(START)
+  const { todo: _todo, ...rest } = REPORT
+  await $.tool.call({ tool: TOOL, ...rest })
+
+  const ui = await $.ui.mount(pane)
+  expect(await ui.find({ type: 'Text', text: /^あなたがすること$/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^帯の幅の計算を直している$/ })).toBeDefined()
   await ui.unmount()
 })
 

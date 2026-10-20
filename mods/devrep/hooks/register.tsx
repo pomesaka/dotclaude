@@ -14,8 +14,10 @@ const ACCENT = '#6cb6ff'
 // プロンプトの下の行に足す札の色。status-band の帯の、目立たせない札と同じ
 const SURFACE = '#30363d'
 const SOFT = '#c9d1d9'
+// 利用者がすることの色。札の件数と、pane の見出しに使う
+const TODO = '#e3b341'
 
-const DESCRIPTION = `Rewrite the report of where the work stands, shown in the user's devrep pane: what this session is doing now, what comes next, and any other sections the user needs.
+const DESCRIPTION = `Rewrite the report of where the work stands, shown in the user's devrep pane: what this session is doing now, what comes next, what the user has to do themselves, and any other sections the user needs.
 The user reads it when they come back to a session they left alone, instead of scrolling the transcript.
 Call it when the user asks you to keep such a report (that turns devrep on for the session), and while devrep is on, at milestones only: when the task you are working on changes, when a piece of work lands (a commit the user asked for, a merged PR, a finished review round), and when something you need from the user appears or is settled. Not after every tool call or small step.
 Each call replaces the whole report. Write for someone who has forgotten the conversation: one short sentence per item, naming things in full, in the language you answer the user in. No tables.`
@@ -30,10 +32,16 @@ const INPUT_SCHEMA = {
       ...ITEMS_SCHEMA,
       description: `What comes next, in the order you will take it. 1 to ${ITEMS_MAX} items. When nothing is planned, say what you are waiting for.`,
     },
+    todo: {
+      type: 'array',
+      items: { type: 'string' },
+      maxItems: ITEMS_MAX,
+      description: `What the user has to do themselves before the work can go on: a command to run (write it out in full), something to check on screen or in a browser, a decision to make. Up to ${ITEMS_MAX} items, most urgent first. Leave it out when nothing waits on the user.`,
+    },
     sections: {
       type: 'array',
       maxItems: SECTIONS_MAX,
-      description: `Other sections, drawn in this order under a title you choose: what you are waiting on the user for, what was decided, what the user should know, what landed recently. Only the ones this session needs; at most ${SECTIONS_MAX}.`,
+      description: `Other sections, drawn in this order under a title you choose: what was decided, what the user should know, what landed recently. Only the ones this session needs; at most ${SECTIONS_MAX}.`,
       items: {
         type: 'object',
         properties: {
@@ -239,9 +247,12 @@ export const register: Register = on => {
   // 札から直接開けば、Claude が作業している最中でもすぐ出る。
   // WHY ON のときだけ: devrep を使わないセッションで、札を増やさない。
   // WHY Box に width を付けない: 下の層の木を width の付いた Box に入れると、エンジンが重ねた hook の全部を捨てる（v2.1.296 で確認）
+  // WHY 利用者がすることの件数を札に出す: pane を閉じていても、自分の番が来ていると気づけるようにする
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
     const inner = await next(e)
-    if (e.surface !== 'terminal' || !(await read($, record)).isOn) return inner
+    const current = await read($, record)
+    if (e.surface !== 'terminal' || !current.isOn) return inner
+    const todos = current.report?.todo.length ?? 0
     const { Box, Button, Text } = $.ui.resolve(e)
     // 開いた時点の時刻で「何分前に更新」を出す
     const open = () => {
@@ -259,6 +270,11 @@ export const register: Register = on => {
           <Text backgroundColor={SURFACE} color={SOFT}>
             {' devrep '}
           </Text>
+          {todos > 0 && (
+            <Text backgroundColor={SURFACE} color={TODO} bold>
+              {`${todos} `}
+            </Text>
+          )}
         </Button>
       </Box>
     )
@@ -299,9 +315,9 @@ export const register: Register = on => {
       </Box>
     )
     // at は、節の位置。見出しが同じ節が無いことは入力で確かめているが、key は位置で付ける
-    const section = (at: string, title: string, list: string[], markOf: (index: number) => string) => (
+    const section = (at: string, title: string, list: string[], markOf: (index: number) => string, color = ACCENT) => (
       <Box key={`section-${at}`} flexDirection="column" width={width}>
-        <Text bold color={ACCENT}>
+        <Text bold color={color}>
           {title}
         </Text>
         {list.map((one, index) => row(`item-${at}-${index}`, markOf(index), one))}
@@ -354,6 +370,8 @@ export const register: Register = on => {
           <Text dimColor>{current.isOn ? 'まだ書かれていません。Claudeが書くのを待っています' : 'まだ書かれていません。ONにすると、Claudeが作業の状況を書きます'}</Text>
         ) : (
           <Box flexDirection="column" gap={1} width={width}>
+            {/* WHY いちばん上に置く: 戻ってきた利用者が最初に知りたいのは、自分が何をすれば作業が進むか */}
+            {report.todo.length > 0 && section('todo', 'あなたがすること', report.todo, () => '□', TODO)}
             <Box flexDirection="column" width={width}>
               {/* WHY 日時も出す: 「3時間前」だけでは、いつの時点の状況かを、ほかの記録（コミット、PR）と突き合わせられない
                   （2026-10-10 に利用者が決めた） */}

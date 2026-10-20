@@ -7,6 +7,8 @@ export type ReportBody = {
   now: string
   // 次にすること。取りかかる順
   next: string[]
+  // 利用者が自分でしないと作業が進まないこと（コマンドの実行、画面での確認、決めること）。空は、待っていることが無い
+  todo: string[]
   // そのほかの節。並べる順は Claude が決める
   sections: Section[]
 }

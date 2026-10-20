@@ -24,6 +24,10 @@ const items = (value: unknown, name: string): string[] | string => {
   return list
 }
 
+// 省いてよい項目の並びを読む。省かれているか空なら、空の並び
+const optionalItems = (value: unknown, name: string): string[] | string =>
+  value === undefined || (Array.isArray(value) && value.length === 0) ? [] : items(value, name)
+
 // 自由な節を読む。省かれていれば空。読めなければ、理由の文字列を返す
 const sectionsOf = (value: unknown): Section[] | string => {
   if (value === undefined) return []
@@ -48,9 +52,11 @@ export const parseReport = (input: unknown): ReportBody | string => {
   if (now === '') return 'now must be a non-empty string'
   const next = items(field(input, 'next'), 'next')
   if (typeof next === 'string') return next
+  const todo = optionalItems(field(input, 'todo'), 'todo')
+  if (typeof todo === 'string') return todo
   const sections = sectionsOf(field(input, 'sections'))
   if (typeof sections === 'string') return sections
-  return { now, next, sections }
+  return { now, next, todo, sections }
 }
 
 // $.store から読んだ値を、セッションの記録として読む。形が合わない部分は、無いものとして扱う
