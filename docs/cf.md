@@ -49,6 +49,12 @@ cf <command> --dry-run                           # 送るリクエストを表�
 |---|---|
 | シークレットの登録 | `cf deploy --secrets-file <パス>` で渡すか、`npx wrangler secret put <名前> --name <Worker 名>` |
 | ログのリアルタイム表示 | `npx wrangler tail <Worker 名>` |
+| Worker に付いている Cron の一覧を読む | 見つからなかった（`cf cli search` で 3 通り探した。1.0.0-beta.5・2026-10-14）。ダッシュボードの Worker の Settings → Triggers で見る |
+
+- **Cron が付いているのに動かないときは、まず Cloudflare の障害を見る**: `curl -sS https://www.cloudflarestatus.com/api/v2/incidents.json | jq '.incidents[] | select(.name | test("Cron"))'`。2026-10-12〜14 に「Cron Trigger Activation Issues」が 3 回あり、作成・変更した Cron だけが動かなかった（前からある Cron は動いた）。動いたかは、下の `cf observability telemetry query` で `$workers.event.cron` ごとに数えると分かる
+
+- **過去の Worker のログは `cf observability telemetry query --body '<JSON>'` で読める**（Workers Logs が有効な Worker）。フラグでは絞り込みを書けないので `--body` で渡す。例: `{"queryId":"adhoc-任意","timeframe":{"from":<ミリ秒>,"to":<ミリ秒>},"view":"events","limit":50,"parameters":{"filters":[{"key":"$metadata.service","operation":"eq","type":"string","value":"<Worker 名>"},{"key":"$workers.eventType","operation":"neq","type":"string","value":"fetch"}]}}`。結果は `.events.events[]` の `$metadata.message`・`$metadata.error`・`$workers.eventType`（fetch・scheduled・queue）・`$workers.event`（Cron の式など）。共有アカウントでは、ほかのアプリのログを読まないよう、必ず `$metadata.service` で絞る（2026-10-14 確認）
+- **wrangler の OAuth と cf の OAuth は別**: wrangler が別のアカウントにログインしていても、`cf auth whoami` で目的のアカウントと `workers_observability:read`・`d1:write` などの scope が見えれば、`cf` からは読める。`cf d1 query` が `7403 The given account is not valid or is not authorized` を返したあと、同じログインのまま通ったことがある（原因は未確認・2026-10-14）
 
 ## 罠
 
@@ -75,4 +81,7 @@ cf <command> --dry-run                           # 送るリクエストを表�
 - **miniflare 5（alpha）はオプションの形が変わっていて、スクリプトから使いにくい**（`workers: [{ config: <cloudflare.config の形>, dev: {...} }]`）。スクリプトでは miniflare 4 を使う
 - **`cf` は環境変数 `CLOUDFLARE_API_TOKEN` と `CLOUDFLARE_ACCOUNT_ID` を読む**。CI では設定ファイルが無くても、これでリモートの資源を操作できる
 - **`cf d1 migrations apply` は、端末でないとき確認の質問に自動で「yes」と答える**（`Using fallback value in non-interactive context: yes`）。マイグレーションのファイルは既定で `<dir>/*.sql`（drizzle-kit の平らな出力そのまま）。drizzle の入れ子の形なら `--pattern "<dir>/*/migration.sql"`。適用済みの記録は `--table`（既定 `d1_migrations`）
-- **D1 の `batch()` は 1 つのトランザクション**: miniflare の D1（ローカル）で、複数文の batch の途中（既存行が新しい NOT NULL 列に引っかかる等）が失敗すると、それより前の文も含めて丸ごと巻き戻り、表も行も変更前のまま残ることを確認した（2026-10-02）。`cf d1 migrations apply` がリモートの D1 でも同じ単位でまとめて当てるかは未確認（マイグレーション 1 ファイルを 1 batch として送っているか、1 文ずつ送っているかを cf のソースか実機で確かめてから断定する）
+- **D1 の `batch()` は 1 つのトランザクション**: miniflare の D1（ローカル）で、複数文の batch の途中（既存行が新しい NOT NULL 列に引っかかる等）が失敗すると、それより前の文も含めて丸ごと巻き戻り、表も行も変更前のまま残ることを確認した（2026-10-02）。リモートの D1 でも、`cf d1 migrations apply`（1.0.0-beta.5）はマイグレーション 1 ファイルを丸ごと巻き戻す: `DROP TABLE` 2 つと `CREATE TABLE` の後の `ALTER TABLE ... ADD ... NOT NULL` が `7500 Cannot add a NOT NULL column with default value NULL` で失敗したとき、DROP した表は元のまま残り、`d1_migrations` にもそのファイルは記録されなかった（2026-10-20、sandbox の D1 を `cf d1 query` で読んで確認）
+- **`cf` がプロジェクトの devDependency にしか無いときは、PATH に無い**。`bun run --cwd <cf の入ったアプリ> cf ...` で動かす（ある案件で確認、2026-10-20）
+- **`cf d1 list` に `--json` は無い**（引数のエラーになる。1.0.0-beta.5）。`cf d1 query` は、何もしなくても JSON で返す
+- **`cf d1 query <ID> --sql "文1; 文2; …"` は複数の文を 1 回で流せる**。結果は文ごとの配列で返る。DROP TABLE 20 文を 1 回で流して全部通った（2026-10-20、sandbox の D1）。途中で失敗したときに前の文まで巻き戻るかは試していない
