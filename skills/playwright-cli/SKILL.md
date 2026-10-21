@@ -297,6 +297,9 @@ playwright-cli close
 - **`window.confirm` が開いている間は `snapshot` が空のファイル（0 バイト）になり、エラーも出ない。クリックの直後に `dialog-accept` を打つ**: 確認ダイアログを出すボタンを `click` すると、ページはダイアログで止まる。その状態の `snapshot --filename=` は中身の無いファイルを作るだけなので、後ろの `rg` が何も返さず、「操作したのに画面が変わらない」ように見える。実際には操作そのものが実行されていない。対処: 対象のハンドラに `confirm(` があるかを先に `rg` で見て、あれば `click` → `dialog-accept` → `snapshot` の順にする。結果は画面の文言に加えて、API か DB の値でも確かめる。開発サーバーの下でリビジョンを切り替えた直後は、Vite が依存を最適化し直して最初の描画が空になることもあるので、空のスナップショットが出たら 1 回取り直す。実例: ある案件の管理画面の「監視を止める」（2026-10-07）。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-10 -->
 
+- **Vite の開発サーバーで画像を `route` で止めるときは、`resourceType() === 'image'` で絞る。ファイル名の glob だけだと画面ごと描けなくなる**: Vite は `import url from "./x.jpg"` を `x.jpg?import` という JS のモジュールとしても配るので、`**/x.jpg*` を 404 にするとそのモジュールの読み込みも落ち、画面が何も描かれずにボタン待ちでタイムアウトする。`page.route('**/x.jpg*', r => r.request().resourceType() === 'image' ? r.fulfill({ status: 404, body: '' }) : r.continue())` と書く。また、`page.pdf()` は `beforeprint` / `afterprint` を発火させるので、`afterprint` で片付ける画面では、PDF を書き出した後に DOM を数えると片付いた後の 0 件が返る。数えるなら `page.pdf()` の前にする。実例: ある案件の掲示カードの印刷（2026-10-21）
+  <!-- importance: medium | mentions: 1 | first-seen: 2026-10 -->
+
 ## Specific tasks
 
 * **Request mocking** [references/request-mocking.md](references/request-mocking.md)
