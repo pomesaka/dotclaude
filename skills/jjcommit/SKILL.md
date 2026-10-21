@@ -2,7 +2,7 @@
 name: jjcommit
 description: jj commit で現在の変更をコミットする。/jjcommit で呼び出す。
 disable-model-invocation: true
-allowed-tools: Bash(jj *)
+allowed-tools: Bash(jj *), Read
 model: sonnet
 ---
 
@@ -28,6 +28,8 @@ model: sonnet
 - **課題・動機**: 何を解決しようとしていたか
 - **設計判断の理由**: なぜこのアプローチか、却下した代替案とその理由
 - **背景情報**: バグの根本原因、制約、要件
+
+集めたWHYのうち、変更が終わった後もそのコードを読む人に要るもの（実装の理由、外部の制約、意図的な非対称）は、コミットメッセージだけに書かず、コードコメントに入っているかを確かめる。入っていなければ、コミットの前に利用者に伝える。置き分けの基準は`~/.claude/docs/what-goes-where.md`にある。
 
 ### 3. コミットメッセージを作成・実行
 

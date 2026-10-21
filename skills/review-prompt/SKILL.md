@@ -96,6 +96,7 @@ Critical として報告。
 | `responsive.md` + `tailwind-cva-patterns.md` | UI 実装・フロントエンドスキル |
 | `prompt-engineering.md` | スキル作成・docs 管理スキル（`create-skill`, `curate-docs`, `re`） |
 | `llm-memory-management.md` | docs 管理・スキル管理スキル（`curate-docs`, `re`, `create-skill`） |
+| `what-goes-where.md` | コード、テスト、コメント、文書、commit、PR のどれを書くかを決めるスキル（`design-doc`、`jjcommit`、`create-pr` など） |
 | `documentation-practices.md` | ドキュメント作成スキル |
 | `technical-writing.md` | ドキュメント作成スキル |
 
