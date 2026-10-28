@@ -9,7 +9,8 @@ pr="$2"
 sleep 30
 while true; do
   out="$(gh pr checks "$pr" --repo "$repo" 2>&1)"
-  if [ -z "$out" ] || printf '%s\n' "$out" | rg -q '\t(pending|queued|in_progress)\t'; then
+  # WHY "no checks reported": just after a push, gh says so until the runs are queued.
+  if [ -z "$out" ] || printf '%s\n' "$out" | rg -q '\t(pending|queued|in_progress)\t|no checks reported'; then
     sleep 30
     continue
   fi
