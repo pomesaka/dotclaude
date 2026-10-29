@@ -5,8 +5,8 @@ import type { ReportBody, Section, SessionRecord } from '../types'
 export const ITEMS_MAX = 6
 export const SECTIONS_MAX = 6
 
-// 最後に書いたか促してから、このターン数が終わったら、書き直しを促す（2026-10-10 に利用者が決めた）
-export const REMIND_AFTER_TURNS = 5
+// 自動更新が ON のとき、最後に書いてからこのターン数が終わったら、書き直す（2026-10-10 に利用者が決めた。2026-10-29 に、分岐で書く形でも同じ頻度にすると決めた）
+export const REFRESH_AFTER_TURNS = 5
 
 export const EMPTY_RECORD: SessionRecord = { isOn: false, report: null, unchecked: 0 }
 
@@ -45,7 +45,7 @@ const sectionsOf = (value: unknown): Section[] | string => {
   return parsed
 }
 
-// ツールの入力から、状況の中身を読む。読めなければ、理由の文字列を返す。
+// 分岐の返事の JSON から、状況の中身を読む。読めなければ、理由の文字列を返す。
 // WHY now と next は必須: 戻ってきた利用者が最低限知りたいのは、いま何をしていて、次に何をするか（2026-10-10 に利用者が決めた）
 export const parseReport = (input: unknown): ReportBody | string => {
   const now = text(field(input, 'now'))

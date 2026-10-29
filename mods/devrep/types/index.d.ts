@@ -1,7 +1,7 @@
 // Claude が見出しを決める節。「待っていること」「決まったこと」「知っておいてほしいこと」など
 export type Section = { title: string; items: string[] }
 
-// Claude が書く、作業の状況。どの文も、会話を忘れた利用者が読んで分かるように書かれる
+// 会話を分岐させて書かせる、作業の状況。どの文も、会話を忘れた利用者が読んで分かるように書かれる
 export type ReportBody = {
   // いましていること
   now: string
@@ -18,11 +18,11 @@ export type Report = ReportBody & { updatedAt: number; turns: number }
 
 // セッションごとに覚えているもの
 export type SessionRecord = {
-  // このセッションで、状況を書き続けるか
+  // 自動更新するか。OFF でも、pane の「更新する」で書ける
   isOn: boolean
   // null は、まだ書かれていない
   report: Report | null
-  // 最後に書いたか、書き直しを促してから終わったターンの数。促す時点を決めるのに使う
+  // 最後に書いてから終わったターンの数。自動更新の時点を決めるのに使う。書けなかったときは戻さず、次のターンで書き直す
   unchecked: number
 }
 
@@ -32,6 +32,8 @@ declare module 'claude-code' {
       record: SessionRecord
       // pane を最後に描き直させた時刻（エポックからのミリ秒）。「3時間前に更新」を出すのに使う
       clock: number
+      // 分岐に状況を書かせている最中
+      isWriting: boolean
     }
   }
 }

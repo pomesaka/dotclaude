@@ -4,9 +4,8 @@ type On = Parameters<TestBody>[1]
 type Engine = Parameters<TestBody>[0]
 
 const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } as const
-const STARTED = { hook_event_name: 'SessionStart', session_id: 's1', transcript_path: '/t.jsonl', cwd: '/repo' } as const
 const END = { turnId: 't1', answer: '直しました。', durationMs: 0, isAborted: false, reason: 'answer' } as const
-const TOOL = 'mcp__devrep__update_devrep'
+const USAGE = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
 const REPORT = {
   now: '帯の幅の計算を直している',
   next: ['テストを足す', 'READMEに反映する'],
@@ -16,8 +15,7 @@ const REPORT = {
     { title: '決まったこと', items: ['表は使わない'] },
   ],
 }
-const REMINDER =
-  'devrep: 最後に作業の状況を書いてから5ターンたちました。古くなっていたら mcp__devrep__update_devrep で書き直してください。変わっていなければ、何もせず「変更なし」とだけ答えてください。'
+const REPLY = `\`\`\`json\n${JSON.stringify(REPORT)}\n\`\`\``
 
 const pane = {
   plugin: 'devrep',
@@ -35,25 +33,34 @@ type Given = {
   stored?: { [key: string]: unknown }
   // false は、pane が置かれない（ターミナルが狭い）
   isPlaced?: boolean
-  // false は、送信が拒まれる
-  isSent?: boolean
+  // 分岐して聞いたモデルの返事。null は、モデルが文を返さなかった
+  reply?: string | null
+  // true は、テストが answer() を呼ぶまで、モデルが答えない
+  isSlow?: boolean
 }
 
 const world = (on: On, given: Given = {}) => {
   // 開いた pane。focus は、フォーカスを移したか
   const opened: { id: string; focus: boolean }[] = []
   const closed: string[] = []
-  // Claude へ送った文。asUser は、利用者が打った文として送ったか
-  const submitted: { text: string; asUser: boolean }[] = []
+  // 分岐して聞いたときの、依頼の文
+  const asked: string[] = []
+  // Claude へ送った文
+  const submitted: string[] = []
   const toasts: string[] = []
   // いま待っている周期を終わらせる関数。null は、待っている周期が無い
   let release: (() => void) | null = null
+  // 待たせている返事を返す関数。null は、待たせている返事が無い
+  let pending: (() => void) | null = null
   const seen = {
     store: new Map(Object.entries(given.stored ?? {})),
     opened,
     closed,
+    asked,
     submitted,
     toasts,
+    // 分岐の返事。テストが書き換えて、次の返事を変える
+    reply: given.reply === undefined ? REPLY : given.reply,
     // いまの時刻（エポックからのミリ秒）。テストが書き換えて、時間を進める
     time: 1_000_000_000,
     // 時間を 1 周期ぶん進める。タイマーの関数が 1 回走る
@@ -62,13 +69,22 @@ const world = (on: On, given: Given = {}) => {
       release = null
       go?.()
     },
+    // 待たせている返事を返す
+    answer: () => {
+      const go = pending
+      pending = null
+      go?.()
+    },
   }
+  const answered = () =>
+    seen.reply === null
+      ? { isAnswered: false as const, reason: 'empty-reply' as const, usage: USAGE }
+      : { isAnswered: true as const, text: seen.reply, usage: USAGE }
 
   on('session.id', () => ({ value: 's1' }))
   on('session.start', () => ({ cwd: '/repo' }))
-  on('tool.register', (_$, e) => ({ value: { tool: e.name } }))
   on('command.register', (_$, e) => ({ value: { command: e.name } }))
-  on('classic.SessionStart', () => ({ additionalContext: ['OTHER'] }))
+  on('turn.start', (_$, e) => ({ turnId: e.turnId }))
   on('turn.complete', () => ({ text: '' }))
   on('clock.now', () => ({ value: seen.time }))
   on(
@@ -88,6 +104,14 @@ const world = (on: On, given: Given = {}) => {
     return { value: undefined }
   })
   on('store.keys', () => ({ value: [...seen.store.keys()] }))
+  on('model.fork', (_$, e) => {
+    asked.push(e.prompt)
+    const value = answered()
+    if (given.isSlow !== true) return { value }
+    return new Promise<{ value: typeof value }>(resolve => {
+      pending = () => resolve({ value })
+    })
+  })
   on('ui.open', (_$, e) => {
     opened.push({ id: e.id, focus: e.focus === true })
     return { value: given.isPlaced === false ? { isPlaced: false as const, reason: 'too-narrow' as const } : { isPlaced: true as const } }
@@ -101,44 +125,49 @@ const world = (on: On, given: Given = {}) => {
     return { value: undefined }
   })
   on('prompt.submit', (_$, e) => {
-    submitted.push({ text: e.text, asUser: e.origin.kind === 'plugin' && e.origin.asUser === true })
-    return given.isSent === false ? { drop: 'refused' } : { text: e.text }
+    submitted.push(e.text)
+    return { text: e.text }
   })
   return seen
 }
 
+// 分岐の返事を待って書かれるまで、イベントの処理を進める
+const settled = () => new Promise(resolve => setTimeout(resolve, 0))
+
 // メインのターンを count 回終わらせる
 const turns = async ($: Engine, count: number, from = 0): Promise<void> => {
   for (let index = 0; index < count; index++) await $.turn.complete({ ...END, turnId: `t${from + index}` })
+  await settled()
 }
 
-test('OFF で始まり、まだ書かれていないと出す。pane は自動では開かない', async ($, on) => {
+const ON_EMPTY = { 'session:s1': { isOn: true, report: null, unchecked: 0 } }
+const written = (turns: number, unchecked: number, isOn = true) => ({ isOn, report: { ...REPORT, updatedAt: 1_000_000_000, turns }, unchecked })
+
+test('自動更新が OFF で始まり、まだ書かれていないと出す。pane は自動では開かず、Claude には何も送らない', async ($, on) => {
   const seen = world(on)
   await $.session.start(START)
 
   const ui = await $.ui.mount(pane)
-  expect(await ui.find({ type: 'Text', text: /^まだ書かれていません。ONにすると、Claudeが作業の状況を書きます$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^まだ書かれていません$/ })).toBeDefined()
   // 書かれていないあいだは、いつ書いたかの行を出さない
   expect(await ui.find({ type: 'Text', text: /更新$/ })).toBeUndefined()
-  expect(await ui.find({ key: 'refresh' })).toBeUndefined()
+  expect(await ui.find({ key: 'refresh' })).toBeDefined()
   expect(seen.opened).toEqual([])
+  expect(seen.asked).toEqual([])
   await ui.unmount()
 })
 
-test('update_devrep を呼ぶと ON になり、状況が pane に出て、$.store に残る', async ($, on) => {
+test('「更新する」を押すと、会話を分岐させて書かせ、pane に出して $.store に残す。自動更新は OFF のまま', async ($, on) => {
   const seen = world(on)
   await $.session.start(START)
-
-  const called = await $.tool.call({ tool: TOOL, ...REPORT })
-  expect(called).toEqual({
-    result:
-      'Noted. devrep is now on for this session: rewrite the report at milestones (the task changes, a piece of work lands, something you need from the user appears or is settled), not after every step. After 5 turns without a rewrite, the plugin sends a reminder.',
-  })
-  // フォーカスは移さない
-  expect(seen.opened).toEqual([{ id: 'devrep', focus: false }])
-  expect(seen.store.get('session:s1')).toEqual({ isOn: true, report: { ...REPORT, updatedAt: 1_000_000_000, turns: 0 }, unchecked: 0 })
-
   const ui = await $.ui.mount(pane)
+
+  await ui.press({ key: 'refresh' })
+  await settled()
+  expect(seen.asked.length).toBe(1)
+  expect(seen.store.get('session:s1')).toEqual(written(0, 0, false))
+  // メインには何も送らない
+  expect(seen.submitted).toEqual([])
   expect(await ui.find({ type: 'Text', text: /^帯の幅の計算を直している$/ })).toBeDefined()
   // 日時はマシンのタイムゾーンで変わるので、形だけを見る。値は stampOf のテストで固定している
   expect(await ui.find({ type: 'Text', text: /^いま（\d{4}-\d{2}-\d{2} \d{2}:\d{2}）$/ })).toBeDefined()
@@ -148,122 +177,135 @@ test('update_devrep を呼ぶと ON になり、状況が pane に出て、$.sto
   expect(await ui.find({ type: 'Text', text: /^\/reload-plugins を打つ$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^知っておいてほしいこと$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^幅のしきい値は仮に決めた$/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /^決まったこと$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^たったいま更新$/ })).toBeDefined()
   await ui.unmount()
-
-  // 2 回目からは、ON になったことを繰り返さない
-  expect(await $.tool.call({ tool: TOOL, ...REPORT })).toEqual({ result: 'Noted.' })
 })
 
-test('読めない入力は拒み、前の状況を残す', async ($, on) => {
-  const seen = world(on)
+test('書いているあいだは「書いています…」と出し、もう一度押しても重ねて聞かない', async ($, on) => {
+  const seen = world(on, { isSlow: true })
   await $.session.start(START)
-  await $.tool.call({ tool: TOOL, ...REPORT })
-
-  const called = await $.tool.call({ tool: TOOL, now: 'a' })
-  expect(called).toEqual({ deny: 'update_devrep failed: next must be a list of at least one string' })
-  expect(seen.store.get('session:s1')).toEqual({ isOn: true, report: { ...REPORT, updatedAt: 1_000_000_000, turns: 0 }, unchecked: 0 })
-})
-
-test('pane が置かれなければ、開き方を結果で伝える', async ($, on) => {
-  world(on, { isPlaced: false, stored: { 'session:s1': { isOn: true, report: null, unchecked: 0 } } })
-  await $.session.start(START)
-
-  const called = await $.tool.call({ tool: TOOL, ...REPORT })
-  expect(called).toEqual({ result: 'Noted. The pane is not drawn yet (too-narrow); the user opens it with /devrep.' })
-})
-
-test('書いたターンは数えず、その後に終わったターンを数える。サブエージェントのターンは数えない', async ($, on) => {
-  const seen = world(on)
-  await $.session.start(START)
-  await $.tool.call({ tool: TOOL, ...REPORT })
-
-  await $.turn.complete(END)
   const ui = await $.ui.mount(pane)
-  expect(await ui.find({ type: 'Text', text: /^たったいま更新$/ })).toBeDefined()
 
-  await $.turn.complete({ ...END, turnId: 't2' })
-  await $.turn.complete({ ...END, turnId: 't3', agentId: 'a1' })
-  await $.turn.complete({ ...END, turnId: 't4' })
-  expect(await ui.find({ type: 'Text', text: /^たったいま更新 \+2$/ })).toBeDefined()
-  expect(seen.submitted).toEqual([])
+  await ui.press({ key: 'refresh' })
+  await ui.press({ key: 'refresh' })
+  expect(await ui.find({ type: 'Text', text: /^書いています…$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^まだ書かれていません$/ })).toBeUndefined()
+  expect(seen.asked.length).toBe(1)
+
+  seen.answer()
+  await settled()
+  expect(await ui.find({ type: 'Text', text: /^書いています…$/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^たったいま更新$/ })).toBeDefined()
   await ui.unmount()
 })
 
-test('書いてから 5 ターンたつと、書き直しを促す。促したターンは数えず、次は 5 ターン後', async ($, on) => {
+// 頼んで書けなかったとき
+const FAILED: { name: string; reply: string | null; toast: string }[] = [
+  { name: 'モデルが答えなかった', reply: null, toast: '作業の状況を書けませんでした（empty-reply）。もう一度押してください' },
+  { name: '返事に JSON が無い', reply: '書けません', toast: '作業の状況を書けませんでした（the reply has no JSON object）。もう一度押してください' },
+  { name: '中身が足りない', reply: '{"now":"a"}', toast: '作業の状況を書けませんでした（next must be a list of at least one string）。もう一度押してください' },
+]
+
+for (const one of FAILED) {
+  test(`頼んで書けなかったら知らせ、前の状況を残す: ${one.name}`, async ($, on) => {
+    const seen = world(on, { reply: one.reply, stored: { 'session:s1': written(2, 2, false) } })
+    await $.session.start(START)
+    const ui = await $.ui.mount(pane)
+
+    await ui.press({ key: 'refresh' })
+    await settled()
+    expect(seen.toasts).toEqual([one.toast])
+    expect(seen.store.get('session:s1')).toEqual(written(2, 2, false))
+    await ui.unmount()
+  })
+}
+
+test('直前の答えを依頼の文に入れる。次のターンが始まったら入れない', async ($, on) => {
   const seen = world(on)
   await $.session.start(START)
-  await $.tool.call({ tool: TOOL, ...REPORT })
-  await $.turn.complete(END)
+  const ui = await $.ui.mount(pane)
+
+  await $.turn.complete({ ...END, answer: '幅を 2 桁ぶん詰めました。' })
+  await ui.press({ key: 'refresh' })
+  await settled()
+  expect(seen.asked[0]?.includes('<answer>\n幅を 2 桁ぶん詰めました。\n</answer>')).toBe(true)
+
+  await $.turn.start({ turnId: 't2', prompt: '次は？' })
+  await ui.press({ key: 'refresh' })
+  await settled()
+  expect(seen.asked[1]?.includes('<answer>')).toBe(false)
+  // 前に書いた状況は渡す
+  expect(seen.asked[1]?.includes(JSON.stringify(REPORT))).toBe(true)
+  await ui.unmount()
+})
+
+test('自動更新が ON なら、書いてから 5 ターンで書き直す。次は、その 5 ターン後', async ($, on) => {
+  const seen = world(on, { stored: { 'session:s1': written(0, 0) } })
+  await $.session.start(START)
 
   await turns($, 4)
-  expect(seen.submitted).toEqual([])
+  expect(seen.asked.length).toBe(0)
+  expect(seen.store.get('session:s1')).toEqual(written(4, 4))
   await turns($, 1, 4)
-  // 利用者が打った文としては送らない
-  expect(seen.submitted).toEqual([{ text: REMINDER, asUser: false }])
-  expect(seen.store.get('session:s1')).toEqual({ isOn: true, report: { ...REPORT, updatedAt: 1_000_000_000, turns: 5 }, unchecked: 0 })
-
-  // 促したターンが、書き直さずに終わった
-  await $.turn.complete({ ...END, turnId: 'reminded' })
-  expect(seen.store.get('session:s1')).toEqual({ isOn: true, report: { ...REPORT, updatedAt: 1_000_000_000, turns: 5 }, unchecked: 0 })
-
-  await turns($, 4, 10)
-  expect(seen.submitted.length).toBe(1)
-  await turns($, 1, 14)
-  expect(seen.submitted.length).toBe(2)
-})
-
-test('書き直すと、催促までのターンを数え直す', async ($, on) => {
-  const seen = world(on)
-  await $.session.start(START)
-  await $.tool.call({ tool: TOOL, ...REPORT })
-  await $.turn.complete(END)
-  await turns($, 4)
-
-  await $.tool.call({ tool: TOOL, ...REPORT })
-  await $.turn.complete({ ...END, turnId: 'rewritten' })
-  await turns($, 4, 10)
+  expect(seen.asked.length).toBe(1)
+  expect(seen.store.get('session:s1')).toEqual(written(0, 0))
+  // メインには何も送らない
   expect(seen.submitted).toEqual([])
+
+  await turns($, 4, 10)
+  expect(seen.asked.length).toBe(1)
+  await turns($, 1, 14)
+  expect(seen.asked.length).toBe(2)
 })
 
-// 5 ターンたっても促さない場合
+test('自動で書けなかったら知らせず、次に答えて終わったターンで書き直す', async ($, on) => {
+  const seen = world(on, { reply: null, stored: { 'session:s1': written(0, 4) } })
+  await $.session.start(START)
+
+  await turns($, 1)
+  expect(seen.asked.length).toBe(1)
+  expect(seen.toasts).toEqual([])
+  expect(seen.store.get('session:s1')).toEqual(written(1, 5))
+
+  seen.reply = REPLY
+  await turns($, 1, 1)
+  expect(seen.asked.length).toBe(2)
+  expect(seen.store.get('session:s1')).toEqual(written(0, 0))
+})
+
+// 5 ターンたっても書き直さない場合
 const SILENT: { name: string; stored: unknown; last: Parameters<Engine['turn']['complete']>[0] }[] = [
-  {
-    name: 'OFF にしてある',
-    stored: { isOn: false, report: { ...REPORT, updatedAt: 1, turns: 0 }, unchecked: 4 },
-    last: END,
-  },
-  {
-    name: '5 ターンめが中断で終わった',
-    stored: { isOn: true, report: { ...REPORT, updatedAt: 1, turns: 0 }, unchecked: 4 },
-    last: { ...END, isAborted: true, reason: 'aborted' },
-  },
+  { name: '自動更新が OFF', stored: written(0, 4, false), last: END },
+  { name: '5 ターンめが中断で終わった', stored: written(0, 4), last: { ...END, isAborted: true, reason: 'aborted' } },
+  { name: '5 ターンめがサブエージェントのターン', stored: written(0, 4), last: { ...END, agentId: 'a1' } },
 ]
 
 for (const one of SILENT) {
-  test(`促さない: ${one.name}`, async ($, on) => {
+  test(`書き直さない: ${one.name}`, async ($, on) => {
     const seen = world(on, { stored: { 'session:s1': one.stored } })
     await $.session.start(START)
 
     await $.turn.complete(one.last)
-    expect(seen.submitted).toEqual([])
+    await settled()
+    expect(seen.asked).toEqual([])
   })
 }
 
-test('中断で促せなかったら、次に答えて終わったターンで促す', async ($, on) => {
-  const seen = world(on, { stored: { 'session:s1': { isOn: true, report: { ...REPORT, updatedAt: 1, turns: 0 }, unchecked: 4 } } })
+test('書いた後のターンを数える。サブエージェントのターンは数えない', async ($, on) => {
+  world(on, { stored: { 'session:s1': written(0, 0, false) } })
   await $.session.start(START)
+  const ui = await $.ui.mount(pane)
 
-  await $.turn.complete({ ...END, isAborted: true, reason: 'aborted' })
-  await $.turn.complete({ ...END, turnId: 't2' })
-  expect(seen.submitted).toEqual([{ text: REMINDER, asUser: false }])
+  await $.turn.complete(END)
+  await $.turn.complete({ ...END, turnId: 't2', agentId: 'a1' })
+  await $.turn.complete({ ...END, turnId: 't3' })
+  expect(await ui.find({ type: 'Text', text: /^たったいま更新 \+2$/ })).toBeDefined()
+  await ui.unmount()
 })
 
 test('時間が進むと、書いてからの時間を出し直す', async ($, on) => {
-  const seen = world(on)
+  const seen = world(on, { stored: { 'session:s1': written(0, 0, false) } })
   await $.session.start(START)
-  await $.tool.call({ tool: TOOL, ...REPORT })
   const ui = await $.ui.mount(pane)
 
   seen.time = 1_000_000_000 + 3 * 3_600_000
@@ -272,7 +314,7 @@ test('時間が進むと、書いてからの時間を出し直す', async ($, o
   await ui.unmount()
 })
 
-test('開き直した ON のセッションでは、残っていた状況を戻して pane に出す', async ($, on) => {
+test('開き直した自動更新 ON のセッションでは、残っていた状況を戻して pane に出す', async ($, on) => {
   const seen = world(on, {
     stored: {
       'session:s1': { isOn: true, report: { ...REPORT, updatedAt: 1_000_000_000 - 2 * 86_400_000, turns: 4 }, unchecked: 4 },
@@ -289,14 +331,13 @@ test('開き直した ON のセッションでは、残っていた状況を戻�
   await ui.unmount()
 })
 
-test('開き直した OFF のセッションでは、pane を自動では開かない。状況は残っている', async ($, on) => {
-  const seen = world(on, { stored: { 'session:s1': { isOn: false, report: { ...REPORT, updatedAt: 1_000_000_000, turns: 0 }, unchecked: 0 } } })
+test('開き直した自動更新 OFF のセッションでは、pane を自動では開かない。状況は残っている', async ($, on) => {
+  const seen = world(on, { stored: { 'session:s1': written(0, 0, false) } })
   await $.session.start(START)
 
   expect(seen.opened).toEqual([])
   const ui = await $.ui.mount(pane)
   expect(await ui.find({ type: 'Text', text: /^帯の幅の計算を直している$/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /^たったいま更新$/ })).toBeDefined()
   await ui.unmount()
 })
 
@@ -304,53 +345,50 @@ test('覚えておくセッションは 30 個まで。超えたら、古いも�
   const stored = Object.fromEntries(Array.from({ length: 30 }, (_, index) => [`session:old${index}`, { isOn: false, report: null, unchecked: 0 }]))
   const seen = world(on, { stored })
   await $.session.start(START)
-  await $.tool.call({ tool: TOOL, ...REPORT })
+  const ui = await $.ui.mount(pane)
+  await ui.press({ key: 'refresh' })
+  await settled()
 
   expect(seen.store.size).toBe(30)
   expect(seen.store.has('session:old0')).toBe(false)
   expect(seen.store.has('session:old1')).toBe(true)
   expect(seen.store.has('session:s1')).toBe(true)
+  await ui.unmount()
 })
 
-test('/devrep は、フォーカスを移して pane を開く。ON にはしない', async ($, on) => {
+test('/devrep は、フォーカスを移して pane を開く。自動更新は ON にしない', async ($, on) => {
   const seen = world(on)
   await $.session.start(START)
 
   expect(await $.command.run(command(''))).toEqual({ text: 'devrep pane opened.' })
   expect(seen.opened).toEqual([{ id: 'devrep', focus: true }])
-  expect(seen.submitted).toEqual([])
+  expect(seen.asked).toEqual([])
   expect(seen.store.has('session:s1')).toBe(false)
 })
 
-// 説明の全文は長いので、頭と結びだけを見る
-const isStartPrompt = (text: string | undefined): boolean =>
-  text !== undefined &&
-  text.startsWith('このセッションでは devrep') &&
-  text.endsWith('利用者が devrep を ON にしました。いまの作業の状況を、mcp__devrep__update_devrep で書いてください。')
-
-test('/devrep on は、ON にして pane を開き、最初の状況を書くよう Claude だけが読む文で伝える', async ($, on) => {
+test('/devrep on は、自動更新を ON にし、その場で書かせて pane を開く', async ($, on) => {
   const seen = world(on)
   await $.session.start(START)
 
-  const ran = await $.command.run(command('on'))
-  expect(ran.text).toBe('devrep is on for this session. devrep pane opened.')
-  expect((ran.context ?? []).map(isStartPrompt)).toEqual([true])
-  expect(seen.store.get('session:s1')).toEqual({ isOn: true, report: null, unchecked: 0 })
+  expect(await $.command.run(command('on'))).toEqual({ text: 'devrep: automatic updates are on. devrep pane opened.' })
+  await settled()
+  expect(seen.asked.length).toBe(1)
+  expect(seen.store.get('session:s1')).toEqual(written(0, 0))
   expect(seen.opened).toEqual([{ id: 'devrep', focus: true }])
-  // command.run の hook の中からは送れないので、ターンは始めない
   expect(seen.submitted).toEqual([])
 
-  // すでに ON なら、もう一度は伝えない
-  expect(await $.command.run(command('on'))).toEqual({ text: 'devrep is on for this session. devrep pane opened.' })
+  // すでに ON なら、もう一度は書かせない
+  await $.command.run(command('on'))
+  await settled()
+  expect(seen.asked.length).toBe(1)
 })
 
-test('/devrep off は、OFF にする。状況は残す', async ($, on) => {
-  const seen = world(on)
+test('/devrep off は、自動更新を OFF にする。状況は残す', async ($, on) => {
+  const seen = world(on, { stored: { 'session:s1': written(0, 3) } })
   await $.session.start(START)
-  await $.tool.call({ tool: TOOL, ...REPORT })
 
-  expect(await $.command.run(command('off'))).toEqual({ text: 'devrep is off for this session. The report stays in the pane.' })
-  expect(seen.store.get('session:s1')).toEqual({ isOn: false, report: { ...REPORT, updatedAt: 1_000_000_000, turns: 0 }, unchecked: 0 })
+  expect(await $.command.run(command('off'))).toEqual({ text: 'devrep: automatic updates are off. Update the report from the pane.' })
+  expect(seen.store.get('session:s1')).toEqual(written(0, 0, false))
 })
 
 test('/devrep に読めない引数を渡すと、使い方を返す', async ($, on) => {
@@ -361,40 +399,20 @@ test('/devrep に読めない引数を渡すと、使い方を返す', async ($,
   expect(seen.opened).toEqual([])
 })
 
-test('pane のボタンで、ON と OFF を切り替える', async ($, on) => {
+test('pane のボタンで、自動更新を切り替える。ON にしたら、その場で書かせる', async ($, on) => {
   const seen = world(on)
   await $.session.start(START)
   const ui = await $.ui.mount(pane)
 
   await ui.press({ key: 'toggle' })
-  expect(await ui.find({ type: 'Text', text: /^まだ書かれていません。Claudeが書くのを待っています$/ })).toBeDefined()
-  // 最初の状況を、Mod の文として、その場で書かせる
-  expect(seen.submitted.map(one => ({ isStart: isStartPrompt(one.text), asUser: one.asUser }))).toEqual([{ isStart: true, asUser: false }])
+  await settled()
+  expect(seen.asked.length).toBe(1)
+  expect(seen.store.get('session:s1')).toEqual(written(0, 0))
+  expect(await ui.find({ text: /^自動更新をOFFにする$/ })).toBeDefined()
 
   await ui.press({ key: 'toggle' })
-  expect(await ui.find({ type: 'Text', text: /^まだ書かれていません。ONにすると、Claudeが作業の状況を書きます$/ })).toBeDefined()
-  expect(seen.store.get('session:s1')).toEqual({ isOn: false, report: null, unchecked: 0 })
-  await ui.unmount()
-})
-
-test('「更新を頼む」を押すと、利用者の文として、書き直しを Claude に頼む', async ($, on) => {
-  const seen = world(on, { stored: { 'session:s1': { isOn: true, report: null, unchecked: 0 } } })
-  await $.session.start(START)
-  const ui = await $.ui.mount(pane)
-
-  await ui.press({ key: 'refresh' })
-  expect(seen.submitted).toEqual([{ text: '作業の状況を、いまの内容に書き直して', asUser: true }])
-  expect(seen.toasts).toEqual([])
-  await ui.unmount()
-})
-
-test('頼めなかったら、知らせる', async ($, on) => {
-  const seen = world(on, { isSent: false, stored: { 'session:s1': { isOn: true, report: null, unchecked: 0 } } })
-  await $.session.start(START)
-  const ui = await $.ui.mount(pane)
-
-  await ui.press({ key: 'refresh' })
-  expect(seen.toasts).toEqual(['更新を頼めませんでした。もう一度押してください'])
+  expect(seen.store.get('session:s1')).toEqual(written(0, 0, false))
+  expect(await ui.find({ text: /^自動更新をONにする$/ })).toBeDefined()
   await ui.unmount()
 })
 
@@ -407,21 +425,6 @@ test('「閉じる」を押すと、pane を閉じる', async ($, on) => {
   expect(seen.closed).toEqual(['devrep'])
   await ui.unmount()
 })
-
-const STARTS: { name: string; isOn: boolean; agentId: string | undefined; context: string[] }[] = [
-  { name: 'ON のメインのセッションには、ほかの説明の後ろに足す', isOn: true, agentId: undefined, context: ['OTHER', 'DEVREP'] },
-  { name: 'OFF のセッションには渡さない', isOn: false, agentId: undefined, context: ['OTHER'] },
-  { name: 'サブエージェントには渡さない', isOn: true, agentId: 'a1', context: ['OTHER'] },
-]
-
-for (const one of STARTS) {
-  test(`セッションの始めの説明: ${one.name}`, async ($, on) => {
-    world(on, { stored: { 'session:s1': { isOn: one.isOn, report: null, unchecked: 0 } } })
-    const result = await $.classic.SessionStart({ ...STARTED, source: 'startup', ...(one.agentId === undefined ? {} : { agent_id: one.agentId }) })
-    // 説明の全文は長いので、この Mod の説明かどうかだけを見る
-    expect((result.additionalContext ?? []).map(text => (text.includes('mcp__devrep__update_devrep') ? 'DEVREP' : text))).toEqual(one.context)
-  })
-}
 
 // プロンプトの下の行
 const line = {
@@ -439,53 +442,50 @@ const engineLine = (on: On) =>
     return <Text>ENGINE</Text>
   })
 
-test('ON のあいだ、プロンプトの下の行に devrep の札が出る。下の層の表示は残す。押すと、フォーカスを移して pane を開く', async ($, on) => {
-  const seen = world(on)
+// 札を出すかどうか
+const HINTS: { name: string; stored: { [key: string]: unknown }; isShown: boolean }[] = [
+  { name: '自動更新が ON なら出す', stored: ON_EMPTY, isShown: true },
+  { name: '自動更新が OFF でも、状況があれば出す', stored: { 'session:s1': written(0, 0, false) }, isShown: true },
+  { name: '自動更新が OFF で状況も無ければ出さない', stored: {}, isShown: false },
+]
+
+for (const one of HINTS) {
+  test(`プロンプトの下の行の札: ${one.name}。下の層の表示は残す`, async ($, on) => {
+    world(on, { stored: one.stored })
+    engineLine(on)
+    await $.session.start(START)
+
+    const ui = await $.ui.mount(line)
+    expect((await ui.find({ key: 'devrep' })) !== undefined).toBe(one.isShown)
+    expect(await ui.find({ type: 'Text', text: /^ENGINE$/ })).toBeDefined()
+    await ui.unmount()
+  })
+}
+
+test('札を押すと、フォーカスを移して pane を開く。札には利用者がすることの件数が出る', async ($, on) => {
+  const seen = world(on, { stored: { 'session:s1': written(0, 0) } })
   engineLine(on)
   await $.session.start(START)
-  await $.tool.call({ tool: TOOL, ...REPORT })
   seen.opened.length = 0
 
   const ui = await $.ui.mount(line)
   expect(await ui.find({ type: 'Text', text: /^ devrep $/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /^ENGINE$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^2 $/ })).toBeDefined()
   await ui.press({ key: 'devrep' })
   expect(seen.opened).toEqual([{ id: 'devrep', focus: true }])
   await ui.unmount()
 })
 
-test('札には、利用者がすることの件数が出る。無くなったら消える', async ($, on) => {
-  world(on)
+test('利用者がすることが無ければ、札に件数を出さず、pane にその節を出さない', async ($, on) => {
+  world(on, { stored: { 'session:s1': { isOn: true, report: { ...REPORT, todo: [], updatedAt: 1_000_000_000, turns: 0 }, unchecked: 0 } } })
   engineLine(on)
   await $.session.start(START)
-  await $.tool.call({ tool: TOOL, ...REPORT })
 
-  const ui = await $.ui.mount(line)
-  expect(await ui.find({ type: 'Text', text: /^2 $/ })).toBeDefined()
-  await $.tool.call({ tool: TOOL, ...REPORT, todo: [] })
-  expect(await ui.find({ type: 'Text', text: /^2 $/ })).toBeUndefined()
-  await ui.unmount()
-})
-
-test('利用者がすることが無ければ、pane にその節を出さない', async ($, on) => {
-  world(on)
-  await $.session.start(START)
-  const { todo: _todo, ...rest } = REPORT
-  await $.tool.call({ tool: TOOL, ...rest })
-
+  const hint = await $.ui.mount(line)
+  expect(await hint.find({ type: 'Text', text: /^\d+ $/ })).toBeUndefined()
+  await hint.unmount()
   const ui = await $.ui.mount(pane)
   expect(await ui.find({ type: 'Text', text: /^あなたがすること$/ })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: /^帯の幅の計算を直している$/ })).toBeDefined()
-  await ui.unmount()
-})
-
-test('OFF のあいだは、札を出さない。下の層の表示は残す', async ($, on) => {
-  world(on)
-  engineLine(on)
-  await $.session.start(START)
-
-  const ui = await $.ui.mount(line)
-  expect(await ui.find({ key: 'devrep' })).toBeUndefined()
-  expect(await ui.find({ type: 'Text', text: /^ENGINE$/ })).toBeDefined()
   await ui.unmount()
 })

@@ -5,7 +5,7 @@ import { foldedOf, isModRequest } from './rows'
 const MARGIN = 6
 
 export const register: Register = on => {
-  // ほかの Mod が自分から送った文（devrep の催促、pr の知らせ）の行を、1 行に畳む。
+  // ほかの Mod が自分から送った文（pr の知らせ）の行を、1 行に畳む。
   // そのままだと、エンジンの英語の枠が付いた数行が、Mod が文を送るたびに会話に出る。利用者が読む必要があるのは、何が送られたかだけ。
   // WHY 別の Mod に置く: Mod は、自分が送った文の行を描き直せない。自分の hook は呼ばれず、ほかの Mod の hook なら効く
   // （v2.1.296 の実機で、送る Mod と描き直す Mod を分けて確認）。

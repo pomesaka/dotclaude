@@ -3,7 +3,7 @@ name: pm
 description: このセッションをプロジェクトのPMにする。重い作業はサブエージェントかclaude-deckのセッションに任せ、報告の確かめ、レビュー、PR、CI、マージを回し、利用者には決めてもらうことだけを渡す。
 disable-model-invocation: true
 argument-hint: "[最初に取り組む目標]"
-allowed-tools: Read, Write, Edit, Agent, SendMessage, ListAgents, AskUserQuestion, Bash(jj *), Bash(gh pr *), Bash(gh run *), Bash(rg *), Bash(fd *), Bash(bash *wait-checks.sh *), mcp__rich__show, mcp__questions__add_question, mcp__questions__list_questions, mcp__questions__resolve_question, mcp__devrep__update_devrep
+allowed-tools: Read, Write, Edit, Agent, SendMessage, ListAgents, AskUserQuestion, Bash(jj *), Bash(gh pr *), Bash(gh run *), Bash(rg *), Bash(fd *), Bash(bash *wait-checks.sh *), mcp__rich__show, mcp__questions__add_question, mcp__questions__list_questions, mcp__questions__resolve_question
 ---
 
 # PM
@@ -22,7 +22,7 @@ WHY: PMが重い作業を自分でしないので、会話の文脈が軽いま�
    - **マージの権限:** CIが通り、レビュー済みのPRを、聞かずにマージしてよいか
    - **判断の範囲:** どこまで任されるか。既定では、クリティカルでない判断はPMが決める（`reference/judgement.md`）
 4. 答えをプロジェクトのメモリに書く。次のセッションで聞き直さないため
-5. 自分のセッションにエイリアスを付け、devrepがあれば状況を書く
+5. 自分のセッションにエイリアスを付ける
 
 ## 回すこと
 
@@ -78,7 +78,6 @@ WHY: PMが重い作業を自分でしないので、会話の文脈が軽いま�
 - 報告は結論から書く。セッションの名前より、何が直り、何が残ったかを先に書く
 - 利用者に決めてもらうことは、questionsの保留の一覧に足す（`mcp__questions__add_question`）。仮に置いた選択肢で先へ進め、答えが来たら直す
 - 監査やレビューの結果をまとめて出し、次の順番を選んでもらうときは、`mcp__rich__show`の質問にして番を終える
-- devrepがあれば、節目（PRのマージ、割り振りの切り替わり、利用者への頼みごとの増減）で書き直す
 
 ## 区切りのあとで
 
