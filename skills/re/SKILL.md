@@ -35,7 +35,7 @@ allowed-tools: Read, Write, Edit, Bash(fd *), Bash(rg *)
 |------|---------------|
 | スキル固有の見落としやすい点・改善 | そのスキルの `Gotchas` セクション末尾 |
 | プロジェクト規約・アーキテクチャ制約 | `docs/conventions.md` または `docs/architecture.md` |
-| 設計上の意思決定（Why + 却下案） | `docs/adr/` または `docs/architecture.md` |
+| 設計上の意思決定（Why + 却下案） | その設計を取ったコードのコメント（WHY / WHY NOT）。複数の実装にまたがる境界だけ `docs/architecture.md`。ADR は作らない |
 | グローバルに使えるパターン・Tips | `~/.claude/docs/<topic>.md`（新規 or 既存に追記） |
 | コメント・実装・テスト・作業の進め方・フロントエンド・用語集と命名・サブエージェント委譲・hooks の規約 | 全文は `~/.claude/docs/` の `coding-policy.md`・`testing-policy.md`・`working-rules.md`・`frontend-policy.md`・`glossary-policy.md`・`subagent-delegation.md`・`hooks-policy.md`。`~/.claude/CLAUDE.md` の同じ節には、見出し文と判断基準の 1 文だけを足す |
 | Claude の振る舞い・ユーザーの好み | `~/.claude/CLAUDE.md` に追記 |
