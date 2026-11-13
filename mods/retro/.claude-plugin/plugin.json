@@ -1,0 +1,9 @@
+{
+  "name": "retro",
+  "version": "0.1.0",
+  "description": "Looks back on the session in the background and writes what is worth keeping into the docs: a fork of the conversation lists the findings, and only when there are some, a subagent without the conversation writes them following the re skill. Runs before a compact, after commits and PRs, and after long stretches with corrections; /retro runs it now",
+  "author": {
+    "name": "pomesaka"
+  },
+  "types": "./types/index.d.ts"
+}
