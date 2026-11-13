@@ -64,7 +64,7 @@
       "/Users/pomesaka/github.com/pomesaka/dotclaude"
     ]
   },
-  "model": "opus",
+  "model": "fable",
   "worktree": {
     "bgIsolation": "none"
   },
@@ -86,7 +86,8 @@
     "publish-guard@dotclaude": true,
     "danger-guard@dotclaude": true,
     "quiet-prompts@dotclaude": true,
-    "claude-security@claude-plugins-official": true
+    "claude-security@claude-plugins-official": true,
+    "ui-design@pomesaka-ui-design": true
   },
   "extraKnownMarketplaces": {
     "claude-deck": {
@@ -99,6 +100,12 @@
       "source": {
         "source": "directory",
         "path": "/Users/pomesaka/github.com/pomesaka/dotclaude"
+      }
+    },
+    "pomesaka-ui-design": {
+      "source": {
+        "source": "github",
+        "repo": "pomesaka/ui-design"
       }
     }
   },
