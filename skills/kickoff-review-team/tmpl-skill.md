@@ -12,7 +12,7 @@
 # --- {reviewer_table} の書き方 ---
 # | go-reviewer-myproj | Goポリシー・アーキテクチャ |
 # | design-reviewer-myproj | 凝集度・可読性・設計品質 |
-# | test-reviewer | テストの要否・重複・サイズ（共通エージェント。プロジェクト名を付けない） |
+# | test-reviewer | テストの不足・段の誤り・重複（共通エージェント。プロジェクト名を付けない） |
 # | fixer-myproj | 修正実装・lint実行 |
 #
 # --- {reviewer_agent_calls} の書き方 ---
