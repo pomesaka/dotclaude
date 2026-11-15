@@ -12,12 +12,14 @@
 # --- {reviewer_table} の書き方 ---
 # | go-reviewer-myproj | Goポリシー・アーキテクチャ |
 # | design-reviewer-myproj | 凝集度・可読性・設計品質 |
+# | test-reviewer | テストの要否・重複・サイズ（共通エージェント。プロジェクト名を付けない） |
 # | fixer-myproj | 修正実装・lint実行 |
 #
 # --- {reviewer_agent_calls} の書き方 ---
 # 以下を**同時に**起動する（並列 Agent 呼び出し）。
 # - `subagent_type`: `"go-reviewer-myproj"`, `prompt`: `"ラウンドN のレビューをしてください。"`
 # - `subagent_type`: `"design-reviewer-myproj"`, `prompt`: `"ラウンドN のレビューをしてください。"`
+# - `subagent_type`: `"test-reviewer"`, `prompt`: `"ラウンドN のレビューをしてください。"`
 #
 # --- ここから生成されるファイルの本文 ---
 ---
@@ -50,7 +52,7 @@ model: sonnet
 
 全レビュアーの結果をまとめ、以下に分類する。
 
-- **非Nit**: ポリシー違反・整合性・凝集度・可読性・設計（「提案」も含む）
+- **非Nit**: ポリシー違反・整合性・凝集度・可読性・設計・テスト（「提案」も含む）
 - **Nit**: 明示的に「Nit:」と書かれているもの
 
 ### 1c. 終了判定
