@@ -47,3 +47,8 @@
 ## 日本語の文書を Edit するとき
 
 Edit の `old_string` はバイト列の完全一致で照合される。全角の括弧・全角の空白・ダッシュ類・引用符は、見た目が同じでも別の文字なので、これらを含まない範囲を `old_string` に選ぶと一致の失敗が減る。
+
+## 一時スクリプトは、ワークスペースのルートで走らせない
+<!-- mentions: 1 | first-seen: 2026-06 -->
+
+Playwrightなどの一時スクリプトをワークスペースのルートで`bun run`すると、スクリプトの`import`が解決できず、`bun add playwright`が要ることになり、`package.json`が書き換わる。一時スクリプトはscratchpadに置いて`bun /path/to/script.mjs`か`node /path/to/script.mjs`で走らせる。bunで依存が要るなら、scratchpadに`package.json`（`{"name":"tmp","type":"module"}`）を作り、そこで`bun add`する。

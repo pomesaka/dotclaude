@@ -38,7 +38,7 @@
   <!-- mentions: 1 | first-seen: 2026-07 -->
 - **searchParamsとroute paramsの日付のキーは、形だけでなく暦として正しいかまで確かめてからDBに渡す**。`/^\d{4}-\d{2}-01$/`は「2026-13-01」を通し、Postgresの`date field value out of range`でSSRが500になる。クエリ文字列を変えるだけで誰でも起こせる。月は`(0[1-9]|1[0-2])`、日付の全体なら実際のDateへの往復で確かめる。検証の関数はSCとCCの両方が使うので、`_lib/`の1か所に置く。判断基準は「この文字列は、DBの型つきの列（date、uuid、int）に届くか」。
   <!-- mentions: 1 | first-seen: 2026-07 -->
-- **検証つきのenvをモジュールのトップレベルで`parse`すると、`next build`が落ちる**。`export const env = schema.parse(process.env)`は、ビルドの時点には無い実行時のenv（コンテナが起動のときに入れる値）を求める。落ちるのは2か所で、「Collecting page data」がrouteのモジュールをimportしてトップレベルの副作用（envのparse、DBクライアントの生成、authの初期化）を走らせるときと、認証つきのページを静的にプリレンダーするとき。env、db、authを、最初のプロパティ参照まで初期化を遅らせるProxyで包み、認証のセグメントのlayoutに`export const dynamic = "force-dynamic"`を付ける。このProxyのtargetの型付けには`as`が要る。Dockerfileでビルド用の仮のenvを渡す方法より、importの副作用が無く、実行時の検証も残る。
+- **検証つきのenvをモジュールのトップレベルで`parse`すると、`next build`が落ちる**。`export const env = schema.parse(process.env)`は、ビルドの時点には無い実行時のenv（コンテナが起動のときに入れる値）を求める。落ちるのは2か所で、「Collecting page data」がrouteのモジュールをimportしてトップレベルの副作用（envのparse、DBクライアントの生成、authの初期化）を走らせるときと、認証つきのページを静的にプリレンダーするとき。env、db、authを、最初のプロパティ参照まで初期化を遅らせるProxyで包み、認証のセグメントのlayoutに`export const dynamic = "force-dynamic"`を付ける。このProxyのtargetの型付けには`as`が要る。`as`を使わない決めごとの、利用者が認めた例外だ。Dockerfileでビルド用の仮のenvを渡す方法より、importの副作用が無く、実行時の検証も残る。
   <!-- mentions: 1 | first-seen: 2026-06 -->
 - **Nodeのコアモジュールに依るファイルを、CCがimportするバレルからvalueでre-exportしない**。devのTurbopackはtree-shakeをしないので、`export * from`をたどって「the chunking context does not support external modules (request: node:fs)」で落ちる。AWS SDK、DBクライアント、LLMのproviderのような、中でnodeのコアを使うserver専用の依存も同じ。server専用のシンボルは、`package.json`の`exports`に足したサブパス（`"./agent"`）からimportさせる。`export type`は消えるので問題ない。
   <!-- mentions: 2 | first-seen: 2026-05 -->

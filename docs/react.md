@@ -7,7 +7,7 @@
 ## 規約
 
 - **Container/Presenterに分ける**。データの取得、mutation、状態はContainerとカスタムフックに置き、Presenter（View）はpropsを受けて表示するだけにする。Viewが`useState`、`useMutation`、非同期の処理を持っていたら、フックへ移す。
-- **1つのファイルからexportするコンポーネントは1つ、フックも1つ**。Skeletonと、hookを閉じ込めるための内側のコンポーネントは同じファイルに置いてよい。
+- **1つのファイルからexportするコンポーネントは1つ、フックも1つ**。Skeletonと、hookを閉じ込めるための内側のコンポーネントは同じファイルに置いてよい。Skeletonを同じファイルからexportするのは好ましくないが、`<Suspense fallback>`で使うために要るかどうかは、そのプロジェクトで実装する側が決める。
 - **フックが返す関数はドメインの動詞で名付け（`selectFile`、`generate`）、Viewのpropsは`on`で始める**。Containerが`onSubmit={generate}`と対応づける。
 - **`role`をpropの名前にしない**。Biomeの`useValidAriaRole`が反応する。`variant`、`sender`、`kind`を使う。
 - **通常のデータ取得はReact QueryかServer Componentで行う**。`useEffect`は外部との同期（ブラウザのAPI、ナビゲーション）に限る。`useEffect`で取得してよいのは、ストリーム（EventSource）や、接続と一体の初回の取得だけ。そのときは1つのeffectに順に書き、cleanupで止める。fetchとEventSourceを別のeffectに分けると、fetchが終わっても依存が変わらないので、EventSourceのeffectは走らない。

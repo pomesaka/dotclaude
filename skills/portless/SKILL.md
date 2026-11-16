@@ -90,5 +90,4 @@ URL をユーザーに案内する。
   <!-- mentions: 1 | first-seen: 2026-06 -->
 - **`next dev --port N`のようにポートを固定したdevコマンドは、502になる**: portlessは`PORT`の環境変数でポートを割り当ててからdevのプロセスを起動する。`--port`を固定すると`PORT`が無視され、portlessは誰も待ち受けていないポートへ転送する。`package.json`の`dev`から`--port`を外す。
   <!-- mentions: 1 | first-seen: 2026-06 -->
-- **Playwrightなどの一時スクリプトを、ワークスペースのルートで`bun run`しない**: スクリプトの`import`が解決できず、`bun add playwright`が要ることになり、`package.json`が書き換わる。一時スクリプトはscratchpadに置いて`bun /path/to/script.mjs`か`node /path/to/script.mjs`で走らせる。bunで依存が要るなら、scratchpadに`package.json`（`{"name":"tmp","type":"module"}`）を作り、そこで`bun add`する。
-  <!-- mentions: 1 | first-seen: 2026-06 -->
+- 起動した画面をPlaywrightなどの一時スクリプトで確かめるときは、`~/.claude/docs/bash-tips.md`の「一時スクリプトは、ワークスペースのルートで走らせない」を読む。
