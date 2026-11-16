@@ -33,7 +33,7 @@
   - 利用者から見てエラーの状態は、`mutationFn`の中でthrowする。`return { duplicate: true }`のように返すと`onSuccess`が走り、エラーの表示に載らない。
   - 行の型が「DBの値と、ほかのクエリからの導出」になったら、optimistic updateをやめて`onSettled`でinvalidateする。判断基準は「mutationの入力だけで、行の全フィールドを組み立て直せるか」。
   <!-- importance: medium | mentions: 5 | first-seen: 2026-05 -->
-- **ダイアログは、保存が成功したときだけ閉じる**。`void onSave(...)`の直後に閉じると、失敗したときに入力が消え、エラーを出す場所も無い。保存のpropsは`Promise`を返す契約にし（`mutateAsync`）、失敗したら入力を残して、ダイアログの中に`role="alert"`でエラーを出す。閉じる処理は成功のイベント（`await`の後、`onSuccess`）に置く。Server Actionでは`useActionState`の`state`を`useEffect`で見て、`state?.success`になったら閉じる。Radix Dialogは`open={true}`が残ると、bodyに`pointer-events: none`がかかったままになり、リロードするまでページ全体が操作できない。
+- **ダイアログは、保存が成功したときだけ閉じる**。`void onSave(...)`の直後に閉じると、失敗したときに入力が消え、エラーを出す場所も無い。保存のpropsは`Promise`を返す契約にし（`mutateAsync`）、失敗したら入力を残して、ダイアログの中に`role="alert"`でエラーを出す。閉じる処理は成功のイベント（`await`の後、`onSuccess`）に置く。Server Actionでも同じで、アクションの完了を待ち、成功なら閉じる。Radix Dialogは`open={true}`が残ると、bodyに`pointer-events: none`がかかったままになり、リロードするまでページ全体が操作できない。
   <!-- importance: high | mentions: 2 | first-seen: 2026-06 -->
 - **`useQuery`の`data === undefined`は、読み込み中と失敗の2つを含む**。`data === undefined ? <Spinner />`と書くと、失敗したときにスピナーが消えない。`isLoading`（初回の取得）で読み込みを判定し、`!data`を失敗として分ける。データを取るフックは`isError`と`refetch`も返し、呼び出し側がエラーと再試行のボタンを描けるようにする。再取得中（`isFetching`）はSkeletonを出さず、古いデータを見せたままにする。
   <!-- importance: medium | mentions: 2 | first-seen: 2026-05 -->

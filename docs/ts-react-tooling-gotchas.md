@@ -14,8 +14,6 @@
   <!-- importance: high | mentions: 1 | first-seen: 2026-08 -->
 - **`spyOn(globalThis, "fetch")`はグローバルを書き換えるので、`afterEach`で`mockRestore()`する**。戻さないと、同じファイルの後のテストへモックが漏れる。ローカルのオブジェクトへの`spyOn`は戻さなくてよい。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
-- **テストが公開interfaceのメソッド（`ANALYZER.parse()`）を直接呼んでいると、interfaceを変えたときに全部が型エラーになる**。実装の関数を`/** @internal テスト用にエクスポート */`でexportし、テストはそれを直接呼ぶ。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
 
 ## Biome
 

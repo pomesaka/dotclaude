@@ -37,7 +37,7 @@
 - 値によって引数の要るものと要らないものが混ざる関数のマップは、全キーを同じ関数型に揃える（`satisfies Record<K, (amount: number | null) => string>`）。呼び出し側の分岐が消える。
   <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
 - `readonly`を積極的に使う。公開する関数の戻り値の型は明示する。
-- ファイル名はケバブケース（`user-service.ts`）。ReactコンポーネントだけPascalCase。
+- ファイル名はケバブケース（`user-service.ts`）。Reactのコンポーネントのファイルも同じ（`action-menu.tsx`）。
 
 ## `as`を使いたくなる場面と代わりの書き方
 

@@ -72,7 +72,7 @@ previewでは、componentのcreate、意図した改名のcreate+delete（IAMの
 
 ## GitHub Actionsからのデプロイ
 
-これまでのworkflowは、S3バックエンドと、IAMユーザーのキー（`secrets.AWS_ACCESS_KEY_ID`、`secrets.AWS_SECRET_ACCESS_KEY`）を`aws-actions/configure-aws-credentials`に渡す形で書いてきた。
+AWSの認証（IAMユーザーのキーか、OIDCか）は、プロジェクトと時期で違う。そのプロジェクトのworkflowに合わせる。
 
 - `up`（mainへのpushでデプロイ）と`preview`（PRにコメント）は、別のworkflowにする。デプロイは`cancel-in-progress: false`（途中で止めない）、previewは`true`
 - S3バックエンドでは`PULUMI_CONFIG_PASSPHRASE: ""`と`PULUMI_ACCESS_TOKEN: ""`を置く（未設定だと対話の質問が出る）。バックエンドは`cloud-url: ${{ secrets.PULUMI_BACKEND_URL }}`で渡す
