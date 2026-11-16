@@ -64,7 +64,7 @@ jj diffu --from <base> --to <branch>
 
 ## Gotchas
 
-- **複数のレビューコメントを反映する前にコメント間の依存性を整理する**: コメント A の変更がコメント B の内容に波及することがある（例: テーブル命名変更 → カラム名変更が連動）。サマリー出力時点でインラインコメントを全部読み切り、依存関係のあるコメントをグループ化してから修正に着手すると整合性を保ちやすい。
+- **レビューコメントを反映する前に、インラインのコメントを全部読み、互いに関わるものをまとめる**: あるコメントへの対応が、別のコメントの内容を変えることがある（テーブルの名前を変えると、カラムの名前も変わる、など）。1件ずつ直すと、後の修正が前の修正と食い違う。
   <!-- mentions: 1 | first-seen: 2026-05 -->
-- **`--from <base> --to <branch>` の diff が PR の説明と全く噛み合わないほど巨大なら、branch が stale（base からリベースされずに放置）な可能性を疑う**: `gh pr view <番号> --json mergeable` で `CONFLICTING` なら確定的にstale。この場合 `<base>`（例: main）を直接比較すると、branch 派生後に base 側へマージされた無関係なコミット群が全部ノイズとして混ざる。`jj log -r 'fork_point(<base> | <branch>)'` で真の分岐点コミットを特定し、そこから `jj diffu --from <fork_point> --to <branch>` を取ると PR の実スコープに一致したクリーンな diff が得られる。現在の状態セクションには `mergeable: CONFLICTING` を必ず明示し、「マージ前に rebase が必要」と伝える。実例: ある案件の PR で `--from main` が無関係な差分込みで170KB超だったのに対し、fork point (`a453bb13`) からの diff は説明どおりの82ファイルに一致した。
+- **`--from <base> --to <branch>`の差分がPRの説明と合わないほど大きいときは、branchが古いbaseのままになっている**: branchが分かれた後に`<base>`へ入った無関係なコミットが、すべて差分に混ざる。`gh pr view <番号> --json mergeable`が`CONFLICTING`なら、古いと分かる。`jj log -r 'fork_point(<base> | <branch>)'`で分岐点を出し、`jj diffu --from <分岐点> --to <branch>`で取ると、PRの範囲どおりの差分になる。「現在の状態」には`mergeable: CONFLICTING`と、マージの前にrebaseが要ることを書く。
   <!-- mentions: 1 | first-seen: 2026-07 -->
