@@ -6,7 +6,7 @@ Claude CodeとCodexの両方が読む、利用者の決めごと。Claude Code�
 
 - Gitの代わりにJujutsu（jj）、`find`の代わりに`fd`、`grep`の代わりに`rg`を使う。コマンドは`docs/jj.md`にある。
 - コミットの操作（`jj commit`、`jj new`など）は、利用者が指示するか、`jjcommit`などのスキルが呼ばれたときだけ行う。それまではファイルの編集にとどめる。どこで区切るかを利用者が決めるためだ。
-- `workspace/xxx/`はJJのワークスペース（git worktreeに当たる、独立した作業コピー）。その配下のファイルだけを参照、編集する。jjと`gh pr create`も、その中で実行すれば、そのワークスペースのrevisionに作用する。
+- `workspace/xxx/`はJJのワークスペース（git worktreeに当たる、独立した作業コピー）。その配下のファイルだけを参照、編集する。自作のツールclaude-deckがセッションごとにワークスペースを割り当てており、これがセッションどうしを隔てる簡易のサンドボックスになっているためだ。jjと`gh pr create`も、その中で実行すれば、そのワークスペースのrevisionに作用する。
   - `permissions.additionalDirectories`に登録された別リポジトリのcloneは参照してよい。編集とjjの操作は、利用者が明示したときだけ行う。調べる前に`jj git fetch`で同期し、利用側が入れている版のtagを読む。
 
 ## Bashのコマンド
