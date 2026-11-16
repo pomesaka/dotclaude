@@ -10,7 +10,7 @@
 # --- ここから生成されるファイルの本文 ---
 ---
 name: review-team-{project}
-description: {project}のコードレビュー＆修正ループ。reviewer subagentとtest-reviewerがレビューし、Coordinator（自分）が直接修正する。{stack_summary}固有ルール適用済み。
+description: {project}のコードレビュー＆修正ループ。reviewer subagentがレビューし、Coordinator（自分）が直接修正する。{stack_summary}固有ルール適用済み。
 model: sonnet
 ---
 
@@ -24,15 +24,15 @@ model: sonnet
 
 ### 1a. reviewer を起動
 
-Agent ツールで次の 2 つを**同時に**起動する。
-- `subagent_type`: `"reviewer-{project}"`, `prompt`: `"ラウンドN のレビューをしてください。"`
-- `subagent_type`: `"test-reviewer"`, `prompt`: `"ラウンドN のレビューをしてください。"`
+Agent ツールで `reviewer-{project}` subagent を起動する。
+- `subagent_type`: `"reviewer-{project}"`
+- `prompt`: `"ラウンドN のレビューをしてください。"`
 
-両方の結果が返るまで待つ。
+結果が返るまで待つ。
 
 ### 1b. 結果集約・分類
 
-- **非Nit**: ポリシー違反・整合性・凝集度・可読性・設計・テスト（「提案」も含む）
+- **非Nit**: ポリシー違反・整合性・凝集度・可読性・設計（「提案」も含む）
 - **Nit**: 明示的に「Nit:」と書かれているもの
 
 ### 1c. 終了判定
