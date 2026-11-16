@@ -2,6 +2,8 @@
 
 > **TL;DR**: Claude Code のセッションを並行で動かしていてメモリが逼迫したら、まず `top` で上位のプロセスを見る。krunkit（podman machine）ならホストにメモリを返さない仕組みで、長く動かすほど大きくなる。node / tsserver が積み上がっているなら、親プロセスまで辿って所有しているセッションを特定する。
 
+整理する前の版は `archive/2026-11-16/docs/macos-memory-debugging.md` にある。
+
 Claude Code セッションを何本も並行稼働させている環境で「システムが逼迫している」
 と言われたときの切り分け方。`top -l 1 -o mem -n 10 -stats pid,command,mem` で上位
 プロセスを見てから、以下のどちらに当たるか判定する。

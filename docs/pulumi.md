@@ -1,182 +1,91 @@
-# Pulumi 実践ガイド（TypeScript / AWS）
+# Pulumi（TypeScript / AWS）で踏んだ罠と、この利用者の構成
 
-> **TL;DR**: Stack=環境単位、State=現在状態のスナップショット、Config=スタック別設定値。バックエンドは Pulumi Cloud（ゼロ設定）か S3（DIY）を選択。`pulumi preview` で差分確認、`pulumi up` で適用。AWS リソース → `pulumi-aws.md`、GitHub Actions CI/CD → `pulumi-cicd.md`。
+> **TL;DR**: PulumiでAWSのインフラを書く、レビューする、GitHub Actionsからデプロイするときに読む。入門の内容は書かず、この利用者の構成の決めごとと、実際に間違えた点だけを置く。
 
----
+整理する前の版は`archive/2026-11-16/docs/`の`pulumi.md`、`pulumi-aws.md`、`pulumi-cicd.md`にある（この文書は3つをまとめたもの）。GitHub Actionsだけの話は`github-actions.md`にある。
 
-## コアコンセプト
+## 構成の決めごと
 
-| 概念 | 説明 |
-|------|------|
-| **Project** | `Pulumi.yaml` を含むディレクトリ |
-| **Stack** | プロジェクトの環境別インスタンス（dev/staging/prod）。State はスタックごとに分離 |
-| **Resource** | 宣言的に定義するクラウドリソース。エンジンが diff を計算して適用 |
-| **State** | スタックの現在状態スナップショット。`pulumi up` 時に desired state と比較 |
-| **Config** | スタック別の設定値。`Pulumi.<stack>.yaml` に保存 |
+- stateはS3バックエンドに置く。ログインは`pulumi login 's3://<bucket>?region=ap-northeast-1&awssdk=v2'`
+- S3バックエンドの`StackReference`は`organization/<project>/<stack>`と書く（orgは常に文字列の`organization`）
+- `apply`の中で外部APIを呼ばない。実行時に決まる値はConfigか`StackReference`で渡す
+- Monorepoは`infra/shared/`（VPC、ECRなどの共通）と`infra/<client>/`（クライアントごと。`StackReference`で`shared`を読む）に分ける
+- スタックの名前は`<org>/<project>/<env>-<client>`（例: `my-org/myproj-infra/prod-acme`）。envの無いスタックは`Pulumi.main.yaml`をコミットし、`defaultTags`は`Environment: "shared"`にする
+- NAT Gatewayは、prodが`Single`、devは`None`（課金を避ける）。`pulumi preview`に`aws:ec2:NatGateway`が出たら、devで`Single`にしていないかを見る
+- DBのSecurity Groupのegressは`[]`にする（RDSは外へ接続を始めない）
+- ECRには、lifecycle policy（untaggedのイメージが溜まると費用が増える）、暗号化、prodだけの`protect`を付ける。`protect`を全環境に付けると、devのリソースを消せなくなる。`encryptionConfigurations`は配列（単数形は型エラー）
+- マルチテナントのSaaSでは、初めは1顧客に1つのALBを持たせる。共有のALBとホスト名でのルーティングは、設定の誤りが全顧客に及び、ログと費用の按分が混ざり、各顧客のスタックに共有ALBのListener Ruleを変える権限が要る。顧客が50を超えて費用の差が効いてきたら、Tierごと（小口は共有、大口は専用）を考える
+  <!-- mentions: 1 | first-seen: 2026-05 -->
 
----
+## Configとstate
 
-## State バックエンド
+- **`config.require`を足したら、全スタックの`Pulumi.<stack>.yaml`に同じ変更でキーを足す**: 値が決まっていないprodにも、コメントアウトでなく仮の値（`"https://placeholder-replace-after-ISSUENUM.example.com"`など）を入れる。コメントアウトは`require`で落ちる。`Pulumi.dev.yaml`を作ったら、`Pulumi.prod.yaml`と`Pulumi.main.yaml`も一緒に作る。
+  <!-- mentions: 2 | first-seen: 2026-06 -->
 
-| 項目 | Pulumi Cloud | S3 |
-|------|---|---|
-| セットアップ | ゼロ設定 | バケット + IAM 設定が必要 |
-| State ロック | 自動 | 自動（DynamoDB 不要） |
-| Drift Detection | 組み込み | 手動 `refresh` |
-| コスト | 無料枠あり、チーム以上は有料 | S3 料金のみ |
+- **リソースに渡すローカルのファイルパスは、実行時の作業ディレクトリからの相対パスにする**: `contentFile`や`directory`に`path.resolve(...)`した絶対パスを渡すと、その文字列がstateに入る。CI（`/home/runner/work/...`）と手元（`/Users/...`）で先頭が違うので、中身が同じでも`pulumi preview`が毎回「更新あり」と出す。stateに書く前に`path.relative(process.cwd(), absolutePath)`で直す。`pulumi`を実行するディレクトリ（`Pulumi.yaml`のある場所）を、CIと手元で揃えておく。Cloudflare Workerの`contentFile`、`assets.directory`と、`command.local.Command`の`dir`で起きた。
+  <!-- mentions: 1 | first-seen: 2026-09 -->
 
-S3 バックエンド: `pulumi login 's3://<bucket>?region=ap-northeast-1&awssdk=v2'`
+- **`pulumi.output(urlMap)`は、内側のOutputをほどかない**: `urlMap`が`Record<string, Output<string>>`のとき、`pulumi.output(urlMap)`は`Output<Record<string, Output<string>>>`になる。`pulumi.all(urlMap)`なら`Output<Record<string, string>>`になる。前者を`StackReference.requireOutput("ecrUrls")`で読む側は、`.apply(urls => urls["key"])`が`string`として扱われ、実行時エラーになる。
+  <!-- mentions: 1 | first-seen: 2026-05 -->
 
----
+- **`requireOutput()`の`as`キャスト**: `requireOutput()`は`Output<any>`を返すため型アノテーション方式はコンパイルエラー。`as pulumi.Output<string>`が唯一の実用的な型付け方法。CLAUDE.mdの「as禁止」はTypeScriptのappコードのルールであり、Pulumiのinfraコードには適用しない
 
-## 基本コマンド
+## Secrets Manager
 
-```bash
-pulumi new aws-typescript          # プロジェクト作成
-pulumi stack init dev              # スタック作成
-pulumi stack select prod           # スタック切り替え
-pulumi stack output vpcId          # 出力値の確認
+- **Pulumiで管理するのはSecretの入れ物（`aws.secretsmanager.Secret`）だけにし、値（`SecretVersion`）は管理しない**: `SecretVersion`を管理すると、値が変わるたびに`pulumi up`でupdateが走り、CIが壊れる。初期値や手でのローテーションが要る値は、AWS CLIかコンソールから入れる。入れ物だけなら、CIのロールに値を読む権限は要らない（`CreateSecret`、`DescribeSecret`、`DeleteSecret`、`GetResourcePolicy`で足りる）。`SecretVersion`を管理するなら`secretsmanager:GetSecretValue`が要る。`pulumi up --refresh`が`SecretVersion`を読むときにこのAPIを呼び、無いと`AccessDenied`で落ちる。付けるときは、Resourceを自プロジェクトのARN（`secret:myproj-*`、`secret:/myproj/*`）に限り、RDSが管理するmaster secret（`rds!`で始まる）には及ばせない。
+  <!-- mentions: 3 | first-seen: 2026-06 -->
 
-pulumi preview --diff              # 変更の詳細確認（適用しない）
-pulumi up --yes                    # 変更を適用（CI 用: --yes）
-pulumi refresh                     # 実際の状態を state に同期（drift 解消）
-pulumi cancel                      # 実行中操作のキャンセル（ロック解除）
-pulumi destroy --yes               # 全リソース削除（要注意）
+- **Secretに`name`を固定すると、devでNameConflictになりやすい**: 消したSecretは既定で30日のあいだ「pending deletion」になり、同じ名前で作り直せない。devでは`recoveryWindowInDays: 0`ですぐ消えるようにする。prodは既定の30日のままにして、誤って消したときに戻せるようにする。
+  <!-- mentions: 1 | first-seen: 2026-06 -->
 
-pulumi state unprotect <urn>       # 特定リソースの protect 解除
-pulumi stack export > backup.json  # state のバックアップ
-pulumi config set --secret key val # 暗号化して保存
-```
+## 既にあるリソースをComponentResourceの下へ移す
 
----
+スタックの直下のリソースをcomponentの下へ移すと、parentが変わってURNが変わり、previewにreplaceかdelete+createが出る。子リソースのoptsに`aliases: [{ parent: pulumi.rootStackResource }]`を書くと、旧URNを引き継げる（新しいスタックでは旧URNが無く何も起きないので、付けたままでよい）。論理名も変えるなら`aliases: [{ name: "<旧論理名>", parent: pulumi.rootStackResource }]`と`name`も書く。
 
-## TypeScript プロジェクト初期化
+移すPRでは、旧コードをVCSから開き（`jj file show -r main <file>`）、リソースごとに次の3点を突き合わせる。注意がaliasに向くので、2と3を落としやすい。
 
-```bash
-mkdir infra && cd infra
-pulumi new aws-typescript
-```
+1. **論理名が同じか**: componentの側は`${name}-<suffix>`で組むので、`name`に既にsuffixが入っていると二重になり（`-jobs-jobs-`など）、aliasが効かない
+2. **optsが保たれているか**: 旧コードが付けていた`protect: isProduction`や`dependsOn`が、`{ parent: this, provider }`への書き換えで消えていないか
+3. **statementとargsの中身が同じか**: 中身が変わると、aliasが効いてもupdateかreplaceが出る
 
-生成物: `Pulumi.yaml`（プロジェクト定義）、`Pulumi.dev.yaml`（スタック設定）、`index.ts`（エントリーポイント）
+previewでは、componentのcreate、意図した改名のcreate+delete（IAMのRolePolicyは同じroleに別名で共存でき、createが先なので権限の空白は無い）、TaskDefinitionのrevisionのreplaceは、出てよい差分。状態を持つリソース（Secret、RandomPassword、S3、SecurityGroupRule、ECS Service）のreplaceやdeleteは、aliasが漏れている兆候。
+<!-- mentions: 1 | first-seen: 2026-06 -->
 
----
+## ALBのアクセスログ
 
-## Input / Output 型システム
+- **`accessLogs`のバケットには、`bucket.id`でなく`bucketPolicy.id`を渡す**: ALBは`accessLogs`を有効にするとき、バケットへ試しにPutObjectする。`BucketPolicy`は別のリソースなので、`bucket.id`を渡すだけでは、ポリシーが付く前にALBが動いてAccess Deniedになる。`bucketPolicy.id`（値はバケット名と同じ）を渡すと、Outputの依存が`BucketPolicy`を通り、付くまで待つ。`dependsOn: [secBucket]`はComponentResourceの単位なので、中のリソースの順序までは決まらない。
+  <!-- mentions: 1 | first-seen: 2026-06 -->
 
-リソースのプロパティは作成後に確定するため `Output<T>` で非同期値を表現する。
+- **ログを書き込むPrincipalは、サービスプリンシパル（`logdelivery.elasticloadbalancing.amazonaws.com`）にする**: AWSの公式ドキュメント「Enable access logs for your Application Load Balancer」は、`aws.elb.getServiceAccount`（リージョンごとのELBのアカウントID）を「Legacy bucket policy」としている。サービスプリンシパルなら、`getServiceAccount`の呼び出しも、CIのロールへの`elasticloadbalancing:DescribeAccountLimits`も要らない。Resourceは`${bucketArn}/AWSLogs/${accountId}/*`、Conditionに`ArnLike: { "aws:SourceArn": "arn:aws:elasticloadbalancing:*:${accountId}:loadbalancer/*" }`を足して、同じアカウントのALBに限る（2026-06-11に確認）。
+  <!-- mentions: 1 | first-seen: 2026-06 -->
 
-```typescript
-// 値の変換
-const name = bucket.id.apply(id => `prefix-${id}`);
+- **バケット自身のARNを参照するStatementは、componentの中で組み立てる**: `extraPolicyStatements`のように外からStatementを渡す形だと、`Resource`に`bucket.arn`を入れたいときに循環する。`albLogDelivery?: { accountId }`のような専用の引数を持たせ、constructorの中で組み立てる。外から渡す形は、バケットのARNを含まないStatementに限る。
+  <!-- mentions: 1 | first-seen: 2026-06 -->
 
-// 文字列補間（シンタックスシュガー）
-const url = pulumi.interpolate`https://${lb.dnsName}/api`;
+## IAM
 
-// 複数 Output をまとめて参照
-const info = pulumi.all([bucket.id, bucket.arn]).apply(([id, arn]) => `${id}:${arn}`);
-```
+- **Pulumiのデプロイロールは、触るサービスを`service:*`で持つ。IAMだけは広げない**: action単位にすると、`up --refresh`が呼ぶread系のAPI（`rds:DescribeGlobalClusters`など、resource-levelに対応しないものが多い）で403が続く。IAMは`role/<prefix>-*`に絞ったままにする（CIに`iam:*`をResource `*`で渡すと、侵害されたときに任意のロールへAdministratorAccessを付けられる）。Secretsはactionを広げてよいが、Resourceは自プロジェクトのARNに限る。新しいサービスを足すときは、手元のadminで`pulumi up`して権限以外の誤り（ビルド、コンテナのmanifestの形、リソースの設定）を先に出す（`preview`では出ない）。adminでは権限不足は見つからないので、`rg 'new aws\.'`でinfraが触るサービスを並べてロールと比べる。正確に洗い出すなら、CIのロールか同じポリシーのロールをassumeして`up`するか、`iamlive`を使う。CIの往復（毎回十数分）で1つずつ直さない。
+  <!-- mentions: 2 | first-seen: 2026-06 -->
+- アカウント単位のAPI（`ecs:DescribeServices`、`ecr:GetAuthorizationToken`など）はARNで絞れず、`Resource: "*"`が要る。操作ごとにStatementを分けて、Resourceの範囲を使い分ける
+- PulumiでIAMロールを管理するなら、`PassRole`に加えて`CreateRole`、`DeleteRole`、`GetRole`、`AttachRolePolicy`、`DetachRolePolicy`、`TagRole`が要る。`arn:aws:iam::<ACCOUNT>:role/<prefix>-*`に絞った専用のStatementにする
+- ポリシーが重なっているときは、広い範囲（`ecs:*`）を残し、個別のStatement（`ECSUpdate`）を消す。ECRは`PulumiInfraAccess`から外し、専用のStatement（`ECRAuth`、`ECRRepoAccess`）に任せる
 
-`Output<T>` は `string` ではない: `bucket.id + "-suffix"` は型エラー → `pulumi.interpolate` を使う。`apply` 内での外部 API 呼び出し（async/await）は避ける。動的データは Config か StackReference で渡す。
+## GitHub Actionsからのデプロイ
 
----
+AWSの認証（IAMユーザーのキーか、OIDCか）は、プロジェクトと時期で違う。そのプロジェクトのworkflowに合わせる。
 
-## Config と Secret
+- `up`（mainへのpushでデプロイ）と`preview`（PRにコメント）は、別のworkflowにする。デプロイは`cancel-in-progress: false`（途中で止めない）、previewは`true`
+- S3バックエンドでは`PULUMI_CONFIG_PASSPHRASE: ""`と`PULUMI_ACCESS_TOKEN: ""`を置く（未設定だと対話の質問が出る）。バックエンドは`cloud-url: ${{ secrets.PULUMI_BACKEND_URL }}`で渡す
+- `pulumi/actions`には`refresh: true`（driftを見つける）と`upsert: false`を付ける
+- `StackReference`で依存するスタックは`needs:`で順に実行する。依存の無いスタックは並べてよい（S3のstateのロックはスタックごと）。previewもデプロイと同じ`needs`にする（並べると、参照先のstateが古いままpreviewされる）
+- クライアントごとのアプリのデプロイは、`apps/<client>/**`でworkflowを分け、reusable workflow（`_app-deploy.yml`）に`ecr-repository`、`stack-name`、`work-dir`を渡す
+- ECRのレジストリのURLは`amazon-ecr-login`の`${{ steps.login-ecr.outputs.registry }}`から取り、AWSのアカウントIDを直に書かない
+- Fargateを明示してARM64にするなら、Pulumiの`cpuArchitecture: "ARM64"`と、workflowの`platforms: linux/arm64`を揃える
 
-```typescript
-const config  = new pulumi.Config();
-const appName = config.require("appName");             // 必須文字列
-const port    = config.getNumber("port") ?? 3000;      // 任意・デフォルト付き
-const dbPass  = config.requireSecret("dbPassword");    // Output<string>（state に暗号化保存）
-```
+- **ECSのイメージの更新は、`aws ecs update-service`でなく`config-map`で渡す**: `update-service --force-new-deployment`はECSのリソース名を直に書くことになり、インフラとアプリでデプロイの仕組みが分かれる。`index.ts`で`const imageTag = config.get("imageTag") ?? "latest"`を読み、`pulumi/actions`の`config-map`で`imageTag: { value: ${{ github.sha }} }`を渡す。タスク定義の更新、ローリングアップデート、安定を待つ処理をPulumiが受け持ち、初回と2回目以降が同じ仕組みになる。`config-map`は手元の`Pulumi.<stack>.yaml`を書き換えない。
 
----
+- **bootstrapのworkflowでは`upsert: true`を使う**: `pulumi stack init ... || true`で失敗を隠した後に`upsert: false`で`up`すると、initが本当に失敗していたとき「スタックが無い」で`up`も落ちる。
+  <!-- mentions: 1 | first-seen: 2026-05 -->
 
-## ベストプラクティス
-
-### ComponentResource — 再利用可能なコンポーネント
-
-```typescript
-class AppService extends pulumi.ComponentResource {
-    public readonly url: pulumi.Output<string>;
-    constructor(name: string, args: AppServiceArgs, opts?: pulumi.ComponentResourceOptions) {
-        super("mycompany:index:AppService", name, {}, opts);
-        const sg = new aws.ec2.SecurityGroup(`${name}-sg`, { ... }, { parent: this });
-        // ...
-        this.registerOutputs({ url: this.url });
-    }
-}
-```
-
-`parent: this` を子リソースに指定するとリソースが階層表示される。
-
-### 既存リソースの ComponentResource 化（reparent state 移行）
-
-スタックルート直下のリソースを component 配下に移すと parent 変更で URN が変わり、preview に replace / delete+create が出る。`aliases: [{ parent: pulumi.rootStackResource }]` を子リソースの opts に宣言すると旧 URN を引き継げる（新規スタックでは旧 URN が無く no-op なので付けっぱなしで害がない）。論理名も変える場合は `aliases: [{ name: "<旧論理名>", parent: pulumi.rootStackResource }]` のように name も併記する。
-
-移行 PR では旧コードを VCS から開き（`git show main:<file>` / `jj file show -r main <file>`）、リソースごとに次の 3 点を機械的に突き合わせる。意識が alias（URN）に向くため 2. と 3. が気づかないうちに脱落しやすい。
-
-1. **論理名の一致**: component 側は `${name}-<suffix>` で組むため、`name` に既に suffix が含まれると二重付加（`-jobs-jobs-` 等）で旧名と不一致になり alias が効かない
-2. **opts 水準の維持**: 旧コードが付けていた `protect: isProduction`・`dependsOn` 等が `{ parent: this, provider }` 直書きへの置き換えで消えていないか
-3. **statement / args 内容の一致**: 内容が変わると alias が効いても update / replace が出る
-
-preview の読み方: component プレースホルダの create・意図したリネームの create+delete（IAM RolePolicy は同一 role に別名共存でき create 先行のため権限の空白なし）・TaskDefinition の revision replace は期待される差分。stateful リソース（Secret / RandomPassword / S3 / SecurityGroupRule / ECS Service）の replace / delete は alias 漏れの兆候。
-  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
-
-### Stack Reference — スタック間の出力参照
-
-```typescript
-// S3 バックエンド: organization/<project>/<stack>（org は常にリテラル "organization"）
-// Pulumi Cloud:   <your-org>/<project>/<stack>
-const infra = new pulumi.StackReference("organization/infra/production");
-const vpcId = infra.requireOutput("vpcId");
-```
-
-### Default Tags — 全リソースに一括タグ
-
-```typescript
-const provider = new aws.Provider("aws", {
-    region: "ap-northeast-1",
-    defaultTags: { tags: { Environment: stack, Project: "my-app", ManagedBy: "pulumi" } },
-});
-// リソース作成時に { provider } を渡す
-```
-
-### 命名規則・protect
-
-```typescript
-const stack  = pulumi.getStack();    // "dev" / "staging" / "prod"
-const prefix = `my-app-${stack}`;
-
-// 本番リソースは protect: true。削除前に protect: false で pulumi up してから
-const db = new aws.rds.Cluster("prod-db", { ... }, { protect: true });
-
-// スタック全体を保護
-pulumi.runtime.registerStackTransform((args) => ({ props: args.props, opts: { ...args.opts, protect: true } }));
-```
-
----
-
-## Gotchas
-
-- **`requireOutput()` の `as` キャスト**: `requireOutput()` は `Output<any>` を返すため型アノテーション方式はコンパイルエラー。`as pulumi.Output<string>` が唯一の実用的な型付け方法。CLAUDE.md の「as 禁止」は TypeScript app コードのルールであり Pulumi infra コードには適用しない
-- **state ロック**: CI で途中失敗した場合は `pulumi cancel` でロック解除する
-- **`pulumi.output(urlMap)` は inner Output を unwrap しない**: `urlMap` が `Record<string, Output<string>>` のとき `pulumi.output(urlMap)` は `Output<Record<string, Output<string>>>` になる（内側の Output が残る）。`pulumi.all(urlMap)` を使うと `Output<Record<string, string>>` に正しく解決される。`StackReference.requireOutput("ecrUrls")` 経由で参照する側の `.apply(urls => urls["key"])` が `Output<string>` ではなく `string` として扱われてしまい実行時エラーになる
-  <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
-- **LifecyclePolicy への `protect: true`**: 変更時は `pulumi state unprotect <urn>` で保護を解除してから実施
-- **`Pulumi.prod.yaml` は必須**: `pulumi stack init prod` 後に忘れがち。`Pulumi.dev.yaml` を作ったら `Pulumi.prod.yaml`（および `Pulumi.main.yaml` があれば）も同時に作る
-- **Secrets Manager シークレットに `name` を明示指定すると dev で NameConflict になりやすい**: `name: "/myproj/dev/acme/app"` のように名前を固定すると、削除後に同名シークレットが「pending deletion」状態（デフォルト30日）に入り、同じ名前で再作成しようとすると NameConflict が発生する。dev では `recoveryWindowInDays: 0` を設定して即時削除を有効にすること。prod はデフォルト（30日猶予）のままにして誤削除に対する保護を維持する
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
-- **GitHub Actions (Pulumi CI) ロールの `secretsmanager:GetSecretValue` 要否は「何を Pulumi 管理するか」で変わる**: Secret コンテナ（`aws.secretsmanager.Secret`）だけを管理するなら値の読み取りは不要（`CreateSecret`/`DescribeSecret`/`DeleteSecret` + `GetResourcePolicy` で足りる）。だが `aws.secretsmanager.SecretVersion` を Pulumi 管理する場合は `GetSecretValue` が必須: `pulumi up --refresh` が SecretVersion を Read する際、AWS provider は `GetSecretValue` を呼ぶ（version の実体＝値のため `DescribeSecret` では足りない）。これが無いと refresh が `AccessDenied` で落ちる（ある案件で実際に CI が落ちた）。付与する場合は Resource を自プロジェクトの secret ARN（`secret:myproj-*` / `secret:/myproj/*`）に限定し、RDS マネージド master secret（`rds!` プレフィックス）には及ばせない。ブラスト半径懸念はあるが、CI ロールは同 ARN に既に `Put/Delete/CreateSecret` を持つため、書き換え・削除できる相手の値を読める追加リスクは小さい（読み取りを避けたいのは人間が投入する機微シークレット。Pulumi 生成の random 値は別物）
-  <!-- importance: high | mentions: 2 | first-seen: 2026-06 -->
-- **`SecretVersion` を Pulumi で管理すると差分で毎回 update が走る**: `aws.secretsmanager.SecretVersion` を Pulumi で管理すると、値が変わるたびに `pulumi up` で update が走り CI が壊れる。初期値や手動ローテーションが必要なシークレットは `SecretVersion` を Pulumi 管理外にし、AWS CLI / コンソールから直接値を投入する運用を選ぶ。Pulumi で管理するのはシークレットの「コンテナ（`Secret`）」だけに留める。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
-- **ALB アクセスログ有効化では `BucketPolicy.id` を渡して implicit 依存を作る。`bucket.id` では不足**: ALB は `accessLogs` 有効化時（`ModifyLoadBalancerAttributes`）にバケットへテスト PutObject を行う。`SecureBucket` 内の `BucketPolicy` は別リソースなので `bucket.id`（`BucketV2`）を渡すだけでは BucketPolicy が未配置でも ALB が起動しようとし Access Denied になる。対処: `bucketPolicy.id`（`BucketPolicy.id` = バケット名と同値だが Output の依存チェーンが BucketPolicy を経由する）を `accessLogsBucket` に渡す。`LoadBalancer` がこの `Output` を消費することで BucketPolicy 完了まで暗黙的に待機する。`dependsOn: [secBucket]` は ComponentResource ごとで粗すぎる（内部リソース順序を保証しない）ため `.id` チェーン方式が正確。
-  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
-- **ALB アクセスログ配送の Principal はサービスプリンシパル方式を使う（旧 ELB アカウント ID 方式は非推奨）**: AWS 公式ドキュメント "Enable access logs for your Application Load Balancer" は `logdelivery.elasticloadbalancing.amazonaws.com` を現行推奨とし、旧 `aws.elb.getServiceAccount`（リージョン固定 ELB アカウント ID）を "Legacy bucket policy" として置き換え推奨。サービスプリンシパル方式なら `aws.elb.getServiceAccount` 呼び出し・CI ロールへの `elasticloadbalancing:DescribeAccountLimits` 権限追加がいずれも不要。Statement の Resource は `${bucketArn}/AWSLogs/${accountId}/*`、Condition に `ArnLike: { "aws:SourceArn": "arn:aws:elasticloadbalancing:*:${accountId}:loadbalancer/*" }` を加えて同アカウントの ALB のみに絞る（AWS 推奨・2026-06-11 確認）。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
-- **バケットポリシー Statement がバケット自身の ARN を参照する場合は component 内部で組み立てる**: `SecureBucket` への `extraPolicyStatements` のような「外から Statement を注入する」方式では、Statement の `Resource` フィールドに `bucket.arn` を含める場合に循環参照になる（バケット ARN が確定する前に Statement を組み立てる必要があるため）。この場合は `albLogDelivery?: { accountId }` のような専用引数を component に持たせ、constructor 内で `bucket.arn` が参照可能になってから Statement を組み立てる。外部注入で使える `extraPolicyStatements` はバケット ARN を含まない Statement（例: 特定プリンシパルの読み取り許可）に限る。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
-- **リソースに渡すローカルファイルパスは、実行時の作業ディレクトリからの相対パスにする。絶対パスは CI と手元で値が変わり、無限に差分が出続ける**: `contentFile` / `directory` のようなプロパティに `path.resolve(...)` した絶対パスを渡すと、その文字列が state に保存される。CI（`/home/runner/work/...`）と手元（`/Users/...`）で絶対パスの先頭が違うため、内容が同一でも `pulumi preview` が毎回「更新あり」と報告し続ける。対処: state に書く直前に `path.relative(process.cwd(), absolutePath)` で相対パスへ変換する。前提として `pulumi` の実行ディレクトリ（`Pulumi.yaml` のある場所）が CI・手元で揃っている必要がある（CLAUDE.md 等に「必ず `infra/` で実行する」と明記する）。実例: ある案件の Cloudflare Worker（`contentFile`・`assets.directory`）と `command.local.Command` の `dir` で発生（2026-09-25）
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-09 -->
-- **`config.require()` を追加したら対応する `Pulumi.*.yaml` も同時に更新する**: `config.require("key")` を実装した後に `Pulumi.dev.yaml`（や `.prod.yaml`）へのキー追加を忘れると、`pulumi up` / `pulumi preview` が即時クラッシュする。infra 実装後に「`config.require` / `config.get` しているキー」と「`Pulumi.*.yaml` に存在するキー」の整合を目視確認すること。特に `Pulumi.prod.yaml`: dev にキーを追加しても prod をコメントアウトのままにするのは NG。ドメイン未確定などの理由で本値が決まっていなくても `"https://placeholder-replace-after-ISSUENUM.example.com"` 等のプレースホルダーを入れること（コメントアウトは `config.require` でクラッシュするため等価でない）。issue 060 で `betterAuthUrl` を prod で `# コメントアウト` にして Round 3 のレビューで検出した。
-  <!-- importance: medium | mentions: 2 | first-seen: 2026-06 -->
+- **prodのスタックも`infra-deploy.yml`のmatrixに入れる**: 外すと、`Pulumi.prod.yaml`の`imageTag`をPRで変えてマージしても、何も起きない。「prodへのデプロイを利用者が決める」は「`Pulumi.prod.yaml`の変更をPRで承認する」ことで、CIのmatrixからprodを外すことではない。
+  <!-- mentions: 1 | first-seen: 2026-05 -->

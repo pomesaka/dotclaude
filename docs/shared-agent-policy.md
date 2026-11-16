@@ -1,56 +1,57 @@
-## CLI Tools
+# 共通の方針
 
-- Jujutsu (jj): Git の代わりに jujutsu を使用
-- fd: find の代わりに fd コマンドを使用
-- rg (ripgrep): grep の代わりに rg を使用
+Claude CodeとCodexの両方が読む、利用者の決めごと。Claude Codeでは`CLAUDE.md`から読み込まれる。文書は共有の`docs/`にあり、Claude Codeでは`~/.claude/docs/`、Codexでは`~/.codex/docs/`で読める。
 
-## Version Control (Jujutsu)
+## 道具とバージョン管理
 
-コミット操作（`jj commit`, `jj new` 等）は、ユーザーから明示的に指示があるか `jjcommit` などのスキルが呼ばれるまで自律的に実行しない。ファイルの編集のみ行い、コミットはユーザーに任せる。
+- Gitの代わりにJujutsu（jj）、`find`の代わりに`fd`、`grep`の代わりに`rg`を使う。コマンドは`docs/jj.md`にある。
+- コミットの操作（`jj commit`、`jj new`など）は、利用者が指示するか、`jjcommit`などのスキルが呼ばれたときだけ行う。それまではファイルの編集にとどめる。どこで区切るかを利用者が決めるためだ。
+- `workspace/xxx/`はJJのワークスペース（git worktreeに当たる、独立した作業コピー）。その配下のファイルだけを参照、編集する。自作のツールclaude-deckがセッションごとにワークスペースを割り当てており、これがセッションどうしを隔てる簡易のサンドボックスになっているためだ。jjと`gh pr create`も、その中で実行すれば、そのワークスペースのrevisionに作用する。
+  - `permissions.additionalDirectories`に登録された別リポジトリのcloneは参照してよい。編集とjjの操作は、利用者が明示したときだけ行う。調べる前に`jj git fetch`で同期し、利用側が入れている版のtagを読む。
 
-## Frontend Implementation
+## Bashのコマンド
 
-フロントエンド（HTML/CSS/JS/React/Next.js）を実装するときは、デザイン品質を意識すること。
+`&&`、`||`、`;`、`|`を含む複合コマンドは、許可の確認が出やすいので避ける。フォールバック（`cmd1 || cmd2`）も使わず、正しいコマンドを1つ決めて実行する。パイプは、`rg`や`jq`のような読み取りだけのフィルタに使ってよい。`cd /path && cmd`の代わりの書き方は`docs/bash-tips.md`にある。
 
-- プロジェクトルートに `DESIGN.md` があれば最優先のデザイン基準として読み込む
-- AI が生成しがちな「Inter フォント・紫グラデーション・cookie-cutter レイアウト」は避け、意図的な美学を持つ UI を目指す
+## 判断の原則
 
-## Coding Policy
+細かい規則の代わりに、次の原則で判断する。当てはめ方の例と、実際に間違えた点は、下の表の文書にある。
 
-- 成果物の置き分け: 情報は、強制力が強く古くなったら気づける場所から置く（型と構造 → テスト → コードコメント → 文書）。今後もコードを読む人に要る理由はコメントに、その変更をした理由と検証は commit と PR に書く。同じ規則は 1 か所にだけ書く。詳細: `what-goes-where.md`（文書の書き方は `documentation-practices.md`）
-- コメント: 複雑なロジックには WHY（なぜそうしたか）を重視したコメントを記載
-- TypeScript: as キャストは禁止
+- **足す前に、それが無いと誰が何を間違えるかを言う**。文、画面の要素、列、テスト、コメントのどれも同じだ。言えないなら足さない。足すほど本体が埋もれる。
+- **同じ規則は1か所に寄せる**。同じ導出、検証、変形を2か所以上で行うなら、1つの関数か、データが必ず通る1点に置く。片方だけ変わっても型検査は通り、食い違いがエラーにならずに残るためだ。
+- **失敗を、正しい値と区別できる形にする**。設定の漏れ、分類の失敗、取りこぼしが「正しそうな値」として通る作りにしない。金額や契約に響く値には既定値を置かず、必須にする。
+- **確かめていないことを断言しない**。コードのコメントでも、利用者への回答でも同じだ。挙動を言い切るなら、公式の文書か実行結果で確かめ、確かめた方法を添える。確かめていないなら未検証と書く。読み手は、断言を事実として次の判断の根拠にする。
+- **修正の案がいくつかあるときは、一番楽な案でなく、長期的に一番筋のいい案を選ぶ**。利用者（UX）、開発者（DX）、エージェント（AX）への影響で比べ、どれかを下げる案や、既存の動きを壊す案を選ぶなら、その点を伝える。AXは、エージェントがそのコードや文書を読み書きして間違えないかを指す。3つは同時に上がらないことがある。
+- **情報は、強制力が強く、古くなったら気づける場所から置く**。順番は、型と構造、テスト、コードのコメント、文書。変更が終わった後も要る理由はコメントに、その変更をした理由と検証はcommitとPRに書く。
 
-## Testing Policy
+## 利用者の好み
 
-- テストはできるだけ **table driven test** で書く（Go: `t.Run` + スライス、Bun/Jest: `test.each`）
-- 個別の `test(...)` 呼び出しは、テーブル化できない固有のセットアップが必要なケースに限る
+一般的な作法と違うところ。
 
-## Context Management
+- TypeScriptでは`as`キャストを使わない。
+- テストは、できるだけtable driven testで書く（Goは`t.Run`とスライス、BunとJestは`test.each`）。
+- 先送りは`TODO(#NNN): 要約`（issueがある）か`FIXME: やること`（まだ無い）で残す。印も番号も無い言及は検索できず、先送りしたこと自体が忘れられるためだ。
+- 文書にトラブルシューティングの章は、利用者が頼んだときだけ書く。
+- 用語集（`docs/glossary.md`など）に載っている語は、型名、変数名、ファイル名をそれに合わせる。載せるのは、そのシステムが無くても業界の人が使う語だけにする。
+- プロジェクトのルートに`DESIGN.md`があれば、画面を作るときの基準にする。`TESTING.md`があれば、テストの設計とレビューの前に読む。
+- AIが作りがちな画面（Interのフォント、紫のグラデーション、どこにでもある配置）にしない。
 
-- context が 60% を超えたら新しいタスクを始めない
-- compact するときは必ず「何を残し、何を捨てるか」のヒントを付ける
-- autocompact に自動発火させない
-- tool call の詳細ではなく結論だけ必要なら subagent に投げる
+## 作業ごとに読む文書
 
-## Bash Commands
+その作業を始める前に、当てはまる文書を1回読む。項目ごとに引き直さなくてよい。
 
-Shell operator（`&&`、`||`、`;`、`|`）を含む複合コマンドはパーミッションプロンプトが発生しやすいため極力避ける。
-
-- `cmd1 && cmd2`、`cmd1 || cmd2`、`cmd1 ; cmd2` は使わない
-- フォールバック（`cmd1 || cmd2 || cmd3`）も使わない
-- `cd /path && cmd` の代替:
-  - ツールの working directory 機能を使う
-  - `cmd -C /path` や `cmd --cwd /path` などのフラグを使う
-  - `jj diff -R /path` のようにリポジトリ指定フラグを使う
-- パイプ（`|`）は `rg`、`jq` などの read-only フィルタに限り許容（ただし書き込みを伴う場合は禁止）
-
-## Working Rules
-
-- コミット粒度: 適切な粒度で作業内容をコミット
-- workspace/xxx/ は JJ ワークスペース（git worktree 相当）で、リポジトリの独立した作業コピー
-  - workspace/xxx/ 配下のファイルのみ参照・編集可能（リポジトリルートや他の workspace のファイルは禁止）
-  - JJ コマンド（jj log, jj diffu, jj bookmark 等）は workspace/xxx/ 内で実行すればその workspace の revision に対して操作される
-  - PR 作成時の `jj bookmark create`, `jj git push`, `gh pr create` も workspace/xxx/ 内で実行する
-- ドキュメントを書く際にトラブルシューティングの章を書くのは、ユーザーから指示がない限り禁止
-- 修正案がいくつかあるとき、一番楽なものではなく、長期的にみて一番筋のいい選択を取る。案は利用者（UX）・開発者（DX）・エージェント（AX）の 3 つへの影響で比べ、どれかを下げる案や既存の動きを壊す案を選ぶなら、その点を伝える
+| 作業 | 読む文書（`docs/`の下） |
+|---|---|
+| コードを書く、直す | `coding-policy.md` |
+| 設計を決める、責務を分ける | `code-design.md`、`domain-design-practices.md` |
+| テストを設計する、書く、レビューする | `testing-policy.md` |
+| 削除、置き換え、複数の箇所にまたがる変更、PRの準備 | `working-rules.md` |
+| 画面を作る、直す | `frontend-policy.md`。Tailwindの色とレイアウトは`tailwind-layout.md`、チャートは`charts.md` |
+| 利用者ごとのデータを返すAPIを書く | `web-security.md` |
+| 名前を付ける、用語集を直す | `glossary-policy.md` |
+| 文書、コメント、commit、PRのどこに書くかを決める | `what-goes-where.md`、`documentation-practices.md` |
+| `CLAUDE.md`、スキル、エージェント、プロンプトを書く | `prompt-engineering.md` |
+| インフラ、CI、外部のAPIを書く | `pulumi.md`、`github-actions.md`、`anthropic-api.md`、`postgres-patterns.md`、`async-job-reliability.md` |
+| Scalaのdoobieで、TXを保ったまま外部の処理を呼ぶ | `doobie-weakasync.md` |
+| PRに貼る画面の証拠を、devサーバーなしで作る | `pr-evidence-capture.md` |
+| その言語や道具を触る | その名前の文書。TypeScriptは`typescript.md`と`ts-react-tooling-gotchas.md`（Bun、Biome、開発環境の癖）、Reactは`react.md`と`react-a11y.md`、Next.jsは`nextjs.md`、Goは`go.md`、jjは`jj.md`、Cloudflareは`cf.md`（そこから`cloudflare-access-setup.md`と`cloudflare-workers-permissions.md`を指している） |
