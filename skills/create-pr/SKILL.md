@@ -129,5 +129,5 @@ gh pr create --base <base branch> --head <name> --title '適切なタイトル' 
   <!-- mentions: 3 | first-seen: 2026-06 -->
 - **PRを作る前に、作業コピーの親が古い`main`のままでないかを見る**: 長い作業の間に`main`が進むと、同じファイルを書き直した作業は衝突する。`jj log -r 'main..@'`と`jj diff --from <親> --to main --stat`で、自分が触ったファイルを`main`も変えていないかを見て、変えていれば先に`jj rebase -d main`する。
   - 衝突したら、混ざったファイルを手で直すより、`jj diff --from <旧親> --to main --context 0 -- <path>`で`main`の側の変更を全部読み、自分の版へ入れ直す。
-  - 解いた後は、`jj diff`でなく`rg`とReadで実際のファイルを見る。`jj diff`は、衝突を解いた行を2つの版が行の中で混ざった形で描くので、正しい文が壊れて見える。
+  - 解いた後は、`jj diff`でなく`rg`とReadで実際のファイルを見る（理由は`~/.claude/docs/jj.md`の「差分の基準点を確かめる」）。
   <!-- mentions: 1 | first-seen: 2026-10 -->

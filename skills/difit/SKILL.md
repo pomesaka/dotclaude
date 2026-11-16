@@ -80,5 +80,5 @@ jj diffu -r '@' | mise exec -- portless <name> --app-port <P> npx difit - --clea
   <!-- mentions: 1 | first-seen: 2026-06 -->
 - **コメントのブロックは、difitが終了した後に遅れて書き出される**: タスクの出力ファイルを`Client disconnected, shutting down server...`の直後に読むと、`📝 Comments from review session:`のブロックがまだ無く、コメントなしに見える。「指摘なし」とするのは、出力の末尾に`[exited with code 0]`があり、`Total comments:`の行が無いときにする。利用者が「コメントを書いた」と言ったら、同じファイルを読み直す。
   <!-- mentions: 1 | first-seen: 2026-09 -->
-- **PRの全体を流す前に、ブランチがbaseの先頭から分岐しているかを確かめる**: baseが古いブランチで`jj diffu --from <base>@origin --to @`を流すと、baseに先に入ったコミットが巻き戻しの差分として出て、利用者がその差分の指摘に時間を使う。`jj git fetch`の後に`jj log -r 'fork_point(<base>@origin | @)'`で分岐点を見て、baseの先頭より古ければ、rebaseしてから流す。
+- **PRの全体を流す前に、ブランチがbaseの先頭から分岐しているかを確かめる**: baseが古いブランチで差分を流すと、baseに先に入ったコミットが巻き戻しの差分として出て、利用者がその差分の指摘に時間を使う。分岐点の出し方は`~/.claude/docs/jj.md`の「差分の基準点を確かめる」にある。baseの先頭より古ければ、rebaseしてから流す。
   <!-- mentions: 1 | first-seen: 2026-09 -->

@@ -66,5 +66,5 @@ jj diffu --from <base> --to <branch>
 
 - **レビューコメントを反映する前に、インラインのコメントを全部読み、互いに関わるものをまとめる**: あるコメントへの対応が、別のコメントの内容を変えることがある（テーブルの名前を変えると、カラムの名前も変わる、など）。1件ずつ直すと、後の修正が前の修正と食い違う。
   <!-- mentions: 1 | first-seen: 2026-05 -->
-- **`--from <base> --to <branch>`の差分がPRの説明と合わないほど大きいときは、branchが古いbaseのままになっている**: branchが分かれた後に`<base>`へ入った無関係なコミットが、すべて差分に混ざる。`gh pr view <番号> --json mergeable`が`CONFLICTING`なら、古いと分かる。`jj log -r 'fork_point(<base> | <branch>)'`で分岐点を出し、`jj diffu --from <分岐点> --to <branch>`で取ると、PRの範囲どおりの差分になる。「現在の状態」には`mergeable: CONFLICTING`と、マージの前にrebaseが要ることを書く。
+- **`--from <base> --to <branch>`の差分がPRの説明と合わないほど大きいときは、branchが古いbaseのままになっている**: 分岐点から差分を取り直す。出し方は`~/.claude/docs/jj.md`の「差分の基準点を確かめる」にある。「現在の状態」には`mergeable: CONFLICTING`と、マージの前にrebaseが要ることを書く。
   <!-- mentions: 1 | first-seen: 2026-07 -->

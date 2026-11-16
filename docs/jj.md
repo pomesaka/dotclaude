@@ -11,9 +11,10 @@
 
 ## PR作成
 
+PRは`/create-pr`のスキルで作る。bookmarkは次の1コマンドで作ってpushする。bookmarkの作成、track、pushをまとめて行うので、新しいbookmarkのtrackingのエラーが出ない。
+
 ```bash
-jj bookmark create <name> -r @-    # pushするrevisionにブックマーク作成
-jj git push --bookmark <name>
+jj git push --named <name>=@
 gh pr create --head <name> --base main
 ```
 
@@ -34,6 +35,25 @@ jj では working copy (`@`) 自体が PR のコミット。push 後にそのま
 「同じ PR を追記更新する」のが目的なら amend で正しい（`/update-pr` のケース）。
 
 混ざってしまったら、`jj new` で子を作り、別件のファイルだけ `jj squash --from <PRコミット> --into @ <パス>` で移す。PR コミットは origin と同じ内容に戻る。同じファイルに両方の変更があるときはパス単位で動かせないので、`jj diff --from '<bookmark>@origin' --to @ --git` を patch に書き出し、`jj new <origin の実コミット>` で作った子に `git apply` で当て直す。その後 `jj bookmark set <bookmark> -r <origin の実コミット> --allow-backwards` でブックマークを戻し、混ざったコミットを `jj abandon` する。親には origin の実コミットを指定する（書き換えた版を親にすると、積んだ PR が CONFLICTING になる）。生成物の drift を push 済みの状態に戻す `jj restore --from <bookmark>@origin <paths>` は、auto-mode classifier が破壊的操作として block することがある。
+
+## push済みのPRに足す、分ける
+<!-- mentions: 11 | first-seen: 2026-06 -->
+
+jjは作業コピーの編集を、知らせずに`@`のコミットへ入れる。push済みのPRのコミットに別の変更が混ざったとき、またはPRに足したい変更が別のコミットにあるときの操作。
+
+- **パスを指定した`jj squash --from @- --into @ <path>`は、push済みのコミットが元から足していたファイルも丸ごと子へ移す**: pushの後の増分だけを移すときは、squashの後に`jj restore --from <bookmark>@origin --to <bookmark> -- <path>`でbookmarkの側をoriginの状態に戻し、子で増分を当て直す。
+- **分けた子をpushする前に、`jj rebase -r <child> -d '<bookmark>@origin'`でoriginの実コミットへ載せ替える**: squashとrestoreは、内容がoriginと同じでもコミットを書き換える。書き換えた版を親にしたまま積むと、差分が0でもPRがCONFLICTINGになる。同じPRの2つ目のコミットとして入れるときも同じで、載せ替えないと1つ目のコミットがforce-pushで差し替わり、CIが走り直してレビュー済みの印が消える。載せ替えた後は`jj bookmark set <bookmark> -r <rev> --allow-backwards`でbookmarkを合わせ、書き換えた版を`jj abandon`する。
+- **`jj log`でbookmarkに`*`が付いていたら、手元がoriginと違うコミットを指している**: その先に別の作業が入っていたら、`jj bookmark set <bookmark> --allow-backwards -r <PRのコミット>`で戻す。`--allow-backwards`が無いと拒否される。
+- **`@`がbookmarkより上にあり、間に別の作業があるときは、`jj squash --from @ --into <bookmark> <paths>`でPRに入れるファイルだけを移す**: 隣り合っていないコミットの間でもsquashできる。
+- **push済みのbookmarkに新しいセッションで追記すると、`@`が説明の無い子のコミットになることがある**: push済みのコミットは、jjの既定の設定でimmutableとして扱われるためだ（`jj st`の`Parent commit (@-)`がbookmarkと同じになる）。そのままpushすると、PRに説明の無いコミットが並ぶ。`EDITOR=true jj squash --from @ --into <bookmark名>`でbookmarkのコミットへまとめてからpushする。`-m`は付けない。付けると、bookmarkのコミットの説明が上書きされる。
+
+## 積んだPRの下がマージされたら、上を`main`へ載せ直す
+<!-- mentions: 3 | first-seen: 2026-06 -->
+
+下がsquash mergeされると、GitHubは上のbaseを`main`に変える。手元の上のbookmarkは下のコミットを親に持ったままなので、`jj git fetch`の後に`@`が衝突する。`jj rebase -b <上のbookmark> -d main`で載せ直し、空になった下のコミットを`jj abandon`して、`jj git push --bookmark <上のbookmark> --force`でpushする。
+
+- fetchの前に気づいたら、`jj rebase -s <積みの根> -d main`で載せ直す。衝突は起きず、下のコミットが`(empty)`で残るので、`jj abandon`する。
+- 下がmerge commitでマージされたときは、下のコミットが`main`の祖先になるので、`jj rebase -s <積みの根> -d main`だけで済む。下のbookmarkが手元から消えていたら、マージされている。rebaseの途中でも、pushの前に`jj log -r '<積みの根>-'`が`main`の祖先になっていないかを見る。
 
 ## 積んだ PR の下のほうを直すときは、競合を下から順に解消する
 <!-- mentions: 1 | first-seen: 2026-10 -->
@@ -72,6 +92,15 @@ jj log -r 'main..<先端>' --no-graph -T 'if(conflict, "CONFLICT ", "ok ") ++ bo
 <!-- mentions: 2 | first-seen: 2026-06 -->
 
 `jj log` の DAG 表示で `@` が `main` の隣に表示されていても、実際の parent が `main` ではなく別のコミット（例: `main` よりも古い revert コミット）である場合がある。リベースが要るかは、`jj log` の見た目でなく `jj show @` の `Parents:` か、`jj st` の `Parent commit (@-)` で判断する。graph の `├─╯` の合流は「`@` がその先のコミットと親を共有する兄弟」という意味で、合流の行のすぐ上に見えるコミットが `@` の親とは限らない。実際の parent が `main` でなければ `jj rebase -s @ -d main` が必要。
+
+## 差分の基準点を確かめる
+<!-- mentions: 3 | first-seen: 2026-06 -->
+
+差分がPRの説明と合わないほど大きいときは、基準点がずれている。
+
+- **branchが古いbaseから分かれたままだと、`--from <base> --to <branch>`に、後から`<base>`へ入った無関係なコミットが巻き戻しとして混ざる**: `jj git fetch`の後に`jj log -r 'fork_point(<base>@origin | <branch>)'`で分岐点を出す。分岐点がbaseの先頭より古ければ、`jj diffu --from <分岐点> --to <branch>`で取るか、rebaseしてから取る。`gh pr view <番号> --json mergeable`が`CONFLICTING`なら、古いと分かる。
+- **rebaseの後は、`<bookmark>@origin`が古いbaseを指したままになる**: `--from <bookmark>@origin`で取ると、`main`が進んだ分がすべて差分に出る。rebaseの後は`jj diffu --from main --to <bookmark> --stat`で見る。
+- **`jj diff`は、衝突を解いた行を、2つの版が行の中で混ざった形で描く**: 正しい文が壊れて見える。衝突を解いた後の中身は、`jj diff`でなく`rg`とReadで実際のファイルを見る。
 
 ## `jj diffu -r 'A..B'` は真の A→B 差分にならないことがある。`jj diff --from A --to B` を使う
 <!-- mentions: 1 | first-seen: 2026-09 -->

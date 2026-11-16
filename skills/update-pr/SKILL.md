@@ -126,15 +126,12 @@ gh pr edit <PR番号> --title '更新後のタイトル' --body-file ~/.claude/t
 ## Gotchas
 
 - **pushの前に、pushされる中身を`jj diff --from <bookmark>@origin --to @ --stat`で見る**: jjは作業コピーの編集を、知らせずに同じコミットへ入れる。pushの後に作ったファイルがPRのコミットに混ざっても、`jj st`には「変更あり」としか出ない。PRに属さないファイルがあれば、次のように分けてからpushする。中身がoriginと同じなら、pushしない（タイムスタンプだけが変わり、CIが走り直す）。
-  - rebaseの後は`jj diffu --from main --to <bookmark> --stat`で見る。`<bookmark>@origin`は古いbaseを指したままなので、`main`が進んだ分がすべて差分に出る。
+  - rebaseの後は`jj diffu --from main --to <bookmark> --stat`で見る（`~/.claude/docs/jj.md`の「差分の基準点を確かめる」）。
   - pushの後に作った別件のファイル（フォローアップのissue、調査のメモ、次の作業の実装）は、子のコミットへ分ける。手順は`~/.claude/docs/jj.md`の「PR を push した後、別件を始める前に `jj new` する」にある。push済みのbookmarkの上で次の作業を始める前に`jj new`を切っておけば、混ざらない。
-  - パスを指定した`jj squash --from @- --into @ <path>`は、push済みのコミットが元から足していたファイルも丸ごと子へ移す。pushの後の増分だけを移すときは、squashの後に`jj restore --from <bookmark>@origin --to <bookmark> -- <path>`でbookmarkの側をoriginの状態に戻し、子で増分を当て直す。
-  - 分けた子をpushする前に、`jj rebase -r <child> -d '<bookmark>@origin'`でoriginの実コミットへ載せ替える。squashとrestoreは、内容がoriginと同じでもコミットを書き換える。書き換えた版を親にしたまま積むと、差分が0でもPRがCONFLICTINGになる。同じPRの2つ目のコミットとして入れるときも同じで、載せ替えないと1つ目のコミットがforce-pushで差し替わり、CIが走り直してレビュー済みの印が消える。載せ替えた後は`jj bookmark set <bookmark> -r <rev> --allow-backwards`でbookmarkを合わせ、書き換えた版を`jj abandon`する。
+  - 分ける、戻す、PRに入れるファイルだけを移す、分けた子をoriginの実コミットへ載せ替える、の操作は`~/.claude/docs/jj.md`の「push済みのPRに足す、分ける」にある。分ける前に読む。
   - 環境ごとの設定は、`jj restore --from <bookmark>@origin -- <path>`で戻す。`/verify`でローカルの環境を起動すると、`.env.local`や`compose.override.yaml`のポートがそのワークスペースの値に書き換わることがある。
-  - `jj log`でbookmarkに`*`が付いていたら、手元がoriginと違うコミットを指している。その先に別の作業が入っていたら、`jj bookmark set <bookmark> --allow-backwards -r <PRのコミット>`で戻す。`--allow-backwards`が無いと拒否される。
-  - `@`がbookmarkより上にあり、間に別の作業があるときは、`jj squash --from @ --into <bookmark> <paths>`でPRに入れるファイルだけを移す。隣り合っていないコミットの間でもsquashできる。
   <!-- mentions: 11 | first-seen: 2026-06 -->
-- **push済みのbookmarkに新しいセッションで追記すると、`@`が説明の無い子のコミットになることがある**: push済みのコミットは、jjの既定の設定でimmutableとして扱われるためだ（`jj st`の`Parent commit (@-)`がbookmarkと同じになる）。そのままpushすると、PRに説明の無いコミットが並ぶ。`EDITOR=true jj squash --from @ --into <bookmark名>`でbookmarkのコミットへまとめてからpushする。`-m`は付けない。付けると、bookmarkのコミットの説明が上書きされる。
+- **push済みのbookmarkに新しいセッションで追記したら、pushの前に`jj st`で、`@`が説明の無い子のコミットになっていないかを見る**: そのままpushすると、PRに説明の無いコミットが並ぶ。まとめ方は`~/.claude/docs/jj.md`の「push済みのPRに足す、分ける」にある。
   <!-- mentions: 1 | first-seen: 2026-09 -->
 - **`gh pr edit`の前に、`jj bookmark list`でbookmarkがoriginより先に進んでいない（`ahead by N commits`が出ない）ことを見る**: 手順6のpushを飛ばして本文だけを更新したことがある。PRのURLは返るので、コードがpushされていないことに利用者が気づくまで分からない。
 - **本文の書き換えと`gh pr edit`を、1つのコマンドに`;`でつながない**: 本文を直すスクリプトが途中で落ちても、`;`で続けた`gh pr edit`は走り、古い本文が公開される。本文はEditで直し、`gh pr edit`は別の呼び出しにする。更新の後は、`gh pr view <N> --json body --jq .body`を`rg`にかけて、本文が空でないことと、古い記述（日付、件数）が残っていないことを見る。
@@ -147,9 +144,7 @@ gh pr edit <PR番号> --title '更新後のタイトル' --body-file ~/.claude/t
   - 記録を取った後でコードを直したら、その記録がどの時点のものかを書く。
   - 既存のPRを後から検証したときは、`未検証`と書いた節を実測の結果に差し替える。残すのは、検証していない範囲だけにする。
   <!-- mentions: 3 | first-seen: 2026-06 -->
-- **積んだPRの下がマージされたら、上を`main`へ載せ直す**: 下がsquash mergeされると、GitHubは上のbaseを`main`に変える。手元の上のbookmarkは下のコミットを親に持ったままなので、`jj git fetch`の後に`@`が衝突する。`jj rebase -b <上のbookmark> -d main`で載せ直し、空になった下のコミットを`jj abandon`して、`jj git push --bookmark <上のbookmark> --force`でpushする。
-  - fetchの前に気づいたら、`jj rebase -s <積みの根> -d main`で載せ直す。衝突は起きず、下のコミットが`(empty)`で残るので、`jj abandon`する。
-  - 下がmerge commitでマージされたときは、下のコミットが`main`の祖先になるので、`jj rebase -s <積みの根> -d main`だけで済む。下のbookmarkが手元から消えていたら、マージされている。rebaseの途中でも、pushの前に`jj log -r '<積みの根>-'`が`main`の祖先になっていないかを見る。
+- **積んだPRの下がマージされたら、上を`main`へ載せ直す**: 手順は`~/.claude/docs/jj.md`の「積んだPRの下がマージされたら、上を`main`へ載せ直す」にある。下がsquash mergeかmerge commitかで操作が違う。
   <!-- mentions: 3 | first-seen: 2026-06 -->
 - **「`re`はこのセッションで実行済み」を理由に手順4を飛ばす前に、前の`re`の後に新しい作業（追加のpush、設計の判断、つまずいた点）が無いかを会話で見る**: 1つのセッションでpushを重ねると、`re`が前半の作業しか見ていないことがある。圧縮の要約にある「`re`は実行済み」も、全部の作業を見たことを表さない。間に作業があれば、その分だけ`re`を回す。
   <!-- mentions: 1 | first-seen: 2026-07 -->
