@@ -46,8 +46,8 @@ Biomeのa11yルールは、`<div>`にroleやariaを付ける前に、意味を�
 
 - 見出し全体を`<button>`にした後で別の操作（フィルタのトグル）を足すときは、見出しを`<div className="flex items-center gap-2">`に戻し、操作ごとに兄弟の`<button>`を並べる。折りたたみには`aria-expanded`と`aria-controls`、トグルには`aria-pressed`を付ける。タッチ用のpaddingは、親でなく各ボタンに付け直す。
 - `<Link><Button>`は、`<Button asChild><Link>...</Link></Button>`か`variant="link"`にする。
-- Radixの`PopoverTrigger asChild`と`Button`の中に削除ボタンを置くと、buttonの中のbuttonになる。内側は`<span role="button" tabIndex={0} onKeyDown={...}>`で書き、`onClick`で`e.stopPropagation()`、`onKeyDown`でEnterとSpaceを受ける。
-- Radixの`asChild`でトリガーを作るときは、`<span>`でなく`<button>`を渡す。`<span>`では`aria-haspopup`と`aria-expanded`は付くが、キーボードのフォーカスが保証されない。無効にしたいときは`<button disabled>`にする。
+- Radixの`PopoverTrigger asChild`と`Button`の中に削除ボタンを置くと、buttonの中のbuttonになり、動きが壊れる。トリガーの中に置くしかないときは、内側を`<span role="button" tabIndex={0} onKeyDown={...}>`で書き、`onClick`で`e.stopPropagation()`、`onKeyDown`でEnterとSpaceを受ける。`<span role="button">`を使ってよいのは、この入れ子を避けるときだけにする。
+- Radixの`asChild`でトリガーそのものを作るときは、`<span>`でなく`<button>`を渡す。`<span>`では`aria-haspopup`と`aria-expanded`は付くが、キーボードのフォーカスが保証されない。無効にしたいときは`<button disabled>`にする。
 
 <!-- mentions: 3 | first-seen: 2026-05 -->
 

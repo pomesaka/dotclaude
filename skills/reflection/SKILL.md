@@ -1,7 +1,7 @@
 ---
 name: reflection
 description: LLM が毎回読むドキュメントを圧縮する。具体例チェーンを上位原則に統合し、元の実例は archive に退避する。
-when_to_use: 「CLAUDE.md が肥大化してきた」「gotcha が多すぎる」「conventions.md を整理して」「亜種が増えすぎ」「原則にまとめて」「上位に昇格させたい」「具体例をコンパクトにしたい」「context を圧縮したい」と言われたとき。単一ファイルの機械的な体裁監査は /curate-docs、単発の Gotcha 追記は /gotcha を使う。このスキルは LLM が読むトークン数を減らすことを主目的にした能動的な圧縮フェーズ。
+when_to_use: 「CLAUDE.md が肥大化してきた」「gotcha が多すぎる」「conventions.md を整理して」「亜種が増えすぎ」「原則にまとめて」「上位に昇格させたい」「具体例をコンパクトにしたい」「context を圧縮したい」と言われたとき。単一ファイルの機械的な体裁監査は /curate-docs、単発の Gotcha 追記は /re を使う。このスキルは LLM が読むトークン数を減らすことを主目的にした能動的な圧縮フェーズ。
 argument-hint: [primary-doc-path]
 allowed-tools: Read, Edit, Write, Grep, Glob, AskUserQuestion, Bash(cat *), Bash(wc *), Bash(rg *), Bash(fd *), Bash(ls *), Bash(mkdir *), Bash(date *)
 ---
@@ -14,7 +14,7 @@ allowed-tools: Read, Edit, Write, Grep, Glob, AskUserQuestion, Bash(cat *), Bash
 
 書き方の基準は`~/.claude/docs/prompt-engineering.md`の「指示の書き方」と「維持のしかた」にあるので、始める前に読む。
 
-ほかのスキルとの分担は次のとおり。`/curate-docs`は文書の全体を監査して、重複、食い違い、壊れた参照を見つける。`/re`と`/gotcha`は学びを1件ずつ書く。このスキルは、積み重なった項目をまとめて減らす。
+ほかのスキルとの分担は次のとおり。`/curate-docs`は文書の全体を監査して、重複、食い違い、壊れた参照を見つける。`/re`は学びを1件ずつ書く。このスキルは、積み重なった項目をまとめて減らす。
 
 ## 完了の条件
 

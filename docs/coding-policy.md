@@ -62,7 +62,7 @@
 
 ## 利用者の好み
 
-- **TypeScriptでは`as`のキャストを使わない**。空の配列は`[] satisfies T[]`か`const arr: T[] = []`で書く。`{ items: [] }`のように文脈から型が決まる箇所には`satisfies`も要らない。残っていないかは`rg ' as [^a-z ]'`で探す（`as [A-Z]`では`as 1 | 2 | 3`を取りこぼす。`as const`には当たらない）。
+- **TypeScriptでは`as`のキャストを使わない**。空の配列は`[] satisfies T[]`か`const arr: T[] = []`で書く。`{ items: [] }`のように文脈から型が決まる箇所には`satisfies`も要らない。残っていないかは`rg ' as [^a-z ]'`で探す（`as [A-Z]`では`as 1 | 2 | 3`を取りこぼす。`as const`には当たらない）。例外は、初期化を遅らせるProxyのtargetの型付けで、ほかに書き方が無い（`nextjs.md`）。
   <!-- mentions: 3 | first-seen: 2026-06 -->
 - **分岐は形で書き分ける**。1つの変数の値で分かれるなら`switch`（網羅の検査が効く）。全部のcaseが値を返すだけなら`const MAP = {...} as const`の引き当て。独立した複数の真偽に優先順位を付けて1つ選ぶなら、`if`と早期returnを並べる。
   <!-- mentions: 3 | first-seen: 2026-06 -->
