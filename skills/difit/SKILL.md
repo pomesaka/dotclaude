@@ -72,22 +72,13 @@ jj diffu -r '@' | mise exec -- portless <name> --app-port <P> npx difit - --clea
 
 ## Gotchas
 
-- **コードレビューだけでなく設計の不備を露出させる**: ユーザーが UI 上でコメントを残す過程で「なぜこの命名か」「なぜこの分割か」という設計判断への疑問が出やすい。実装完了後だけでなく、ドメイン用語や構造に自信がない段階でも積極的に呼ぶと有効。
-- **「衝突回避できたか」ではなく「概念ownershipが正しいか」をユーザーが補正する**: 自動レビュアーやサブエージェントは「型衝突した → 名前変えて回避」を是とする。ユーザーは「そもそも共有概念か feature 固有か」というセマンティック ownership を指摘してくる。レビュアーが OK と言った命名・配置でも、ユーザーがコメントしたら「症状回避」ではなく「概念の所属」から考え直すこと。
-  <!-- mentions: 1 | first-seen: 2026-05 -->
-- **ワークスペース構成への質問は大きな設計変更に繋がる**: 例：「この glob は本当に必要か？」という一行のコメントが「実は apps をワークスペースから外すべき」という全体設計の見直しに繋がることがある。短いコメントが設計判断の根底を揺さぶる可能性があるので、前提から再検討する値打ちがある。
-  <!-- mentions: 2 | first-seen: 2026-05 -->
-- **review コメントが構造改善を提案してきたら別 issue に切り出す**: 「この package フラットすぎない？」「ここ分けるべきでは？」のような restructure 提案を同 PR で対応すると、本来の PR スコープ（機能実装）が膨らんで diff が読めなくなる。対応: 提案内容を新規 issue に書き出して open にし、現 PR のレビュー対応では「scope 外なので別 issue 033 化した」と明示する。PR を focused に保ち、restructure は専用 PR で扱う。
-  <!-- mentions: 1 | first-seen: 2026-05 -->
-- **自動レビュー全通過後も「LLM は何を生成しているか」を問う**: policy/quality reviewer はコードの整合性・型安全性・規約遵守をチェックするが、「LLM の実際の contribution が null になっていないか」は問わない。factory で入力を前処理しすぎ + responseRules で「追加禁止」を課すと、LLM は入力をそのまま返すだけの pass-through になる（=AI 不要）。コードが美しく実装されていても設計として破綻しうる。difit でユーザーがこの観点を即座に発見した事例あり（issue 028: テンプレート変数置換 → LLM ノータッチ設計）。対処: 設計段階で「LLM はこの入力から何を生成するか？」を明示できるかチェックする。`~/.claude/docs/domain-design-practices.md`「AI Agentの設計原則」参照。別パターン（別の例: ファイル読み込み I/O を agent に含める → ファイル内容を連結するだけで LLM 生成ゼロ）も同根。決定的 I/O を agent に押し込むことも同じ罠。
-  <!-- mentions: 2 | first-seen: 2026-05 -->
-- **「なぜ X がないのか」という非存在への問いは aggregator の非対称入力を露出させる**: difit レビューで「screen→http はなんでないの？」「なぜ source Y は対応していない？」という問いが出たとき、それは aggregator が各ソースを別形式で受け取っている設計臭のシグナル。修正は aggregator 側に分岐を追加することではなく、各ソースが共通型（TargetDescriptor / RelationBinding）に変換して渡す境界正規化。この問いが出たら `~/.claude/docs/domain-design-practices.md`「横断モジュールへの入力境界パターン」を参照する。
-  <!-- mentions: 1 | first-seen: 2026-05 -->
-- **「ゼロベースで設計しなおしたら？」という問いが段階的改善では見えない設計歪みを露出する**: 段階的リファクタ（型追加・名前変更・wrapper 化）ではアーキテクチャの歪みが隠れやすい。difit で「インターフェース多すぎ・ゼロベースで」というユーザーコメントが来たとき、それは「整理」ではなく「型の存在自体を問い直す」シグナル。対処: 既存の型やパターンをいったん忘れて「この層の責務は何か？それを最も単純に表現すると？」から考え直す。既存実装の影響で複雑化した wrapper・factory・中間型は大抵この問いで消える。
-  <!-- mentions: 1 | first-seen: 2026-05 -->
-- **`npx difit` が `npm error Override without name: <key>` で落ちたら `bunx difit` に切り替える**: `npx` は CWD の `package.json` の `overrides` を読んで検証する。bun 系プロジェクトは overrides に説明用コメントキー（例: `"_comment_kysely": "..."`）を入れることがあり、bun はこれを許容するが npm は「名前のない override」として弾く（`npm error Override without name: _comment_kysely`）。これは**ポート衝突ではない** — portless のログで `Using port <P>` が出ていてもこのエラーで `npx` の段階で死ぬので、起動失敗時は最終行のエラーを確認すること。対処: 起動コマンドの `npx difit` を `bunx difit` に置き換える（bun は overrides コメントキーを許容し、stdin パイプ・`--port`/`--host`/`--no-open` もそのまま通る・2026-06 に確認）。bun 非採用リポジトリでは `npx` のままでよい。
+- **利用者のコメントは、書かれた箇所の直しでなく、前提への問いとして読む**: 自動のレビュアーやサブエージェントが通した命名や配置でも、利用者は「その概念はどこに属するか」「その型は要るか」を問う。短い問い（「このglobは要るか」「インターフェースが多すぎる、ゼロベースで」）ほど、命名、配置、型があること自体までさかのぼって考える。名前を変えて衝突を避けるような、症状だけの直しで済ませない。PRの範囲を超える作り直しの提案は、同じPRで対応すると差分が読めなくなるので、別のissueに書き出し、レビューへの返答でそう伝える。命名や構造に自信がない段階で呼んでも、こうした問いをもらえる。
+  <!-- mentions: 5 | first-seen: 2026-05 -->
+- **「モデルは何を生成しているのか」「なぜXには対応していないのか」と問われたら、`~/.claude/docs/domain-design-practices.md`を読む**: 前の問いは「AI Agentの設計原則」、後の問いは「横断モジュールへの入力境界パターン」に、原因と直し方がある。
+  <!-- mentions: 3 | first-seen: 2026-05 -->
+- **`npx difit`が`npm error Override without name: <key>`で落ちたら、`bunx difit`に替える**: `npx`は作業ディレクトリの`package.json`の`overrides`を検証し、bunが許す説明用のキー（`"_comment_kysely"`など）を弾く。portlessのログに`Using port <P>`が出ていても、この段階で落ちるので、起動に失敗したらログの最後の行を読む。`bunx`でもstdinのパイプ、`--port`、`--host`、`--no-open`はそのまま通る（2026-06に確認）。bunを使わないリポジトリでは`npx`のままでよい。
   <!-- mentions: 1 | first-seen: 2026-06 -->
-- **「指摘なし」と結論する前に出力ファイルの `Total comments:` 行を確認する — コメントブロックは shutdown 後に非同期で flush される**: difit のレビューコメントはサーバー終了時に stdout へまとめて出力されるが、タスク出力ファイルを「Client disconnected, shutting down server...」の直後に Read すると、その後に追記される `📝 Comments from review session:` ブロックがまだ書かれておらず「コメントなし」に見えることがある（2026-09 ある案件の PR で実際にユーザーがコメント 4 件を残していたのに「指摘なし」と誤報告）。対処: 「指摘なし」と判定してよいのは `[exited with code 0]` が出力ファイル末尾にあり、かつ `Total comments:` 行が存在しない（= コメントブロック自体がない）ことを確認したときだけ。ユーザーに「コメント書いたんだけど」と言われたら議論せず同じファイルを即座に再 Read する。
+- **コメントのブロックは、difitが終了した後に遅れて書き出される**: タスクの出力ファイルを`Client disconnected, shutting down server...`の直後に読むと、`📝 Comments from review session:`のブロックがまだ無く、コメントなしに見える。「指摘なし」とするのは、出力の末尾に`[exited with code 0]`があり、`Total comments:`の行が無いときにする。利用者が「コメントを書いた」と言ったら、同じファイルを読み直す。
   <!-- mentions: 1 | first-seen: 2026-09 -->
-- **PR 全体レビューを difit に流す前に、ブランチが最新の base に rebase 済みか確認する**: stale なブランチ（base が origin より遅れている）で `jj diffu --from <base>@origin --to @` を流すと、base 側で先にマージされたコミット（changelog・version bump 等）が「巻き戻し」として phantom diff になり、レビュアーが「なんでここに差分が出るの？」「以前の変更が失われてない？」という誤指摘に時間を使う（2026-09 ある案件の PR でコメント 4 件中 3 件が stale 由来だった）。対処: 起動前に `jj git fetch` → `jj log -r 'fork_point(<base>@origin | @)'` で分岐点が base の tip と一致するか確認し、遅れていれば rebase してから diff を流す。
+- **PRの全体を流す前に、ブランチがbaseの先頭から分岐しているかを確かめる**: baseが古いブランチで`jj diffu --from <base>@origin --to @`を流すと、baseに先に入ったコミットが巻き戻しの差分として出て、利用者がその差分の指摘に時間を使う。`jj git fetch`の後に`jj log -r 'fork_point(<base>@origin | @)'`で分岐点を見て、baseの先頭より古ければ、rebaseしてから流す。
   <!-- mentions: 1 | first-seen: 2026-09 -->
