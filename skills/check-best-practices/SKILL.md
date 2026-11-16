@@ -2,19 +2,18 @@
 name: check-best-practices
 description: Claude Code のベストプラクティスリポジトリを調査し、dotclaude 環境との差分を分析して改善提案を行う。
 when_to_use: 「ベストプラクティス確認して」「dotclaudeを改善したい」と言われたとき。
-allowed-tools: Bash(bash ~/.claude/skills/check-best-practices/fetch.sh), Bash(bash ~/.claude/skills/check-best-practices/env.sh)
+allowed-tools: Read, WebFetch(domain:platform.claude.com), WebFetch(domain:code.claude.com), Bash(bash ~/.claude/skills/check-best-practices/fetch.sh), Bash(bash ~/.claude/skills/check-best-practices/env.sh)
 context: fork
 agent: general-purpose
-model: sonnet
 ---
 
-# Claude Code ベストプラクティス環境チェック
+# Claude Codeのベストプラクティスとの比較
 
-## ベストプラクティスリポジトリ（スキルロード時に取得済み）
+## ベストプラクティスのリポジトリ（スキルを読み込んだ時点で取得した）
 
 !`bash ~/.claude/skills/check-best-practices/fetch.sh`
 
-## 現在の dotclaude 環境（スキルロード時に取得済み）
+## いまのdotclaudeの環境（スキルを読み込んだ時点で取得した）
 
 !`bash ~/.claude/skills/check-best-practices/env.sh`
 
@@ -22,54 +21,54 @@ model: sonnet
 
 ## 目的
 
-上記のベストプラクティス内容と現在の dotclaude 環境を比較し、取り込む価値のある改善点を提案する。
+いまのdotclaudeの環境に、取り込む値打ちのある改善があるかを調べて、提案する。
 
-## 手順
+## 比べる基準
 
-### Step 1: 差分分析（スキルロード時に取得済みのデータを使う）
+基準にするのは、Anthropicの公式の文書だ。`~/.claude/docs/prompt-engineering.md`を読み、末尾の「出典」に挙げてある4つ（プロンプトの全般の指針、モデルごとの指針、Claude Codeのベストプラクティス、`CLAUDE.md`と`rules/`の読み込まれ方）を`WebFetch`で取って読む。`prompt-engineering.md`は、この出典を利用者の環境に当てはめてまとめた文書なので、出典が`prompt-engineering.md`より新しくなっていれば、その差も報告する。
 
-以下の観点で比較する。
+上のリポジトリは、基準でなく、取り込めるパターンを探す材料として読む。第三者がまとめたもので、古いモデルを前提にした勧めが混ざっている。次のような勧めは、公式の文書と食い違うので採らない。
 
-**CLAUDE.md の品質**
-- 行数は200行以下か（目標60行）
-- `settings.json` に移すべき強制動作が CLAUDE.md に書かれていないか
-- 明らかなこと（Claudeが既に知っていること）を書いていないか
+- `CLAUDE.md`の行数の目標や、文脈の残量が何%になったらcompactする、といった数値の基準
+- 重要な規則を強い語で書く、先頭と末尾で繰り返す、という勧め
+- スキルに`Gotchas`の節を前もって用意する、という勧め
+- 検証や徹底の念押し、既定でサブエージェントに任せる、という勧め
 
-**スキルの品質**
-- `description` フィールドがモデルのトリガー条件として書かれているか（ユーザー向け説明になっていないか）
-- Gotchas セクション（見落としやすい点・失敗パターン）があるか
-- Progressive Disclosure（references/ や examples/ の活用）ができているか
-- Agent Skill（`user-invocable: false`）と User Skill の使い分けができているか
+リポジトリの勧めが公式の文書に無く、食い違ってもいないときは、利用者の環境でどんな間違いが減るかを言えるものだけを提案する。
 
-**未実装の価値あるパターン**
-- オンデマンドフック（`/careful`, `/freeze` のようなスキルスコープのフック）
-- コンテキスト管理の指示（50% でコンパクト等）
-- human-gated task list ワークフロー
+## 見るところ
 
-### Step 2: 提案レポートを出力
+- `CLAUDE.md`と、そこから`@`で読む文書に、モデルがコードを読めば分かること、特定の作業でだけ要ること、hookや権限の設定で強制するほうがよいことが書かれていないか
+- スキルの`description`と`when_to_use`が、何をするかと、どんなときに使うかを伝えているか。副作用のあるスキルが`disable-model-invocation: true`になっているか。判断の要るスキルが`model:`で小さいモデルに固定されていないか
+- 公式の文書にあって、この環境でまだ使っていない機能（`rules/`の`paths:`、スキルに閉じたhook、サブエージェントの`tools:`の制限など）のうち、いまの文書やスキルの間違いを減らせるもの
 
-以下の形式で報告する。
+上に取得した環境は、`CLAUDE.md`の本文、スキルのfrontmatter、`docs/`の一覧だけだ。中身を見ないと判断できないときは、`~/.claude/docs/`や`~/.claude/skills/`のファイルをReadする。
+
+## 報告
 
 ```
-## ベストプラクティス環境チェック結果
+## ベストプラクティスとの比較の結果
 
-### 現状サマリー
-- スキル数: N 個
-- CLAUDE.md 行数: N 行
+### いまの環境
+- スキルの数: N
+- 毎回読まれる文書: CLAUDE.md と、@ で読む <文書の一覧>
 
-### すぐに取り込めるもの（低コスト・高効果）
+### 取り込めるもの（手間が小さい）
 1. ...
 
-### 検討価値があるもの（中コスト）
+### 検討するもの（手間がかかる）
 1. ...
 
-### 参考程度（今は不要かも）
-1. ...
+### 採らなかった勧め
+- <勧め>（出どころ） → <採らない理由>
 
-### 既にカバーできているもの（確認済み）
+### 既にできているもの
+- ...
+
+### 出典とprompt-engineering.mdの差
 - ...
 ```
 
-各提案には「なぜ価値があるか」と「具体的に何をするか」を書く。抽象的な提案は禁止。
+提案ごとに、出どころ（公式の文書の名前か、リポジトリのファイル）、取り込むとどんな間違いが減るか、どのファイルをどう変えるかを書く。どのファイルをどう変えるかを言えない提案は、載せない。
 
 $ARGUMENTS

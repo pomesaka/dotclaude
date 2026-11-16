@@ -1,12 +1,12 @@
-# Claude Code の hooks とスキルの設計規約
+# Claude Codeのhooksの設計規約
 
-> **TL;DR**: 未使用検出を持つ fixer は `PostToolUse:Edit` でなく `Stop` hook で走らせる。hook のトリガーは「何が欠けているか」で選び、発火条件は公式ドキュメントで確かめる。自動実行される hook に追跡ファイルを書き換えさせない。
+> **TL;DR**: hookを作るときに実際に間違えた点を3つまとめてある。fixerを走らせる時点、トリガーの選び方、追跡されているファイルの扱い。
 
-`~/.claude/CLAUDE.md` の「Claude Code Hooks 設計規約」には、各項目の見出し文と判断基準だけがある。ここには WHY・手順・実例を含む全文を置く。気づきの追記と mentions の加算は、このファイルに行う。
+この文書は、Claude Codeのhookを作る、直すときに読む。整理する前の版は`archive/2026-11-16/docs/hooks-policy.md`にある。
 
-- **`PostToolUse:Edit` で auto-fixer（biome / `eslint --fix`）を走らせない。`Stop` hook に集約する**: 中間 Edit の「変数を定義したが使用箇所はまだ」状態を fixer が誤検知し `_prefix` リネーム・未使用 import 削除を行い、次の Edit で `Cannot find name 'X'` になる。`--unsafe` を外しても safe fix で import が消える。ターン終了時なら使用箇所も揃っている。未使用検出を持つ fixer すべてに当てはまる。詳細: `archive/CLAUDE.md-2026-07-02.md#6-biome-post-edit-hook`
+- **未使用の検出を持つfixer（biome、`eslint --fix`）は、`PostToolUse:Edit`でなく`Stop`のhookで走らせる**。編集の途中には「変数を定義したが、使う箇所はまだ書いていない」状態があり、fixerがそれを未使用と見て、`_`を付けた名前に変えたりimportを消したりする。次の編集で`Cannot find name 'X'`になる。`--unsafe`を外しても、安全な修正の範囲でimportが消える。ターンの終わりなら、使う箇所もそろっている。
   <!-- importance: high | mentions: 3 | first-seen: 2026-06 -->
-- **hook のトリガーは「何が変わったか」でなく「何が欠けているか」で選ぶ**: 変更検知（`FileChanged` で lockfile 監視等）は一見筋が良いが外れることが多い。worktree 並列開発で欠けているのは node_modules であって lockfile は変更されていないため永遠に発火しない。「このイベントは、私が困っている状態のときに実際に発火するか？」を実ワークフローに当てる。イベント名から挙動を推測しない（`Setup` は通常のセッション開始で発火しない・`WorktreeCreate` は通知でなく作成処理そのものの置き換え）。採用前に公式ドキュメントで発火条件を確認する。`SessionStart` の stdout はコンテキストに注入されるので副作用目的なら `> /dev/null`。発火確認方法（`hook_success` レコード）含む詳細: `archive/CLAUDE.md-2026-07-29.md#16-hook-trigger-selection`
+- **hookのトリガーは、「何が変わったか」でなく「何が欠けているか」で選ぶ**。変更の検知（`FileChanged`でlockfileを見張る、など）は外れやすい。worktreeで並列に開発するときに欠けているのはnode_modulesで、lockfileは変わっていないので、発火しない。判断基準は「このイベントは、困っている状態のときに実際に発火するか」。イベントの名前から動きを推測せず、公式の文書で発火の条件を読む。`Setup`はふつうのセッションの開始では発火せず、`WorktreeCreate`は通知でなく作成の処理そのものを置き換える。`SessionStart`の標準出力は文脈に入るので、副作用だけが目的なら`> /dev/null`にする。
   <!-- importance: high | mentions: 2 | first-seen: 2026-07 -->
-- **自動実行される hook に追跡ファイルを書き換えさせない。「気づかないうちに壊れる」より「はっきり失敗する」を選ぶ**: hook はユーザーが見ていないところで走るため、生成物（lockfile 等）を書き換えると「作った覚えのない変更」がコミットに混入する。`bun install` でなく `bun install --frozen-lockfile`（npm なら `ci`）。判断基準: 「この hook は追跡ファイルを変更しうるか？」YES なら変更しない版を探す。関連: `coding-policy.md` の「ツールが所有する生成物ファイルは手書きしない」と対
+- **自動で走るhookに、追跡されているファイルを書き換えさせない**。hookは利用者が見ていないところで走るので、lockfileなどを書き換えると、作った覚えのない変更がコミットに混ざる。`bun install`でなく`bun install --frozen-lockfile`（npmなら`ci`）のように、書き換えずに失敗する版を使う。エラーにならずに誤った状態が通る形を避ける、という`coding-policy.md`の「失敗を、正しい値と区別できる形にする」と同じ考え方だ。
   <!-- importance: high | mentions: 1 | first-seen: 2026-07 -->

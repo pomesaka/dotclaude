@@ -1,114 +1,29 @@
 # Bash / CLI Tips
 
-> **TL;DR**: `bunx` / `npx` はバージョン固定（`bunx tool@1.2.3`）。`cd dir && cmd` は `mise exec --cd dir -- cmd` で代替（パーミッション回避）。`&&` / `||` 等の shell operator はプロンプトを誘発するため read-only パイプ（`rg | jq`）以外は避ける。
+> **TL;DR**: Bash ツールでコマンドを組むときに踏んだ罠。`bunx` / `npx` は版を固定する。`cd dir && cmd` は `-C` / `--cwd` / `-R` のような作業ディレクトリの指定か、2 回の呼び出しに分ける。破壊的な操作は絶対パスで書く。
+
+整理する前の版は `archive/2026-11-16/docs/bash-tips.md` にある。
 
 ## `bunx <tool>`（npx 系）はバージョンを固定しないとリポと食い違う
 <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 
 `bunx @biomejs/biome check` のようにバージョン無指定で実行すると、リポが依存している版とは別の版（古いキャッシュや latest）を引いてしまい、設定ファイルのスキーマ不一致で落ちることがある（例: biome 2.x の `includes` / `css.parser.tailwindDirectives` を 1.x が "unknown key" で拒否）。lint/format/codegen 系の CLI は、リポの `package.json` の版に合わせて `bunx @biomejs/biome@2.4.15 ...` のようにピン留めするか、リポに install 済みのバイナリを使う。
 
-## macOS sed の落とし穴
+## macOS のコマンドの違い
 
-macOS の標準 `sed` は GNU sed ではなく BSD sed（POSIX 準拠のみ）。
-
-### `\b` word boundary は機能しない
-
-**NG（macOS で動かない）**
-```bash
-sed -i '' 's/FooSession\b/FooJob/g' file.ts
-# → \b が文字通り解釈され、置換されないか誤置換する
-```
-
-**OK（2段階に分ける）**
-```bash
-# 長いほうを先に置換し、短いほうを後から
-sed -i.bak 's/FooSessionStore/FooJobStore/g; s/fooSessionStore/fooJobStore/g' file.ts
-# 残った短いものを単純置換
-sed -i.bak 's/FooSession/FooJob/g' file.ts
-```
-
-**OK（GNU sed を使う）**
-```bash
-# Homebrew で入れた gsed なら \b が使える
-gsed -i 's/FooSession\b/FooJob/g' file.ts
-```
-
-**OK（rg + edit で確認してから修正）**:
-一括 sed より `rg` で置換候補を確認してから個別 Edit する方が安全。
-
-### `-i` の挙動の違い
-
-| | macOS BSD sed | GNU sed |
-|---|---|---|
-| in-place | `-i ''`（空文字必須） | `-i`（引数なし） |
-| バックアップ | `-i.bak`（拡張子指定） | `-i.bak` or `-i.bak`（同じ） |
-
-`sed -i.bak 's/.../.../' file` の形式は両方で動く（バックアップが `.bak` で残るので `rm *.bak` を忘れずに）。
-
-## macOS には GNU `timeout` が標準で無い
-<!-- importance: low | mentions: 1 | first-seen: 2026-09 -->
-
-`timeout 15 <command>` は Linux では動くが、macOS では `zsh: command not found: timeout` で即座に失敗する（coreutils 由来のコマンドで、macOS の BSD ベースには含まれない）。ログの tail や監視用コマンドを短時間だけ流したいときは、`Bash` の `run_in_background: true` で起動し、必要な出力が出たら `TaskStop` で止める形にする。`brew install coreutils` を入れれば `gtimeout` として使えるが、環境に依存させない方が確実。
-
-## Docker entrypoint で env を unset するときの罠
-
-`RUN printf '#!/bin/sh\nunset VAR_A VAR_B ...\nexec "$@"\n'` のような entrypoint は、「何を無効化したいか」の目的が異なる変数を一行に混ぜると、後から変数を追加するときに意図しない unset を巻き込む。
-
-**NG（目的が混在）**
-```sh
-unset GIT_REPO_URL GIT_BRANCH GITHUB_APP_ID GIT_DIFF_BASE GIT_DIFF_HEAD
-# → clone 無効化のために書いたのに、diff 計算用の SHA まで消えた
-```
-
-**OK（目的別にコメントで区別）**
-```sh
-# disable git clone: use embedded repo instead
-unset GIT_REPO_URL GIT_BRANCH GIT_CLONE_DIR GITHUB_APP_ID GITHUB_APP_PRIVATE_KEY GITHUB_APP_INSTALLATION_ID
-# NOTE: GIT_DIFF_BASE / GIT_DIFF_HEAD はここに書かない — diff 計算用 SHA でクローン動作とは無関係
-```
-
-判断基準: *この変数を unset する目的は何か？* が変わるタイミングで行を分けるかコメントを入れる。
-<!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+- macOS の `sed` は BSD sed。`\b` は効かず、`-i` は拡張子の引数が要る（`sed -i.bak` なら GNU sed でも動く）。一括の sed より、`rg` で候補を確かめてから Edit で直すほうが確実
+- macOS には `timeout` が無い（`zsh: command not found: timeout`）。ログの tail や監視のコマンドを短い時間だけ流したいときは、`Bash` の `run_in_background: true` で起動し、必要な出力が出たら `TaskStop` で止める
+  <!-- importance: low | mentions: 1 | first-seen: 2026-09 -->
 
 ## マークダウン本文を heredoc で書き出すときは、終端を引用符で囲む
 <!-- importance: high | mentions: 1 | first-seen: 2026-10 -->
 
-`<<EOF`（引用符なし）の heredoc は、中身を二重引用符文字列と同じにコマンド置換・バックティック置換の対象にする。PR 本文や Python スクリプトの文字列リテラルの中にインラインコード（`` `functionName` ``）を書くと、シェルがそれをコマンドとして実行しようとし（`command not found`・無関係なディレクトリへの cd 試行など）、埋め込んだはずのテキストが欠落・変形する。
+`<<EOF`（引用符なし）の heredoc は、中身のバックティックと `$(` をシェルが展開する。PR 本文や Python スクリプトの中にインラインコード（`` `functionName` ``）を書くと、それがコマンドとして実行され、`command not found` が出て本文が欠ける。中身に `` ` ``・`$(`・`$VAR` が入るなら `<<'EOF'` にする。マークダウンのインラインコードは、ほぼこれに当たる。
 
-**NG（引用符なし。中身がシェルに展開される）**
-```bash
-python3 - <<EOF
-body = "`decideJobStep` を呼ぶ"
-EOF
-# → decideJobStep がコマンドとして実行され、command not found で落ちる
-```
+## Docker entrypoint で env を unset するときは、目的ごとに行を分ける
+<!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
 
-**OK（開始デリミタを引用符で囲む。中身は完全に literal）**
-```bash
-python3 - <<'EOF'
-body = "`decideJobStep` を呼ぶ"
-EOF
-```
-
-判断基準: 「この heredoc の中身に `` ` ``・`$(`・`$VAR` が入るか？」YES なら必ず `<<'EOF'` にする。マークダウンのインラインコードは十中八九これに当たる。実例: ある案件の PR 本文を `python3 - <<EOF ... EOF`（引用符なし）で書き出したとき、本文中の `` `packages/core` ``・`` `decideJobStep` `` 等がコマンドとして実行され、`permission denied: packages/core`・`command not found: decideJobStep` のエラーが延々と出た。`<<'EOF'` に変えて解消した（2026-10-07）。
-
-## ripgrep (rg) の使い方
-
-`grep` の代わりに `rg` を使う。デフォルトで `.gitignore` を尊重し、バイナリを除外する。
-
-```bash
-# ファイルを横断して検索
-rg 'FooSession' src/
-
-# 行番号付き
-rg -n 'FooSession' src/
-
-# ファイル名のみ
-rg -l 'FooSession' src/
-
-# 大文字小文字無視
-rg -i 'fooSession' src/
-```
+`unset VAR_A VAR_B ...` の 1 行に目的の違う変数を混ぜると、後から変数を足すときに意図しない unset を巻き込む（clone を無効にするための行に、diff の計算に使う SHA の変数まで入っていた）。目的が変わるところで行を分けるか、コメントを入れる。
 
 ## 複合コマンドを避ける — `cd /path && cmd` の代替
 <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
@@ -122,22 +37,13 @@ rg -i 'fooSession' src/
 ## auto-mode classifier に拒否されたコマンドは、ユーザーに `! <コマンド>` で実行してもらう
 <!-- importance: high | mentions: 1 | first-seen: 2026-09 -->
 
-「permission rule を足して再試行」を選択肢に出さない。拒否を解くために自分で `settings.local.json` に allow を書く操作は、それ自体が「[Auto-Mode Bypass]」として拒否される（classifier は自分の判定を迂回する設定変更をさせない）。選択肢に出すとユーザーが選んだ後で詰まり、確認が 1 往復無駄になる。拒否されたら、そのままコピペできる完全なコマンド（`EDITOR=true` 等の前置も込み）を提示して `!` での実行を頼み、実行後の検証から引き継ぐ。実例: ある案件の PR の rebase 後、`jj squash` が「[Git Destructive]」で拒否 → allow 追加も拒否 → ユーザーの手元実行で解消（2026-09-24）。
+「permission rule を足して再試行」を選択肢に出さない。拒否を解くために自分で `settings.local.json` に allow を書く操作は、それ自体が「[Auto-Mode Bypass]」として拒否される（classifier は自分の判定を迂回する設定変更をさせない）。選択肢に出すとユーザーが選んだ後で詰まり、確認が 1 往復無駄になる。拒否されたら、そのままコピペできる完全なコマンド（`EDITOR=true` 等の前置も込み）を提示して `!` での実行を頼み、実行後の検証から引き継ぐ。
 
 ## 破壊的操作（`rm -rf` 等）は絶対パスで書く
 <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
 
-`rm -rf "apps/acme/app/(app)/dispatch"` のような相対パスは、Bash ツールの暗黙の作業ディレクトリが想定と異なるとサイレントに失敗し（no such file → エラーなし）ディレクトリが残る。破壊的なファイル操作は必ず絶対パスで書く。
+`rm -rf "apps/acme/app/(app)/dispatch"` のような相対パスは、Bash ツールの作業ディレクトリが想定と違うと、対象が見つからないままエラーも出ずに終わり、ディレクトリが残る。破壊的なファイル操作は `rm -rf "<絶対パス>/apps/acme/app/(app)/dispatch"` のように絶対パスで書く。
 
-**NG（相対パスは作業ディレクトリ依存で誤作動しやすい）**
-```bash
-rm -rf "apps/acme/app/(app)/dispatch"
-# → Bash ツールの cwd がルートでなければ見つからずサイレント失敗
-```
+## 日本語の文書を Edit するとき
 
-**OK（絶対パスで確実に指定）**
-```bash
-rm -rf "/Users/pomesaka/.local/share/claude-deck/workspace/-Users.../apps/acme/app/(app)/dispatch"
-```
-
-削除後は `ls <パス> 2>/dev/null && echo EXISTS || echo DELETED` で確認する。
+Edit の `old_string` はバイト列の完全一致で照合される。全角の括弧・全角の空白・ダッシュ類・引用符は、見た目が同じでも別の文字なので、これらを含まない範囲を `old_string` に選ぶと一致の失敗が減る。

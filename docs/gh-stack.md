@@ -1,6 +1,8 @@
 # GitHub Stacked PRs（gh stack）リファレンス
 
-> **TL;DR**: 積んだPRは、作った直後に`gh stack link <下から順のPR番号>`でGitHubのStackとして登録する。jjでは`link`と、番号を渡す`merge`・`unstack`だけを使う。登録するとStackの途中のPRにもCIが走る。マージは下からしかできない。
+> **TL;DR**: 積んだPRをGitHubのStackとして登録する拡張`gh stack`を、jjから使う手順と、実際に確かめた挙動。積んだPRを作る、直す、マージするときに読む。
+
+整理する前の版は`archive/2026-11-16/docs/gh-stack.md`にある。
 
 2026-10-07に、公式ドキュメント（[About stacked pull requests](https://docs.github.com/en/pull-requests/get-started/about-stacked-prs)・[Roll out](https://docs.github.com/en/pull-requests/tutorials/roll-out-stacked-prs)）と`github/gh-stack`のREADME（main）を読み、ある案件のPR10本で試してまとめた。拡張はv0.2.0、`gh`は2.100.0。新しい拡張なので、コマンドは記憶で組まず`gh stack <command> --help`で確かめる。
 
@@ -79,9 +81,6 @@ rebaseとpushはjjでやる。下のPRを直すときは`jj new <rev>`で編集�
 
 ## 制限
 
-- 全ブランチが同じリポジトリにあること。フォークをまたげない（資料）
-- 一直線のStackだけ。枝分かれは作れない（資料）
-- GitHub Desktopは未対応（資料）
 - PRの数の上限は資料に書かれていない。10本は登録できた（実測）
 
 ## 登録したあとの修正

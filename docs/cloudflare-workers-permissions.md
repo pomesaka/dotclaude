@@ -1,13 +1,13 @@
 # Cloudflare API トークン: Workers の権限まわりの罠
 
-Pulumi（`@pulumi/cloudflare`）で Worker を新規作成しようとして 403 が返った際の調査（2026-09-25）。
+Pulumi（`@pulumi/cloudflare`）で Worker を新規作成しようとして 403 が返った際の調査（2026-09-25）。整理する前の版は `archive/2026-11-16/docs/cloudflare-workers-permissions.md` にある。
 
 ## 新しい権限体系（2026-09-15 GA）の「Workers Editor」は新規作成できない
 
 Cloudflare は 2026-09-15 に、Workers のアカウント全体権限を「1 Worker・1 プロダクト・Developer Platform 全体」に絞れる新しい権限体系（Metadata Read-Only / Content Read-Only / Editor / Admin の 4 ロール）を GA した。旧来の「Workers Scripts」系の権限は残っているが、新しい体系に置き換わっていく方針。
 
 - **Editor**: 既存 Worker の読み取り・更新・デプロイ・リネームはできるが、新しい Worker の作成・削除はできない（[Workers roles and permissions](https://developers.cloudflare.com/workers/authorization/workers/)）
-- **新しい Worker を作るには product レベルの Admin が要る**。per-Worker スコープは「まだ存在しない Worker」には付けられないので、初回作成時は必ず Admin（または legacy の Workers Scripts: Edit）が必要
+- **新しい Worker を作るには product レベルの Admin が要る**。per-Worker スコープは「まだ存在しない Worker」には付けられないので、初回作成時は Admin（または legacy の Workers Scripts: Edit）が必要
 - 対処: 初回デプロイ（Worker 作成）は Admin か legacy 権限で行い、Worker ができた後にその Worker だけの Editor へ絞り直す
 
 症状は `assets-upload-session` などの API が `403 { "message": "No access to the specified resource." }` を返すだけで、権限が足りないことしか分からず「どの権限が足りないか」は各 API の "Accepted Permissions" ドキュメント（`https://developers.cloudflare.com/api/resources/.../methods/create/`）を個別に確認しないと分からない。

@@ -21,7 +21,7 @@ model: opus
 ## 参考資料
 
 !`cat ~/.claude/docs/domain-design-practices.md 2>/dev/null`
-!`cat ~/.claude/docs/cohesion.md 2>/dev/null`
+!`cat ~/.claude/docs/code-design.md 2>/dev/null`
 
 ---
 
