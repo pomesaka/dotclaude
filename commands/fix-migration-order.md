@@ -76,6 +76,4 @@ Note: The new migration file will have the current timestamp and should resolve 
 
 ## Important Notes:
 - This command should be run from the project root directory
-- Ensure you have proper permissions to delete and create files
 - The migration content will be regenerated based on current schema differences
-- Always test the new migration locally before pushing to CI/CD

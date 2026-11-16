@@ -43,7 +43,7 @@ jj bookmark track <bookmark>@origin
 ### 3. コンフリクト解決用のmerge commitを作成
 
 feature branchを第1親、mainを第2親にしてmerge commitを作成する。
-**第1親をfeature branchにすることが重要**（first-parentをたどるツールがfeature branchの履歴を辿れる）。
+第1親をfeature branchにするのは、first-parentをたどるツールがfeature branchの履歴を辿れるようにするためだ。
 
 ```bash
 jj new <bookmark> main -m 'merge main into <bookmark>'
@@ -88,7 +88,7 @@ task lint
 
 ### 7. bookmarkを前に進めてpush
 
-`@` はfeature bookmarkの子孫なので `--allow-backwards` 不要。
+`@` はfeature bookmarkの子孫なので `--allow-backwards` 不要。付けて進めると、過去のコミット履歴が失われる。
 merge commitはfeature tipの子孫なのでforce pushも不要（fast-forward）。
 
 ```bash
@@ -107,7 +107,4 @@ gh pr diff <PR番号またはbookmark> --name-only  # feature branchの変更フ
 
 ## 注意事項
 
-- コンフリクト解決前に必ず両方の変更内容を理解すること
-- リントエラーがある場合は必ず修正してからpushすること
-- `--allow-backwards` は使わない（過去のコミット履歴が失われる）
-- force pushは使わない（merge commitはfeature tipの子孫なのでfast-forwardになる）
+- コンフリクトを解く前に、両方の親の変更内容を読む。片方の意図を知らずに解くと、その変更が消えるためだ。
