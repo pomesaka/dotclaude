@@ -52,4 +52,6 @@ Claude CodeとCodexの両方が読む、利用者の決めごと。Claude Code�
 | 文書、コメント、commit、PRのどこに書くかを決める | `what-goes-where.md`、`documentation-practices.md` |
 | `CLAUDE.md`、スキル、エージェント、プロンプトを書く | `prompt-engineering.md` |
 | インフラ、CI、外部のAPIを書く | `pulumi.md`、`github-actions.md`、`anthropic-api.md`、`postgres-patterns.md`、`async-job-reliability.md` |
-| その言語や道具を触る | その名前の文書（`typescript.md`、`react.md`、`go.md`、`jj.md`など） |
+| Scalaのdoobieで、TXを保ったまま外部の処理を呼ぶ | `doobie-weakasync.md` |
+| PRに貼る画面の証拠を、devサーバーなしで作る | `pr-evidence-capture.md` |
+| その言語や道具を触る | その名前の文書。TypeScriptは`typescript.md`と`ts-react-tooling-gotchas.md`（Bun、Biome、開発環境の癖）、Reactは`react.md`と`react-a11y.md`、Next.jsは`nextjs.md`、Goは`go.md`、jjは`jj.md`、Cloudflareは`cf.md`（そこから`cloudflare-access-setup.md`と`cloudflare-workers-permissions.md`を指している） |
