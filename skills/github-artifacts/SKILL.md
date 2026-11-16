@@ -62,6 +62,6 @@ main:has(#a2:checked):has(#m12:checked):has(#r1:checked):has(#s-agoda:checked) .
 ## Gotchas
 
 - **JavaScript の計算機をそのまま上げて、空のページを見せた**: pane の上に「Previewing runs this code」と出るが、`<script>` の結果は出なかった（2026-10-28）。上げる前に、JavaScript を切ったブラウザか、script を消した版で、ページが空にならないかを見る
-  <!-- importance: high | mentions: 1 | first-seen: 2026-10 -->
+  <!-- mentions: 1 | first-seen: 2026-10 -->
 - **ページの幅で崩れたのを、利用者のスクショで初めて知った**: 1280 px で撮ったスクショでは崩れが見えず、pane の幅で「1 回目」が折り返し、カードが 3 枚と 1 枚に割れた。撮るのは 760 px の幅で
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-10 -->
+  <!-- mentions: 1 | first-seen: 2026-10 -->

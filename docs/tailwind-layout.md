@@ -16,15 +16,15 @@
 ## 色とトークン
 
 - **同じCSSプロパティを出すユーティリティ（`bg-*`、`border-*`、`text-*`、`ring-*`）を、1つの要素に重ねない**。勝つのはクラスの並び順でなく、生成されたCSSの順になる（Tailwind v4）。CVAでは、色を`theme`のvariantに置かず、`{ variant: "default", theme: "primary" }`のcompound variantに置く。`variant="outline"`のときは背景のクラスが付かないので、競合しない。文字列の連結（`${BASE} border-green`）でも同じなので、ベースの定数から色を抜き、状態ごとに排他で足す。失敗してもエラーは出ず、`ring-*`のような別のプロパティだけが効いて、選択の状態が弱いだけに見える。疑ったら`getComputedStyle(el).borderColor`を測る。
-  <!-- importance: high | mentions: 2 | first-seen: 2026-05 -->
+  <!-- mentions: 2 | first-seen: 2026-05 -->
 - **`--accent`は、`--muted`と見分けられる値にする**。`bg-muted`の領域で`hover:bg-accent`を使うと、2つが近い値のときにホバーの変化が見えない。Tailwind v4では、既定値として`accent`と`muted`に同じかほぼ同じ値が入っていることがある。Lightでは`--accent`を暗く（muted 95.5%に対して91%）、Darkでは明るくする（16%に対して23%）。
-  <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
+  <!-- mentions: 1 | first-seen: 2026-05 -->
 - **コンポーネントに`dark:`のクラスがあるなら、トークンの設計を直す**。LightとDarkの切り替えはトークンの定義（`globals.css`）だけで済ませ、コンポーネントは意味のトークン（`text-destructive`、`bg-accent`）だけを参照する。`dark:text-blue-300`のような直書きは、そのトークンのDarkの値が合っていないことを表す。Darkの側の明度と彩度を直して、`dark:`を消す。
-  <!-- importance: high | mentions: 1 | first-seen: 2026-05 -->
+  <!-- mentions: 1 | first-seen: 2026-05 -->
 - **操作の要素のトークン（`--primary`、`--secondary`、`--destructive`）を、レイアウトの背景に使わない**。表のヘッダーやセクションの区切りには`bg-muted`、`card`、`background`を使う。判断基準は「ここにボタンを置いても違和感がないか」。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+  <!-- mentions: 1 | first-seen: 2026-05 -->
 - **グリッドの列の幅より大きい`size`のButtonを置かない**。`size="icon"`は`h-9 w-9`（36px）に展開され、16pxや24pxの列からはみ出して隣を押す。paddingでは直らない。`className="size-4 p-0"`のように、列の幅に合わせた大きさを直接書く。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+  <!-- mentions: 1 | first-seen: 2026-05 -->
 
 ## 固定シェルと内側のスクロール
 
@@ -34,16 +34,16 @@
 - **`h-full`は、flexで伸ばされた親（height: auto）に対しては効かない**。ルートを`h-screen`にし、各段を`flex flex-col min-h-0`でつなぎ、スクロールさせるパネルに`flex-1 min-h-0 overflow-y-auto`を付ける。`min-h-0`が1段でも抜けると、パネルが縮まずにページがスクロールする。
 - **`<a href="#id">`のアンカーは、スクロールできる祖先を全部動かす**（windowも含む）。内側のパネルだけを動かすなら、`onClick`で`e.preventDefault()`し、見出しにいちばん近いスクロールできる祖先（`scrollHeight > clientHeight`を上へたどる）にだけ`scrollBy({ top: delta })`する。`href`は中クリックとコピーのために残す。
 - **flexの縦並びの中で`flex-1`から高さを得るスクロールのコンテナは、`scrollHeight`を`documentElement.scrollHeight`へ漏らす**（Chromiumで実測）。windowはスクロールしないが、文書の高さが大きくなり、ブラウザによっては縦のスクロールバーが出る。祖先の`overflow:hidden`でも、divで包んでも止まらない。漏らす要素に`contain: size layout`を付ける。flexの横並びのコンテナでは起きない。`el.style.contain = 'size layout'`を当てて`documentElement.scrollHeight`が下がれば、これが原因。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
+  <!-- mentions: 1 | first-seen: 2026-06 -->
 - **中身が途切れる、白い画面になる不具合は、実際にスクロールする要素で測る**。このレイアウトでは内側の`<main>`がスクロールするので、`window.scrollY`や`documentElement.scrollHeight`で測ると、直っていないのに通る。中身の要素から祖先をたどり、各祖先の`height`、`overflowY`、`scrollHeight`、`clientHeight`を出す。`scrollHeight == clientHeight`なのに子があふれている祖先が、切っている場所になる。直した後は、スクロールするコンテナで`scrollHeight > clientHeight`になることと、最下部までスクロールして末尾の要素が画面の中に入ることを見る。
 - **印刷では、`print:`で高さとoverflowの制限を外す**。コンテナに`print:block print:h-auto print:overflow-visible`、スクロールする領域に`print:overflow-visible print:h-auto`、サイドバーに`print:hidden`を付ける。`h-screen overflow-hidden`のままだと、PDFで中身が切れる。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+  <!-- mentions: 1 | first-seen: 2026-05 -->
 
 ## 測ってから直すもの
 
 - **gridの兄弟の「高さが揃っていない」という報告は、先に両方の`getBoundingClientRect().height`を測る**。gridの子は既定の`align-items: stretch`で枠が揃う。枠は同じで、中身の行数が少ない側の下が空いて短く見えていることがある。そのときは枠でなく中身の配置を直す（`flex flex-col`にして、中身の側に`flex-1`と中央寄せを付ける）。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-09 -->
+  <!-- mentions: 1 | first-seen: 2026-09 -->
 - 特定の兄弟の間だけ余白を増やすなら、親の`space-y-*`を変えず、対象の要素に`mt-*`か`mb-*`を付ける。`space-y-6`から`space-y-8`への変更は、画面で見分けにくい。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-05 -->
+  <!-- mentions: 1 | first-seen: 2026-05 -->
 - `p-0`と同じ要素に`pb-*`を足すと、CSSの出力の順によって`p-0`が勝つことがある。`p-0`を`pt-0`などに分けてから足す。
-  <!-- importance: low | mentions: 1 | first-seen: 2026-05 -->
+  <!-- mentions: 1 | first-seen: 2026-05 -->

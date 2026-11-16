@@ -5,7 +5,7 @@
 整理する前の版は `archive/2026-11-16/docs/postgres-patterns.md` にある。
 
 ## DO ブロック内でのパラメータバインドは機能しない
-<!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+<!-- mentions: 1 | first-seen: 2026-06 -->
 
 postgres.js の template literal（`sql\`...\``）は Extended Query Protocol で `$1`, `$2` バインドパラメータを送る。しかし PostgreSQL の `DO` ブロックは「引数なし無名関数の本体」として扱われるため、`$1` を参照すると `ERROR: there is no parameter $1` で失敗する。
 

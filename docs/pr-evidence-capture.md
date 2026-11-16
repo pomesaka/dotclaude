@@ -7,4 +7,4 @@ dev サーバーを起動せずに、PR の「動作確認」に貼るスクシ�
 3. puppeteer-core と、システムに入っている Chrome（`executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`）で撮る。Chromium を新しくダウンロードしない
 
 `:hover` や `:focus-visible` は、クラスの付け替えでなく `page.mouse.move(x, y)` や `page.keyboard` で本物の状態を起こして撮る。`.js-hover` のようなクラスで見た目だけを作ると、実装のセレクタが正しく書かれているかを確かめられない。
-<!-- importance: medium | mentions: 1 | first-seen: 2026-09 -->
+<!-- mentions: 1 | first-seen: 2026-09 -->

@@ -64,6 +64,6 @@ EOF
 ## Gotchas
 
 - **diff が大きくて出力が別ファイルに退避されたら、そのファイルを Read してから書く**: `--stat` だけを見て「全体を確認した」と書いたことがある（2026-09-10）。ファイル単位の要約は、各ファイルの差分を読んでから書く。読んでいない部分があるなら、そう書く
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-09 -->
+  <!-- mentions: 1 | first-seen: 2026-09 -->
 - **文中に書かれた `/jjdesc` は起動しないことがある。モデルからは呼べない**: このスキルは `disable-model-invocation: true` なので、Skill ツールで呼ぶと拒否される。手順を手で再現もしない。利用者に `/jjdesc` だけを単独で送ってもらう（jjcommit と同じ挙動・2026-09-09）
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-09 -->
+  <!-- mentions: 1 | first-seen: 2026-09 -->
