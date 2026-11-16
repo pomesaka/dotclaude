@@ -3,7 +3,7 @@ name: update-pr
 description: 既存 PR にコードを push してタイトル・ボディを更新する。
 when_to_use: 「PR を更新して」「PRの説明を直して」「変更を push して PR を更新して」と言われたとき。新規 PR 作成は create-pr を使う。
 argument-hint: "[PR番号]"
-allowed-tools: Bash(jj *), Bash(gh *), Bash(mise *), Read, Glob
+allowed-tools: Bash(jj *), Bash(gh *), Bash(mise *), Read, Glob, Write
 model: sonnet
 ---
 
@@ -36,12 +36,12 @@ jj log -r '<bookmark名>@origin..@'
 
 ### 3. WHYを会話ヒストリーから収集
 
-**最重要。** diffからはWHAT/HOWしか読み取れない。WHY（なぜ変えたか）は会話ヒストリーにしかない。
+diffからはWHAT/HOWしか読み取れない。WHY（なぜ変えたか）は会話ヒストリーにしかない。
 以下を特定する。
 
 - **課題・動機**: 何を解決しようとしていたか
 - **設計判断の理由**: なぜこのアプローチか、却下した代替案とその理由
-- **今回の更新で変わった点**: 前回PRからの追加・修正内容
+- **今回の更新で変わった点**: 前回PRからの追加・修正内容。本文のどこを書き換えるかを決めるために集める（本文に節としては足さない）
 - **アウトカム**: このPRがマージされたら何ができるようになるか（ユーザー目線 / 開発者目線）。「結局これマージしたら何できるんだっけ？」に1行で答えられるレベル
 
 ### 4. 振り返り
@@ -49,12 +49,12 @@ jj log -r '<bookmark名>@origin..@'
 `re` スキルを呼び出す（Skill ツール使用）。
 push 前に呼ぶことで、まだ記憶が新鮮な状態で学びを記録できる。
 
-**PR が issue に紐づくなら、`re`（docs への記録）とは別に issue ファイルの `## Devlog` も更新する。** `re` は docs/CLAUDE.md にしか書かないため、これを省くと「PR を `/update-pr` でフォローアップするたびに issue の Devlog が置き去り」になる（issue を実装するスキル経由でしか Devlog が書かれない）。今回のフォローアップで変わった点を `### 実装内容` / `### 設計判断`（**計画＝設計節からの逸脱を含む**）/ `### レビューで指摘・修正した点` / `### 困ったこと・ハマったこと` に追記する。`## Devlog` が無ければ新設する。
+PR が issue に紐づくなら、`re`（docs への記録）とは別に issue ファイルの `## Devlog` も更新する。`re` は docs/CLAUDE.md にしか書かないため、これを省くと「PR を `/update-pr` でフォローアップするたびに issue の Devlog が置き去り」になる（issue を実装するスキル経由でしか Devlog が書かれない）。今回のフォローアップで変わった点を `### 実装内容` / `### 設計判断`（計画＝設計節からの逸脱を含む）/ `### レビューで指摘・修正した点` / `### 困ったこと・ハマったこと` に追記する。`## Devlog` が無ければ新設する。
 
 ### 5. 動作検証
 
 PR更新前に変更の正しさを確認する。検証コマンドはプロジェクトの `CLAUDE.md` や `package.json` を参照して判断する。
-失敗した場合はプッシュ前に修正すること。
+失敗した場合はプッシュ前に修正する。
 
 - ビルド・型チェック
 - Linter/Formatter
@@ -71,9 +71,9 @@ jj git push --bookmark <bookmark名>
 ### 7. PR更新
 
 既存のPRタイトル・ボディを最新の変更内容に合わせて更新する。
-ボディは create-pr と同じフォーマットで全体を書き直す。
+ボディは create-pr と同じフォーマットで、今の差分の説明として全体を書き直す。「レビューで直した点」のような変更の経緯の節は足さない。pushのたびに節を足すと、今の差分が何をしているのかが読めなくなり、古い節の数字（テストの件数など）も実態とずれるためだ。経緯はコミットとPRのやり取りに残る。
 
-PRボディの「動作検証」セクションには、レビュアーが**手元で再現・確認できる具体的な手順**を書く。
+PRボディの「動作検証」セクションには、レビュアーが手元で再現・確認できる具体的な手順を書く。
 
 **動作検証の書き方:**
 
@@ -83,10 +83,9 @@ PRボディの「動作検証」セクションには、レビュアーが**手�
 - **動作確認**: ステップバイステップで「何をしたら何が起きるか」
 - **確認ポイント**: 正常系・エラー系で何を確認すべきか
 
-**`gh pr edit` は更新後のPR URLを stdout に出力する。これをユーザーに提示する。**
+本文はファイル（`~/.claude/tmp/pr-body-<PR番号>.md`）に書き、`--body-file`で渡す。`--body "$(cat <ファイル>)"`は、ファイルが無いと空の本文で上書きして成功する。`--body-file`なら、ファイルが無いときにghがエラーにするので、本文が消えない。冒頭の`issue:`の行は、数か月後にPRをたどる人が、変更の起点を会話のログなしで読めるように置く。
 
-```bash
-PR_URL=$(gh pr edit <PR番号> --title '更新後のタイトル' --body "$(cat <<'EOF'
+````markdown
 issue: #<番号>（PR が解決する issue。無ければ「なし（経緯を1行で）」）
 related: #<番号>, #<番号>（参考になる関連 issue / PR。無ければ省略可）
 
@@ -113,42 +112,39 @@ related: #<番号>, #<番号>（参考になる関連 issue / PR。無ければ�
 ```
 
 ### 動作確認手順
-1. 具体的なステップ → 期待される結果
+1. 具体的なステップ → 期待される結果（すぐ下に、動かして確かめた証拠を置く）
 
 🤖 Generated with [Claude Code](https://claude.ai/code)
-EOF
-)")
-echo "$PR_URL"
+````
+
+`gh pr edit` は更新後のPR URLを stdout に出力する。これをユーザーに提示する。
+
+```bash
+gh pr edit <PR番号> --title '更新後のタイトル' --body-file ~/.claude/tmp/pr-body-<PR番号>.md
 ```
 
 ## Gotchas
 
-- **既に push 済みの bookmark に新しいセッションで追記編集すると `@` がその上の新規コミット（description 無し）になる。push 前に bookmark コミットへ squash して 1 コミットに戻す**: push 済みコミットは jj のデフォルト設定で immutable 扱いになるため、新しいセッションで最初の編集をした時点で `@` はそのコミットへ amend されず別の子コミットとして生成される（`jj st` の `Parent commit (@-)` が bookmark と一致する新規コミットとして現れる）。この子コミットのまま push すると PR に「意味のある description のコミット」＋「no description のコミット」が並ぶ。対処: `EDITOR=true jj squash --from @ --into <bookmark名>`（`-m` を付けない。付けると bookmark コミットの元 description が上書きされる。rebase-main skill の「`-m` は宛先コミットの description を上書きする」と同じ見落としやすい点）で bookmark コミットへ統合してから push する。実例: ある案件の PR の 2 回目のフォローアップ（ヘッダーリンク削除・操作列のメニュー化）で `sytpuovr`（bookmark）の子として `mryozotq`（no description）が生成され、squash で 1 コミットに戻してから push した（2026-09-18）。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-09 -->
-- **PR の本文に「洗練で変えた点」「レビューで直した点」のような変更の経緯の節を足さない。本文は、今の差分の説明として書き直す**: 追加で push するたびに節を足すと、本文が「最初の形 → 直した点 → さらに直した点」の積み重ねになり、今の差分が何をしているのかが読めなくなる。古い節の数字（テストの件数・マイグレーションの番号）も実態とずれていく。経緯はコミットと PR のやり取りに残る。直したら、概要・動作検証の該当箇所をその場で書き換え、要らなくなった記述は消す。ユーザーから「PR に洗練で変えた点は書かなくていい。KISS」と言われた（2026-10-07）。
-  <!-- importance: high | mentions: 1 | first-seen: 2026-10 -->
-- **本文の書き換えと `gh pr edit` を 1 つのコマンドに `;` でつながない。本文は Edit ツールで直し、`gh pr edit` は別の呼び出しにする**: 本文を直すスクリプト（python で `replace` と `assert` を並べたもの）が `assert` で途中で落ちても、`;` で続けた `gh pr edit` は走り、古い本文が公開される。落ちたことは、出力の末尾の `Traceback` を読まないと気づけない。実例: 月末締めへの変更で、本文の置換の 1 つが文字列の不一致で落ち、古い「毎月 1 日・3 日まで」の本文が PR に入った（2026-10-26）。直後に気づいて上書きした。更新の後は、`gh pr view <N> --json body --jq .body` を `rg` で、古い記述（日付・件数）が残っていないか確かめる。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-10 -->
-- **push を飛ばして `gh pr edit` を先に実行するミス**: ステップ6の `jj git push` をスキップしてステップ7の PR 更新を先に実行してしまうことがある。PR の URL が返ってきた時点でコードが push されておらず、ユーザーが気づくまで分からない。対処: PR 更新コマンドを実行する前に必ず `jj bookmark list` で `@origin` との差分（`ahead by N commits`）がないことを確認すること。
-- **PR ボディの冒頭に `issue:` / `related:` を必ず載せる**: PR に直接対応する issue があれば `issue: #N`、参考になる関連 issue/PR があれば `related: #N, #M` を概要の一番上に書く。対応 issue が無い場合は `issue: なし（起点を1行で）` と明示する。理由: 数ヶ月後に PR を遡るとき、issue リンクが無いと「なぜこの変更があったか」を会話ログから掘り起こす必要があり追跡コストが高い。`gh issue view` で背景を即座に辿れる状態にする。
-  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
-- **ブックマーク・PRが存在しない場合は create-pr フロー**: ステップ1で `jj bookmark list` にブックマークがなく `gh pr list` にも該当PRが存在しない場合、実質的には新規PR作成になる。この場合は `create-pr` スキルの手順に切り替える（ブックマーク名を作業内容から命名 → `jj bookmark create <name> -r @` → `jj git push --bookmark <name>` → `gh pr create`）。`update-pr` と `create-pr` の区別は「既存PRがあるか」で判断する。bookmark 作成は `jj git push --bookmark <name>` で自動 create されることもあるが、`jj bookmark create` で先に明示的に作ると `jj log` でブランチを追跡しやすい。
-  <!-- importance: medium | mentions: 2 | first-seen: 2026-06 -->
-- **`--body "$(cat file)"` は file が無いと PR body を空文字で上書きする。`--body-file` を使う**: `cat` が失敗するとコマンド置換が空文字に展開され、`gh pr edit` は「空 body への更新」として成功してしまう（既存 body が消える）。`gh pr edit <N> --body-file /path/to/body.txt` ならファイル不在で gh 自体がエラーになり、body の消失が起きない（`gh pr create` も同様）。実例: body を `~/.claude/tmp/` に保存したのに `/tmp/` を参照して PR #98 の body を一時的に全消去した。body 更新後は `gh pr view <N> --json body --jq '.body | length'` で非ゼロ確認を癖にする。
-  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
-- **PR には実機検証のスクショを必ず貼る。「手元にあれば」ではなく、無ければ撮ってから PR を出す**（ユーザーの明示要望・2026-09-11）: ステップ5の動作検証は typecheck/test で終わらせず、アプリを実際に起動して変更が効く画面・エンドポイントまで到達し、その画面をキャプチャする。撮ったものは PR ボディの「動作確認」内に**主張のすぐ下**へ置き、画像ごとに「この画像で何が言えるか」を書く（観測ポイントを書かない画像は、レビュアーには「何かが映っている」以上の意味を持たない）。テキストで示せる証拠（レスポンスボディ・`hexdump`・`diff` の結果・件数）は画像より強いので、示せるものはコードブロックで併記する。UI の無い変更（API・CSV・CLI）でも「撮るものが無い」で済ませず、実際のレスポンス／バイト列を貼る。埋め込みは `gh pr edit <N> --body-file <body.md> --attach '<絶対パス>#説明'`（`upload-screenshots` スキル）。**ボディ側の `![説明](<パス>)` と `--attach` のパス文字列を一致させる**とその場に埋め込まれ、一致しなければコメント末尾に並ぶだけになる。Bash ツールは `cd` が永続しないので、両方を絶対パスで書くのが確実。既存 PR を後から検証した場合も、`未検証` と書いた節を消して実測結果に差し替えるところまでやる（残すべきは「本当に検証していない範囲」だけ）。**ボディに引用する文言・数値は記憶から書かず、保存したキャプチャ（スナップショット yaml・ログ・スクショ）を読み直して写す**: 検証から執筆までに時間が空くと、画面に出ていた文言を「それらしい文」に無意識で置き換える（実例: `1 件追加、0 件更新しました` を `1 件追加しました` と書きかけた・2026-09-11）。**キャプチャ後にコードを直した場合は、そのキャプチャがどの時点のものかを併記する**。
-  <!-- importance: high | mentions: 3 | first-seen: 2026-06 -->
-- **stacked PR の upstream が squash merge されると downstream がローカルで conflict する**: jj の stacked PR（A → B の順でマージ予定）で upstream A が squash merge されると、GitHub は downstream B の base を自動的に main に更新する。しかしローカルの bookmark B は A のコミットを親として持つため、`jj git fetch` 後に `@` が conflict 状態になる。対処: `jj rebase -b <downstream-bookmark> -d main` でリベースし、A 由来の空コミット（変更なし）が残ったら `jj abandon <empty-change-id>` で除去。その後 `jj git push --bookmark <downstream-bookmark> --force` で push する（force push は conflict 解消のため）。実例: PR #152 が PR #148 の squash merge 後に conflict → 上記手順で解消。**conflict を避けるより先に気づいた場合（fetch 前）**: `jj rebase -s <stack-root> -d main`（スタック全体）で直接リベースすれば conflict は起きず、upstream コミットが `(empty)` として現れるだけ。`jj abandon <empty-rev>` で除去後、`--force` push する。実例: PR #154 で PR #153 が main にマージ済みの状態で fetch 前にリベース → conflict なし・#153 コミットが empty → abandon で解消。**亜種: upstream が merge commit でマージされた場合**は upstream のコミット自体が main の祖先（immutable）になるので、empty コミットも conflict も出ず `jj rebase -s <stack-root> -d main` だけで済む。気づくきっかけは「upstream の bookmark がローカルから消えている」こと。rebase 作業の途中でも、push 前に `jj log -r '<stack-root>-'` が main の祖先になっていないか確認する。実例: ある案件の PR を feat/facility-self-service 上に rebase している間にそちらが #35 としてマージされていた（2026-09-24）。
-  <!-- importance: medium | mentions: 3 | first-seen: 2026-06 -->
-- **リベース後は `--from <bookmark>@origin` の diff が巨大になる。push 前の diff チェックは `--from main` で行う**: リベース後は `<bookmark>@origin` が旧ベース（リベース前の main コミット）を指したまま。`jj diff --from <bookmark>@origin --to <bookmark> --stat` は「リベース後に main が進んだ分の変更」を全部含む巨大な diff になり「push される変更」とはかけ離れる。PR が実際に追加するものは `jj diffu --from main --to <bookmark> --stat` で確認する（`main` が新しい真のベース）。`@origin` diff は「push した後に amend が入っていないか」の用途だけに使う。実例: PR #154 リベース後に `--from @origin` が 34 ファイル差分→ `--from main` で正しく 19 ファイルを確認。再発: PR #208 rebase で `--from @origin` が 103 ファイル（c856c45a → 960e1c0e の main 変化を含む）→ `--from main` で 24 ファイルに絞り込み。再発: ある案件の PR（CONFLICTING 状態のPRを check-pr 経由で発見し rebase で解消）でも同様に `--from main --stat` でスコープ確認。
-  <!-- importance: medium | mentions: 3 | first-seen: 2026-06 -->
-- **jj は push 後に作った無関係な編集を bookmark コミットへ通知なしに amend する。push 前に `jj diff --from <bookmark>@origin --to @` で差分を必ず確認する**: jj では `@`（作業コピー）が bookmark コミットと同一 change のことが多く、PR を push した後に作ったファイル（フォローアップ issue・調査メモ・別 concern の doc 編集など）が**同じコミットに取り込まれる**。`jj st` は「変更あり」としか見えず、それが feature PR のコミットに入っていることに気づきにくい。次に push すると feature PR に無関係なファイルが混ざる（または content 同一でも timestamp だけ変わって CI が無駄に再走する）。対処: push 前に `jj diff --from <bookmark>@origin --to @ --stat` で「push される中身」を直接見る。PR に属さないファイルがあれば `jj new`（空の子コミットを作る → bookmark は親に残る）→ `jj squash --from @- --into @ <該当パス>`（無関係ファイルを子へ移す）で分離し、`jj diff --from <bookmark>@origin --to <bookmark>` が空であることを確認してから扱う。content 同一（timestamp だけ差分）なら push 自体を省く判断もする。実例: PR #124 で、push 後に起票したフォローアップ issue 5 件＋CLAUDE.md 編集がモック PR のコミットに amend されており、上記手順で子コミットへ分離した。再発: PR #120（issue 052）で、push 後に作ったフォローアップ issue 107/108 が研究配線コミットに amend されていたのを `--stat` で検出。子コミットへ分離した結果 PR コミットが origin と byte 一致したため、その時点では push 不要と判断（後で `re` の conventions.md 更新を PR コミットに squash した分だけ push した）。3 回目: PR #278 push 後にサブエージェントへ委譲した次 issue（972）の実装が 966 の PR コミットに amend されていた → 子コミット分離で解消（2026-07）。**亜種: 分離時の `jj squash --from @- --into @ <path>` は「push 済みコミットが元々追加したファイル」も path 指定すると丸ごと子へ移す**（origin にあるファイル追加が bookmark コミットから消え、origin との diff が「ファイル削除」になる）。push 後の増分だけ動かしたい場合は、①該当 path を squash で子へ移す → ②`jj restore --from <bookmark>@origin --to <bookmark-rev> -- <path>` で bookmark 側を origin 状態に戻す → ③子コミット（working copy）で増分（status 変更等）を再適用する、の 3 段で分離する。実例: issues/972 ファイル（966 PR で新規追加済み・push 後に status のみ変更）の分離（2026-07）。**④分離後の子を stacked PR として push する前に、必ず `jj rebase -r <child> -d '<bookmark>@origin'` で origin の実コミットに載せ替える**: squash/restore は内容を origin と一致（diff 0 files）させてもコミット自体を書き換える（ハッシュが変わる）。子が「書き換え版」を親にしたまま push すると、GitHub は head が base branch head を含まないと判定し、同一ファイルの add/add・同一行変更として **PR が CONFLICTING になる**（diff 0 でも起きる。内容でなく履歴の問題）。rebase 後はローカル bookmark を `jj bookmark set <bookmark> -r <origin-commit> --allow-backwards` で origin 版に揃え、divergent になった書き換え版を `jj abandon` する。実例: PR #279（stacked・base: issue-966）が CONFLICTING → rebase + abandon + 再 push で MERGEABLE に解消（2026-07）。**予防策（分離手順自体を不要にする）: push 済み bookmark の上で次の作業（サブエージェント委譲・次 issue 実装）を始める前に `jj new -m '<次の作業の description>'` で子コミットを先に切る**。amend が構造的に起きず squash/restore/rebase の 3 点セットが丸ごと不要になる。実例: issue 973 で委譲前に `jj new` して amend ゼロで完走（2026-07）。**⑤分離した子を stacked PR でなく「同じ PR の 2 コミット目」として取り込む場合も④と同じ rebase が前提**: `jj rebase -r <child> -d '<bookmark>@origin'` → `jj bookmark set <bookmark> -r <child> --allow-backwards`（bookmark から見て sideways 移動なので必須）→ 書き換え版の旧親を `jj abandon` → push が fast-forward（Move forward）になる。rebase せず書き換え版親のまま bookmark を進めて push すると、内容同一でも PR の 1 コミット目が force-push で差し替わり CI 再走・レビュー済みマーク消失が起きる。実例: PR #2596 で verify 済みの繋ぎ込み子コミットを同 PR に取り込み、force-push なしで +1 コミット push（2026-07）。
-  <!-- importance: high | mentions: 4 | first-seen: 2026-06 -->
-- **ローカルブックマークが `<bookmark>*`（origin と異なるコミットを指す）場合、`jj diffu --from main --to <bookmark> --stat` でスコープを確認してから push する**: `jj log` で `fix/258*`（`*` 付き）は「ローカルが origin より先に進んでいる」ことを意味するが、その先のコミットが別 concern の作業（他の PR や issue ファイル群）を含む可能性がある。`--from main` の diff が PR タイトルのスコープを大幅に超えていたら、正しいコミットに bookmark を戻す: `jj bookmark set --allow-backwards -r <clean-rev>`（`--allow-backwards` がないと「先に進んでいる bookmark を戻す」として拒否される）。実例: PR #208 rebase 後に `fix/258*` が kzpymvwr（issues 259-271・feat/265 相当の minutes コンポーネント変更を含む）を指しており、`--from main --stat` で発覚 → `jj bookmark set --allow-backwards -r wrlmyzrt` で wrlmyzrt（元の fix/258 PR コミット）に戻した。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
-- **`/verify` 後はワークスペース固有のファイル変更（`.env.local`・`compose.override.yaml` のポート等）を PR に含めない。`jj restore --from <bookmark>@origin -- <path>` で @origin に戻す**: `/verify` スキルでローカル環境を起動すると `.env.local`・`compose.override.yaml` の接続ポートやURL がワークスペース固有の値に書き換わることがある。これを放置したまま `jj diff --from <bookmark>@origin --to @ --stat` を確認せずに push すると、PR にワークスペース固有のポート番号が混入する。対処: push 前に `--stat` でファイルリストを確認し、PR スコープ外のファイルは `jj restore --from <bookmark>@origin -- <path>` で元に戻してから diff が 0 になることを確認する。実例: issue 954/955 verify 後に compose.override.yaml が 15434→15449 に書き換わっており、restore で元の ports に戻した（PR #249）。再発: issue 966 verify 後に compose.override.yaml のポート + Docker ネットワーク再利用設定が残っており restore で除去（PR #278）。
-  <!-- importance: medium | mentions: 2 | first-seen: 2026-06 -->
-- **`@` が PR bookmark より上にある状態で特定ファイルだけ PR に追加したい場合は `jj squash --from @ --into <bookmark> <paths>`**: `@` が PR bookmark commit の孫以降（extra work が間に挟まる状態）にいるとき、`jj git push` すると PR に無関係なファイルが混ざる。特定ファイルだけを PR commit に取り込むには `jj squash --from @ --into <bookmark-name> path/to/file.ts` で対象ファイルのみを squash する。jj は隣接していない commit 間でも squash できる。squash 後に `jj diffu --from main --to <bookmark> -- <paths>` で取り込まれたか確認してから push する。実例: PR #208 の fix/258 bookmark（wrlmyzrt）が `@` の祖父にいる状態で mapper.ts / mapper.test.ts / stats.test.ts の3ファイルだけを squash で取り込み、kzpymvwr（issues 259-271 相当）は残したまま push した。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
-- **「re は今セッションで実行済み」を理由にステップ4をスキップする前に、前回 re 以降に新しい作業（追加 push・設計判断・ハマり）がないか確認する**: 1 セッションで push → PR body 更新を複数回重ねると（途中の直接 push + `gh pr edit` は update-pr スキルを経由しない）、re が前半の作業しかカバーしていない状態になる。セッション後半に update-pr を再実行したとき「re は実行済み」と機械的にスキップすると、後半の学び（大きめの設計変更・移行作業）が振り返りから漏れる。判断: transcript や会話履歴で「前回 re の実行位置」と「最後の push 内容」を比べ、間に非自明な作業があれば差分だけでも re を回す。compaction summary の「re は実行済み・再実行不要」という指示も「全作業をカバー済み」の保証ではない。実例: ある案件の PR で前半の re 後に SA 移行 + 表示モデル再設計が入り、ユーザーの「/re ってやった？」で漏れが発覚（2026-07）。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-07 -->
+- **pushの前に、pushされる中身を`jj diff --from <bookmark>@origin --to @ --stat`で見る**: jjは作業コピーの編集を、知らせずに同じコミットへ入れる。pushの後に作ったファイルがPRのコミットに混ざっても、`jj st`には「変更あり」としか出ない。PRに属さないファイルがあれば、次のように分けてからpushする。中身がoriginと同じなら、pushしない（タイムスタンプだけが変わり、CIが走り直す）。
+  - rebaseの後は`jj diffu --from main --to <bookmark> --stat`で見る（`~/.claude/docs/jj.md`の「差分の基準点を確かめる」）。
+  - pushの後に作った別件のファイル（フォローアップのissue、調査のメモ、次の作業の実装）は、子のコミットへ分ける。手順は`~/.claude/docs/jj.md`の「PR を push した後、別件を始める前に `jj new` する」にある。push済みのbookmarkの上で次の作業を始める前に`jj new`を切っておけば、混ざらない。
+  - 分ける、戻す、PRに入れるファイルだけを移す、分けた子をoriginの実コミットへ載せ替える、の操作は`~/.claude/docs/jj.md`の「push済みのPRに足す、分ける」にある。分ける前に読む。
+  - 環境ごとの設定は、`jj restore --from <bookmark>@origin -- <path>`で戻す。`/verify`でローカルの環境を起動すると、`.env.local`や`compose.override.yaml`のポートがそのワークスペースの値に書き換わることがある。
+  <!-- mentions: 11 | first-seen: 2026-06 -->
+- **push済みのbookmarkに新しいセッションで追記したら、pushの前に`jj st`で、`@`が説明の無い子のコミットになっていないかを見る**: そのままpushすると、PRに説明の無いコミットが並ぶ。まとめ方は`~/.claude/docs/jj.md`の「push済みのPRに足す、分ける」にある。
+  <!-- mentions: 1 | first-seen: 2026-09 -->
+- **`gh pr edit`の前に、`jj bookmark list`でbookmarkがoriginより先に進んでいない（`ahead by N commits`が出ない）ことを見る**: 手順6のpushを飛ばして本文だけを更新したことがある。PRのURLは返るので、コードがpushされていないことに利用者が気づくまで分からない。
+- **本文の書き換えと`gh pr edit`を、1つのコマンドに`;`でつながない**: 本文を直すスクリプトが途中で落ちても、`;`で続けた`gh pr edit`は走り、古い本文が公開される。本文はEditで直し、`gh pr edit`は別の呼び出しにする。更新の後は、`gh pr view <N> --json body --jq .body`を`rg`にかけて、本文が空でないことと、古い記述（日付、件数）が残っていないことを見る。
+  <!-- mentions: 2 | first-seen: 2026-06 -->
+- **bookmarkもPRも無ければ、`create-pr`の手順に切り替える**: 手順1で`jj bookmark list`にbookmarkが無く、`gh pr list`にもPRが無いなら、新しいPRを作ることになる。`update-pr`と`create-pr`は、既存のPRがあるかどうかで分ける。
+  <!-- mentions: 2 | first-seen: 2026-06 -->
+- **PRには、動かして確かめた証拠を貼る。手元に無ければ、撮ってからPRを更新する**（利用者の指示）: 手順5を型検査とテストで終わらせず、アプリを起動して、変更が効く画面やエンドポイントまで進む。証拠は「動作確認」の主張のすぐ下に置き、画像ごとに、その画像で何が言えるかを書く。文字で示せる証拠（応答の本文、`diff`の結果、件数）は画像より確かなので、コードブロックで並べる。UIの無い変更（API、CSV、CLI）でも、実際の応答やバイト列を貼る。
+  - 画像は`upload-screenshots`のスキルで埋め込む。本文の`![説明](<パス>)`と`--attach`のパスは、同じ絶対パスにする。Bashの`cd`は次の呼び出しに持ち越されず、パスが一致しないと画像は本文の末尾に並ぶだけになる。
+  - 本文に引用する文言と数値は、保存した記録（スナップショット、ログ、スクショ）を読み直して写す。検証から時間が空くと、画面の文言を記憶でそれらしい文に置き換えてしまい、レビュアーが再現したときに、検証せずに書いたように見えるためだ。
+  - 記録を取った後でコードを直したら、その記録がどの時点のものかを書く。
+  - 既存のPRを後から検証したときは、`未検証`と書いた節を実測の結果に差し替える。残すのは、検証していない範囲だけにする。
+  <!-- mentions: 3 | first-seen: 2026-06 -->
+- **積んだPRの下がマージされたら、上を`main`へ載せ直す**: 手順は`~/.claude/docs/jj.md`の「積んだPRの下がマージされたら、上を`main`へ載せ直す」にある。下がsquash mergeかmerge commitかで操作が違う。
+  <!-- mentions: 3 | first-seen: 2026-06 -->
+- **「`re`はこのセッションで実行済み」を理由に手順4を飛ばす前に、前の`re`の後に新しい作業（追加のpush、設計の判断、つまずいた点）が無いかを会話で見る**: 1つのセッションでpushを重ねると、`re`が前半の作業しか見ていないことがある。圧縮の要約にある「`re`は実行済み」も、全部の作業を見たことを表さない。間に作業があれば、その分だけ`re`を回す。
+  <!-- mentions: 1 | first-seen: 2026-07 -->

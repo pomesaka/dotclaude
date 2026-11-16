@@ -15,7 +15,7 @@ issue の artifact は、issue にぶら下げる文書・HTML・リンク。iss
 ## 手順
 
 1. **ページを作る**: 中身は `explain-html` スキルの手順で決める。下の「ページの制約」を守る
-2. **pane の幅で見る**: headless の Chrome で、幅 760 px のスクショを撮って Read で見る。崩れていたら直す
+2. **pane の幅で見る**: headless の Chrome で、幅 760 px のスクショを撮って Read で見る。崩れていたら直す。1280 px で撮ると、pane の幅で起きる折り返しやカードの割れが見えない
 
    ```bash
    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --disable-gpu --hide-scrollbars --window-size=760,2400 --screenshot=<ページと同じ場所>/<名前>.png file://<ページの絶対パス>
@@ -58,10 +58,3 @@ main:has(#a2:checked):has(#m12:checked):has(#r1:checked):has(#s-agoda:checked) .
 - 項目ごとに足す要素を分ける（同じ要素に `counter-increment` を 2 つ書くと、後の 1 つしか効かない）
 - counter は桁区切りを付けられない
 - 組の数 × 項目の数だけ規則ができる。4 × 4 × 4 の組 × 8 項目で 576 規則、約 90 KB だった
-
-## Gotchas
-
-- **JavaScript の計算機をそのまま上げて、空のページを見せた**: pane の上に「Previewing runs this code」と出るが、`<script>` の結果は出なかった（2026-10-28）。上げる前に、JavaScript を切ったブラウザか、script を消した版で、ページが空にならないかを見る
-  <!-- importance: high | mentions: 1 | first-seen: 2026-10 -->
-- **ページの幅で崩れたのを、利用者のスクショで初めて知った**: 1280 px で撮ったスクショでは崩れが見えず、pane の幅で「1 回目」が折り返し、カードが 3 枚と 1 枚に割れた。撮るのは 760 px の幅で
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-10 -->

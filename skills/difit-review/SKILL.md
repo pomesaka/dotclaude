@@ -74,6 +74,3 @@ npx difit --pr https://github.com/owner/repo/pull/123 --clean --background --com
 ## Troubleshooting
 
 - **`jj diffu` が見つからない**: `jj diff --git` で代替（git 形式の unified diff を出力）
-- **difit が何も表示しない**: `-` 引数が正しくパイプを受け取れているか確認。`jj diffu -r '@' | cat` で diff が空でないことを確認してから difit に渡す
-- **コメントが表示されない**: `--comment` の JSON が壊れている可能性。`echo '{"type":"thread",...}' | jq .` で検証する
-- **`--clean` のみで Files changed が増え続ける**: `--clean` は起動時にクリアするが、同一ポートで再利用された場合は蓄積する。portless の名前付き起動（Step 2）ならレビュー対象ごとに origin が分かれるためこの問題自体が起きない。フォールバックの直接起動時のみ、ポートが変わっていることを確認する

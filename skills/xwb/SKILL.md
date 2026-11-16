@@ -102,8 +102,8 @@ xwb は、この Mac の中だけで動くホワイトボード。エージェ�
 ## Gotchas
 
 - **セクションの `h` を増やすと、下の段は xwb が自動で押し下げる**。そのうえで手で y をずらすと二重にずれる。押し下げを待ってから `xwb ls` で位置を読み直す
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-11 -->
+  <!-- mentions: 1 | first-seen: 2026-11 -->
 - **段を空けても、下の段は自動で上がらない**。詰めるのは `xwb compact`
-  <!-- importance: low | mentions: 1 | first-seen: 2026-11 -->
+  <!-- mentions: 1 | first-seen: 2026-11 -->
 - **claude-deck の TUI が古いバイナリのままだと、起動オプションが付かない**。claude-deck を更新したら TUI を起動し直してから、セッションを再開する
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-11 -->
+  <!-- mentions: 1 | first-seen: 2026-11 -->

@@ -78,20 +78,17 @@ URL をユーザーに案内する。
 ## ログの確認
 
 何か問題が起きたときや動作確認したいときのみ、ログを Read で読む。
-コンテキスト節約のため Read の `limit` パラメータで末尾100行程度に絞る。
+ログは `>>` で追記され、再起動の前のエラーも残るので、Read の `offset` と `limit` で末尾100行程度を読む。
 
 ## Gotchas
 
 - **`portless proxy status` は存在しない**: プロキシ状態を事前確認するコマンドはない。起動を試みてログで判定する
 - **初回起動は sudo が必要**: TTY なしでは `sudo` が通らないためClaude は代わりに起動できない。ユーザーに案内する
-- **`run_in_background` でプロセスが即終了 = 失敗**: 正常起動時は長時間動き続ける。即完了通知が来たらエラーと判断してログを確認する
-- **ログファイルは `>>` で追記**: 再起動時に前回のログが残る。古いエラーと混同しないよう末尾を見る
-- **同一アプリの複数ワークスペース同時起動**: `package.json` の name をそのまま使うとホスト名が衝突する。ブックマーク名・ワークスペース名を含めたカスタム名（例: `acme-issue-006`）を使うこと
-- **「ホスト名固定 env」を使う認証ライブラリ（BetterAuth 等）が portless ホスト名と不一致で Invalid origin になる**: portless のホスト名はワークスペース/ブックマークで変わるが、認証ライブラリ側は `BETTER_AUTH_URL=https://acme.localhost` のように env で固定するパターンが多い。dev サーバーログに `Invalid origin: https://acme-iori-b747.localhost` が出ていたら env と portless ホスト名のミスマッチ。対処の選択肢: (1) ワークスペースごとに `.env.local` の URL を書き換える（毎回必要）、(2) ライブラリの trustedOrigins 設定を関数化して Origin ヘッダーから動的に許可する（要ライブラリ調査）、(3) portless に固定名で起動して env を 1 つに保つ（ただし複数ワークスペース同時起動はできない）
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
-- **portless のホスト名は `apps/<customer>/package.json` の `name` フィールドから決まる。ワークスペースディレクトリ名ではない**: `acme-anna-8b5d.localhost` のようにワークスペース名を使うと 404 になる。正しいホスト名は `apps/<customer>/package.json` の `"name"` を確認する（例: `"name": "acme"` → `acme.localhost`）。`.env.local` の `BETTER_AUTH_URL` 等も同じ名前で設定する。CLAUDE.md の「jj ワークスペースではブランチ名がサブドメインに付く」はカスタム名起動時の話（`portless <custom-name> bun run dev`）で、通常起動では package.json name そのもの。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
-- **Playwright 等の一時スクリプトをワークスペースルートから `bun run` すると `bun add` が走り package.json を汚染する**: `bun run /path/to/script.mjs`（外部 ESM ファイル）をワークスペースルートで実行すると、スクリプト内の `import { chromium } from "playwright"` が解決できず bun が自動で `bun add playwright` を走らせる（または手動実行が必要になる）。毎回 `bun remove playwright` → `jj restore package.json` の手戻りが発生する。対処: 一時スクリプトは scratchpad（`/tmp` 等）に置き、`bun` に直接実行させる（`bun /path/to/script.mjs`）か、Node.js 互換の `node /path/to/script.mjs`（playwright は npx でインストール済みの場合）で走らせる。どうしても bun を使う場合は scratchpad に `package.json`（`{"name":"tmp","type":"module"}`）と `bun add playwright` を行い、ワークスペースルートには触れない。
-  <!-- importance: medium | mentions: 1 | first-seen: 2026-06 -->
-- **`next dev --port N` は portless の `PORT` 環境変数を上書きして 502 を引き起こす**: portless は `PORT` env で動的にポートを割り当ててから dev プロセスを起動する。`package.json` の `"dev": "next dev --port 3001"` のように `--port` を固定すると `PORT` が無視され、portless はポートに何もいない状態で転送して 502 になる。対処: `--port` フラグを除去して `next dev`（引数なし）にする。既存アプリも同じ形式になっているので揃えることで問題が起きない。実例: あるブランチが `--port 3001` を付けていたため portless が 502 を返し続けた（`PORT=4368` で転送されたが Next.js は 3001 で待ち受け）。
-  <!-- importance: high | mentions: 1 | first-seen: 2026-06 -->
+- **通常起動のホスト名は、アプリの`package.json`の`name`で決まる**: ワークスペースのディレクトリ名ではないので、ワークスペース名を付けたホスト名は404になる（`"name": "acme"`なら`acme.localhost`）。ワークスペース名やブックマーク名が付くのは、`portless <custom-name> <cmd>`で起動したときだけだ。
+  <!-- mentions: 1 | first-seen: 2026-06 -->
+- **ホスト名をenvで固定する認証ライブラリ（BetterAuthなど）は、portlessのホスト名と食い違うと`Invalid origin`になる**: devサーバーのログに`Invalid origin: https://<起動したホスト名>`が出たら、`BETTER_AUTH_URL`などのenvと、起動したホスト名が違う。直し方は3つある。ワークスペースごとに`.env.local`のURLを書き換える。ライブラリのtrustedOriginsを、Originヘッダーから決める関数にする（ライブラリの調査が要る）。固定の名前で起動してenvを1つに保つ（複数のワークスペースを同時には起動できない）。
+  <!-- mentions: 1 | first-seen: 2026-06 -->
+- **`next dev --port N`のようにポートを固定したdevコマンドは、502になる**: portlessは`PORT`の環境変数でポートを割り当ててからdevのプロセスを起動する。`--port`を固定すると`PORT`が無視され、portlessは誰も待ち受けていないポートへ転送する。`package.json`の`dev`から`--port`を外す。
+  <!-- mentions: 1 | first-seen: 2026-06 -->
+- **Playwrightなどの一時スクリプトを、ワークスペースのルートで`bun run`しない**: スクリプトの`import`が解決できず、`bun add playwright`が要ることになり、`package.json`が書き換わる。一時スクリプトはscratchpadに置いて`bun /path/to/script.mjs`か`node /path/to/script.mjs`で走らせる。bunで依存が要るなら、scratchpadに`package.json`（`{"name":"tmp","type":"module"}`）を作り、そこで`bun add`する。
+  <!-- mentions: 1 | first-seen: 2026-06 -->

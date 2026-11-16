@@ -2,206 +2,107 @@
 name: review-prompt
 description: Claude が読むファイル（docs/・skills/・CLAUDE.md）のプロンプト品質と整合性を監査する。
 when_to_use: 「プロンプトを見直して」「docsとskillがあっているか確認して」「スキルにdocsの知見が反映されているか」「review-prompt」と言われたとき。
-allowed-tools: Read, Edit, Bash(fd *), Bash(rg *), Bash(wc *)
-model: sonnet
+allowed-tools: Read, Edit, AskUserQuestion, Bash(fd *), Bash(rg *), Bash(wc *)
 ---
 
 # review-prompt
 
-Claude が読むファイル全体（`~/.claude/docs/`・`~/.claude/skills/`・`CLAUDE.md`）を対象に、プロンプトとしての品質と相互整合性を監査する。
+Claudeが読むファイル（`~/.claude/docs/`、`~/.claude/skills/`、`~/.claude/CLAUDE.md`）を、指示としての書き方と、ファイルどうしの整合の2点で監査する。
 
-プロンプト品質の基準は `~/.claude/docs/prompt-engineering.md` に準拠する。
+書き方の基準は`~/.claude/docs/prompt-engineering.md`にあるので、先に全文を読む。このスキルに書いた報告の種類は、そこから抜き出したもので、食い違うときは文書の側に従う。
 
----
+文書の中身の重複や肥大を整理するのは`/curate-docs`の仕事だ。Claude Code v2.1.283以降の`/doctor prompt-audit`も、古いモデル向けの指示、存在しない参照、食い違うファイルを見つけるので、併せて走らせるよう利用者に勧める。
 
-## フロー
+## 調べる
 
-### Step 1: スキャン
-
-以下を並行して収集する。
-
-**1-a. 全スキルの docs 参照を抽出**
+スキルがどの文書を、どの形で読んでいるかを出す。
 
 ```bash
-# !cat パターン（正しい runtime embed）
-rg '!\`cat ~/.claude/docs/\S+' ~/.claude/skills/*/SKILL.md -o
+# スキルを読み込んだ時点で全文を埋め込む形
+rg -o '!\`cat ~/\.claude/docs/\S+' ~/.claude/skills/*/SKILL.md
 
-# @~/.claude/docs/ パターン（アンチパターン）
-rg '@~/.claude/docs/\S+' ~/.claude/skills/*/SKILL.md -o
+# パスだけを書き、要るときにReadする形
+rg -o '~/\.claude/docs/[A-Za-z0-9_./-]+\.md' ~/.claude/skills ~/.claude/CLAUDE.md ~/.claude/docs
 
-# plain path 参照（ポインタ）
-rg '~/.claude/docs/\S+\.md' ~/.claude/skills/*/SKILL.md -o
+# 実在する文書
+fd -e md . ~/.claude/docs --exclude design-md
+
+# スキルのfrontmatter
+rg -m 6 '^(name|description|when_to_use|model|allowed-tools):' ~/.claude/skills/*/SKILL.md
 ```
 
-**1-b. 存在するdocsファイル一覧**
+`design-md/`の下は、スキルが要るものだけを読むので対象から外す。
 
-```bash
-fd -e md . ~/.claude/docs/ --exclude 'design-md'
-```
+### 整合
 
-**1-c. 全スキルの frontmatter（name/description/when_to_use）**
+- **壊れた参照**: スキル、`CLAUDE.md`、文書が指している文書、節、スキル、コマンドが実在するか。上の2つの一覧を突き合わせる。節の名前は`rg`で確かめる
+- **食い違い**: 同じことについて、文書とスキル、スキルどうし、`CLAUDE.md`と文書が、違うことを言っていないか。食い違うと、モデルはどちらかを任意に選ぶ
+- **読むべき文書を読んでいないスキル**: 下の表で、スキルの仕事に当たる文書を読んでいるか
+- **道具の不一致**: 本文で使うと書いた道具が、`allowed-tools`に入っているか
+- **モデルの固定**: 判断の要る作業を、`model:`で会話より小さいモデルに固定していないか。固定してよいのは、作業が単純なサブエージェントを安く走らせるときだ
 
-```bash
-rg -m 5 '^(name|description|when_to_use):' ~/.claude/skills/*/SKILL.md
-```
-
-**1-d. docs の NG/OK マーカー有無**
-
-```bash
-# ❌ マーカーを持つファイル
-rg -l '❌' ~/.claude/docs/
-
-# ✅ マーカーを持つファイル
-rg -l '✅' ~/.claude/docs/
-```
-
-2つの結果を比較し、`❌` はあるが `✅` がないファイル（またはその逆）を Check E の対象とする。
-
----
-
-### Step 2: 5種類のチェック
-
-#### Check A: @-embed アンチパターン（スキル）
-
-`@~/.claude/docs/xxx.md` 形式はロード時に全文が埋め込まれる。
-`!cat ~/.claude/docs/xxx.md` または plain path 参照に変えるべき。
-
-Critical として報告。
-
-#### Check B: デッド参照（スキル）
-
-`!cat ~/.claude/docs/xxx.md` で参照されているが存在しないファイルを 1-b と突き合わせて検出する。
-
-Critical として報告。
-
-#### Check C: ドメインギャップ（docs → スキル）
-
-以下のドメインマップを使い、docs が存在するのに参照すべきスキルが参照していないケースを検出する。
-
-| docs ファイル | 参照すべきスキルの特徴 |
+| 文書 | 読むべきスキルの仕事 |
 |---|---|
-| `typescript.md` | TypeScript コードを生成・レビューするスキル |
-| `typescript-gotchas.md` | TypeScript レビュースキル（`typescript.md` 参照済みのもの） |
-| `react.md` | React コンポーネントを扱うスキル |
-| `react-gotchas.md` | React レビュースキル（`react.md` 参照済みのもの） |
-| `react-a11y.md` | React レビュースキル（`react.md` 参照済みのもの） |
-| `nextjs.md` | Next.js アプリを扱うスキル |
-| `pulumi.md` | Pulumi インフラを実装・レビューするスキル |
-| `pulumi-aws.md` | Pulumi 実装スキル（`pulumi.md` 参照済みのもの） |
-| `pulumi-cicd.md` | Pulumi + CI/CD を扱うスキル |
-| `github-actions.md` | CI/CD・GitHub Actions を扱うスキル |
-| `go.md` | Go コードを生成・レビューするスキル |
-| `cohesion.md` + `readability.md` + `design.md` | コードレビュースキル全般 |
-| `domain-design-practices.md` | ドメイン設計・型設計レビュースキル |
-| `responsive.md` + `tailwind-cva-patterns.md` | UI 実装・フロントエンドスキル |
-| `prompt-engineering.md` | スキル作成・docs 管理スキル（`create-skill`, `curate-docs`, `re`） |
-| `llm-memory-management.md` | docs 管理・スキル管理スキル（`curate-docs`, `re`, `create-skill`） |
-| `what-goes-where.md` | コード、テスト、コメント、文書、commit、PR のどれを書くかを決めるスキル（`design-doc`、`jjcommit`、`create-pr` など） |
-| `documentation-practices.md` | ドキュメント作成スキル |
-| `technical-writing.md` | ドキュメント作成スキル |
+| `coding-policy.md` | コードを書く、レビューする |
+| `code-design.md` | コードの設計をレビューする、複雑さを診断する |
+| `domain-design-practices.md` | ドメインの設計、型の設計をレビューする |
+| `testing-policy.md` | テストを設計する、書く、レビューする |
+| `typescript.md` | TypeScriptを書く、レビューする |
+| `ts-react-tooling-gotchas.md` | TypeScriptとReactを書く（レビューでは読まない） |
+| `react.md`、`react-a11y.md` | Reactのコンポーネントを書く、レビューする |
+| `nextjs.md` | Next.jsのアプリを扱う |
+| `go.md` | Goを書く、レビューする |
+| `frontend-policy.md`、`tailwind-layout.md`、`charts.md` | 画面を作る、直す |
+| `pulumi.md`、`github-actions.md` | インフラとCIを書く、レビューする |
+| `jj.md` | コミット、rebase、PRの操作をする |
+| `prompt-engineering.md` | スキルと文書を書く、整える（`create-skill`、`curate-docs`、`re`など） |
+| `what-goes-where.md` | コード、テスト、コメント、文書、commit、PRのどこに書くかを決める（`design-doc`、`jjcommit`、`create-pr`など） |
+| `documentation-practices.md` | 文書を書く |
+| `glossary-policy.md` | 名前を付ける、用語集を直す |
 
-Warning として報告。
+作業と文書の対応のもとは、`~/.claude/docs/shared-agent-policy.md`の「作業ごとに読む文書」の表にある。上の表に無い文書は、そちらで引く。会話のモデルは、その表に従って作業の前に文書を読むので、スキルが読んでいないことは、文書が無いと正しく動かないスキルに限って報告する。会話を引き継がない`context: fork`のスキルが、その例だ。
 
-#### Check D: docs 参照ゼロのスキル（孤立スキル）
+### 書き方
 
-docs を一切参照していないスキルを列挙する。以下は除外（docs 参照が不要な性質）。
-- `jjcommit` / `jjdesc` / `rebase-main` / `resolve-conflict`
-- `upload-screenshots` / `portless`
-- `create-pr` / `update-pr`
-- `check-pr` / `difit` / `difit-review`
+文書、スキル、`CLAUDE.md`を読み、次の種類に当たる箇所を挙げる。重さで絞らず、当てはまるものを全部挙げる。
 
-残った孤立スキルを Info として報告。
+- 「これを消したら、モデルは何を間違えるか」に答えられない行
+- モデルが既に知っている一般論
+- 強い語（「必ず」「絶対」「禁止」、`NEVER`、`MUST`、太字の重ねがけ）
+- 同じ規則の繰り返し
+- 検証や徹底の念押し（「最後に確認する」「徹底的に」「手を抜かない」）、道具や委譲を既定にする指示
+- 理由の無い規則。守られたかどうかを判定できない規則（「適切に」「きれいに」）
+- 日付やPRの番号つきの実例が、同じ原則の言い換えとして積み重なっている箇所
+- スキルで、順番が結果を変えないのに1歩ずつ指定している手順
 
-#### Check E: docs のプロンプト品質
-
-各 docs ファイルを対象に以下を確認する（LLM 判断）。
-
-| 観点 | チェック内容 |
-|---|---|
-| NG/OK ペア | `❌` だけで `✅` のない一方通行ルールがないか（1-d で検出） |
-| テスタビリティ | 「〜すること」止まりで判定不可能な抽象ルールが多い doc がないか |
-| 強度の混在 | 全ルールが「禁止」相当でグラデーションがないか |
-| 先頭優位 | TL;DR の次に最重要ルールが来ているか |
-
-Info（品質改善提案）として報告。重大な誤りでなければ修正は任意。
-
----
-
-### Step 3: レポート出力
+## 報告する
 
 ```
 ## review-prompt 監査レポート
 
-### 🔴 Critical（今すぐ対処すべき）
-- @-embed アンチパターン: `スキル名` に `@~/.claude/docs/xxx.md`
-- デッド参照: `スキル名` の `!cat ~/.claude/docs/xxx.md` → ファイルが存在しない
+### 整合
+- <ファイル>:<行> [壊れた参照 / 食い違い / 読んでいない文書 / 道具 / モデル] <内容> → <直し方の案>（確認済み / 推測）
 
-### 🟡 Warning（ドメインギャップ）
-- `xxx.md` が未参照: `スキル名`（関連 docs は参照済み）
+### 書き方
+- <ファイル>:<行> [種類] <内容> → <直し方の案>（確認済み / 推測）
 
-### 🟢 Info（品質改善提案）
-- docs 参照ゼロのスキル: xxx, yyy
-- `yyy.md`: NG 例が `❌` なしで説明のみ → OK/NG ペアにすると分かりやすい
-- `zzz.md`: 全ルールが「禁止」相当 → 強度ラダーの導入を検討
-
-### ✅ 問題なし
+### 問題が見つからなかったファイル
 - ...
 ```
 
----
+「確認済み」は、ファイルか`rg`で確かめたもの。「推測」は、読んだ範囲からの見立て。
 
-### Step 4: アクションの選択
+報告の後、どれを直すかを`AskUserQuestion`で聞く。選択肢は、整合だけを直す、スキルや文書を指定して直す、全部を直す、今は読むだけ、を目安にする。
 
-AskUserQuestion で対応方針を確認する。
+## 直す
 
-**選択肢の例:**
-- Critical をすべて修正する
-- 特定のスキル/docs だけ修正する
-- Warning のドメインギャップを埋める
-- 今は確認だけ（何もしない）
+- **壊れた参照**: 統合や改名で移った先があれば、そこを指すように直す。移った先は`archive/`の下の説明と`rg`で探す。無ければ参照を消し、その参照に頼っていた手順が成り立つかを読む
+- **食い違い**: どちらがいま有効かをコードや設定で確かめ、確かめられなければ利用者に聞く。有効な側を1か所に残し、もう片方は参照にする
+- **読んでいない文書**: レビューのように毎回その基準が要るスキルは、読み込みの時点で埋め込む。埋め込みの書き方は`~/.claude/skills/review-code/SKILL.md`をReadして写す。差分や対象によって要る文書が変わるなら、対象を見てからReadする表にする。実装のスキルは、パスと、どんなときに読むかを1行書けば足りる。埋め込みは、呼ぶたびに全文が入るので、毎回要る文書に限る
+- **書き方**: してほしいことを、範囲と理由のあるふつうの文で書き直す。理由が分からない規則は、消さずに利用者に聞く。一般論、念押し、繰り返しは消す。例外なく守らせたい規則は、文を強めず、hookにする候補として挙げる
 
----
-
-### Step 5: 修正実行
-
-ユーザーの選択に基づいて実行する。
-
-#### 5-a. @-embed → runtime embed 変換
-
-対象スキルの `@~/.claude/docs/xxx.md` 行を runtime embed 形式に Edit で書き換える。
-書式は `~/.claude/skills/review-code/SKILL.md` の Go/TypeScript/React セクションを Read して参照する（`!` + バッククォート + cat コマンドの組み合わせ）。
-
-#### 5-b. docs 参照の追加
-
-**review スキル向け（ルールをその場で展開する）**:
-
-対象スキルの該当セクションに以下を追加する（`<対象>.md` を実際のファイル名に置換）。
-
-```
-### [技術名]
-```
-
-その直後に docs を runtime embed するコマンドを1行追加する。書式は `review-code/SKILL.md` の既存セクションを参照。
-
-**impl スキル向け（ポインタのみ）**:
-
-```
-**参照ドキュメント**:
-- ~/.claude/docs/<対象>.md — [一行説明]
-```
-
-#### 5-c. docs のプロンプト品質修正
-
-- NG 例に `❌` を追加、OK 例に `✅` を追加
-- 「〜すること」ルールを具体的・テスタブルな形に書き直す
-- 強度の弱いルールに `推奨:` プレフィックスを追加
-
----
+`~/.claude/`の下は、実体のパス（`~/github.com/pomesaka/dotclaude/...`）で編集する。
 
 ## Gotchas
 
-- **`design-md/` は除外**: `frontend-design` スキルがオンデマンドで読む設計。Check C/E の対象外
-- **Check E は提案のみ**: docs 品質は主観要素が強い。Critical 扱いにせず修正は任意
-- **週1サイクルが目安**: `re` スキルで docs に知見が蓄積されたあと、`review-prompt` でスキルへの反映と品質を確認するのが自然なリズム
-- **impl スキルに `!cat` は不要なことが多い**: 実装スキルはポインタ参照で十分。コンテキストを圧迫する `!cat` を無闇に増やさない
-- **runtime embed 構文を例示コードに書かない**: SKILL.md 内の「感嘆符 + バッククォート + コマンド + バッククォート」パターンはコードフェンス内でもロード時に実行される。テンプレート例示には既存スキルへの参照誘導で代替する
+- **埋め込みの構文を、例として本文に書かない**: `SKILL.md`の中の「感嘆符、バッククォート、コマンド、バッククォート」の並びは、コードの囲みの中でも、読み込みの時点で実行される。書き方を示したいときは、既にその形を使っているスキルを指す
