@@ -79,11 +79,11 @@ model: sonnet
 
 ## Step 4: 完了報告
 
-書き込み先、載せたリンク、削除や統合を提案した文書を短く報告する。`docs-reviewer` を使いたいなら `/kickoff-review-team` を実行するよう案内する。
+書き込み先、載せたリンク、削除や統合を提案した文書を短く報告する。
 
 ---
 
 ## Gotchas
 
-- **`Documentation Map` の見出しを変えない**: `docs/technical-writing.md` と `docs-reviewer` が、この見出しの「変更 → ドキュメント更新」の表を読んで、文書の更新漏れを確かめる
+- **`Documentation Map` の見出しを変えない**: `docs/technical-writing.md` が、この見出しの「変更 → ドキュメント更新」の表を読んで、文書の更新漏れを確かめる
 - **入口を整えるために文書を増やさない**: 文書が足りないように見えても、まず既存の文書とコードコメントで足りるかを確かめる
