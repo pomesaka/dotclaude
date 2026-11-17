@@ -14,6 +14,8 @@
   <!-- mentions: 1 | first-seen: 2026-08 -->
 - **`spyOn(globalThis, "fetch")`はグローバルを書き換えるので、`afterEach`で`mockRestore()`する**。戻さないと、同じファイルの後のテストへモックが漏れる。ローカルのオブジェクトへの`spyOn`は戻さなくてよい。
   <!-- mentions: 1 | first-seen: 2026-06 -->
+- **`bun test`は、テストを対象の隣に置いたまま、ファイル名で段ごとに分けて走らせられる**。Mediumのファイルを`*.medium.test.ts`と名付け、Smallは`bun test --path-ignore-patterns '**/*.medium.test.ts'`、Mediumは`bun test medium.test`で走らせる。段ごとにディレクトリを分けると、テストを対象の隣に置けなくなる。テストの準備のヘルパーが`bun:test`やテスト専用のライブラリを読むなら、本体のtsconfigの`exclude`と、テスト用のtsconfigの`include`に足す（Bun 1.4.3、2026-11に確認）。
+  <!-- mentions: 1 | first-seen: 2026-11 -->
 
 ## Biome
 
