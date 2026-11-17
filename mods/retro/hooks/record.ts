@@ -27,10 +27,40 @@ const entries = (value: unknown): LogEntry[] =>
   Array.isArray(value)
     ? value.flatMap((one: unknown) => {
         const at = field(one, 'at')
+        const agentId = field(one, 'agentId')
         const text = field(one, 'text')
-        return typeof at === 'number' && typeof text === 'string' ? [{ at, text }] : []
+        return typeof at === 'number' && typeof text === 'string' ? [{ at, agentId: typeof agentId === 'string' ? agentId : '', text }] : []
       })
     : []
+
+// 報告を記録の先頭に足す。同じ書き手の報告がすでにあれば、長いほうを残して 1 件にする。
+// WHY 長いほう: 書き手の報告は、報告用のツールで送った文と、最後の答えの 2 か所に出る。
+//   ツールで送った文が本文で、最後の答えは「送った」の一言になりうる
+export const withReport = (log: readonly LogEntry[], entry: LogEntry): LogEntry[] => {
+  const before = log.find(one => one.agentId === entry.agentId)
+  const kept = before !== undefined && before.text.length >= entry.text.length ? before : entry
+  return [kept, ...log.filter(one => one.agentId !== entry.agentId)].slice(0, LOG_MAX)
+}
+
+// メインに届いた文が、どのエージェントからの知らせか報告か。どちらでもなければ null。
+// 終わった知らせは <task-id>ID</task-id>、報告用のツールで送った報告は <agent-message from="ID"> の形で届く（v2.1.323 の実行ファイルで確認）
+export const reporterOf = (text: string): string | null =>
+  /<task-id>([^<]+)<\/task-id>/.exec(text)?.[1] ?? /<agent-message from="([^"]+)"/.exec(text)?.[1] ?? null
+
+// 報告の枠から、書き手が書いた本文を取り出す。枠が無ければ null。
+// エンジンは本文の前に「The report follows:」までの説明を置き、本文の各行を 2 桁下げる
+export const reportBodyOf = (text: string): string | null => {
+  const start = text.indexOf('The report follows:')
+  if (start === -1) return null
+  const body = text
+    .slice(start + 'The report follows:'.length)
+    .replace(/<\/agent-message>\s*$/, '')
+    .split('\n')
+    .map(line => line.replace(/^ {2}/, ''))
+    .join('\n')
+    .trim()
+  return body === '' ? null : body
+}
 
 // $.store から読んだ値を、セッションの記録として読む。形が合わない部分は、無いものとして扱う。
 // WHY 既定で ON: 利用者は、頼まなくても振り返ってほしい（2026-11-13）。無駄打ちは、きっかけの下限で抑える

@@ -1,6 +1,42 @@
 import { expect, test } from 'claude-code/testing'
 
-import { actionOf, isCompletion, isCorrection, isStop, recordOf, shouldJudge } from '../hooks/record'
+import { actionOf, isCompletion, isCorrection, isStop, recordOf, reportBodyOf, reporterOf, shouldJudge, withReport } from '../hooks/record'
+
+const REPORTERS: { name: string; text: string; reporter: string | null }[] = [
+  { name: '終わった知らせ', text: '<task-notification><task-id>a1</task-id><tool-use-id>t</tool-use-id>', reporter: 'a1' },
+  { name: '報告用のツールで送った報告', text: '<agent-message from="a2">\n[Subagent hand-back] …', reporter: 'a2' },
+  { name: 'どちらでもない', text: '違う、そっちじゃない', reporter: null },
+]
+
+for (const one of REPORTERS) {
+  test(`reporterOf: ${one.name}`, async () => {
+    expect(reporterOf(one.text)).toBe(one.reporter)
+  })
+}
+
+const BODIES: { name: string; text: string; body: string | null }[] = [
+  { name: '各行を 2 桁戻し、枠を外す', text: '<agent-message from="a">\nThe report follows:\n  - a\n    - b\n</agent-message>', body: '- a\n  - b' },
+  { name: '枠が無い', text: '<task-notification><task-id>a</task-id>', body: null },
+  { name: '本文が空', text: 'The report follows:\n  \n</agent-message>', body: null },
+]
+
+for (const one of BODIES) {
+  test(`reportBodyOf: ${one.name}`, async () => {
+    expect(reportBodyOf(one.text)).toBe(one.body)
+  })
+}
+
+const REPORTS: { name: string; log: { at: number; agentId: string; text: string }[]; entry: { at: number; agentId: string; text: string }; after: unknown }[] = [
+  { name: '新しい書き手の報告は先頭に足す', log: [{ at: 1, agentId: 'a', text: 'x' }], entry: { at: 2, agentId: 'b', text: 'y' }, after: [{ at: 2, agentId: 'b', text: 'y' }, { at: 1, agentId: 'a', text: 'x' }] },
+  { name: '同じ書き手の短い報告は捨てる', log: [{ at: 1, agentId: 'a', text: '長い本文' }], entry: { at: 2, agentId: 'a', text: '済' }, after: [{ at: 1, agentId: 'a', text: '長い本文' }] },
+  { name: '同じ書き手の長い報告で置き換える', log: [{ at: 1, agentId: 'a', text: '済' }], entry: { at: 2, agentId: 'a', text: '長い本文' }, after: [{ at: 2, agentId: 'a', text: '長い本文' }] },
+]
+
+for (const one of REPORTS) {
+  test(`withReport: ${one.name}`, async () => {
+    expect(withReport(one.log, one.entry)).toEqual(one.after)
+  })
+}
 
 const CORRECTIONS: { text: string; is: boolean }[] = [
   { text: '違う、そっちのファイルじゃない', is: true },
@@ -76,7 +112,7 @@ const STORED: { name: string; stored: unknown; record: unknown }[] = [
   {
     name: '形が合わない部分は捨てる',
     stored: { isOn: false, turns: -1, corrections: 2, stops: 'x', found: ['a', 1], log: [{ at: 1, text: 'b' }, { at: 'x' }] },
-    record: { isOn: false, turns: 0, corrections: 2, stops: 0, found: ['a'], log: [{ at: 1, text: 'b' }] },
+    record: { isOn: false, turns: 0, corrections: 2, stops: 0, found: ['a'], log: [{ at: 1, agentId: '', text: 'b' }] },
   },
 ]
 

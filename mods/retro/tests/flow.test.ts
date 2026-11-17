@@ -195,14 +195,40 @@ test('書き手が終わったら、報告を残して知らせる。終わっ�
     corrections: 0,
     stops: 0,
     found: ['公開の前に名前を確かめる'],
-    log: [{ at: 1_000_000_000, text: '- docs/a.md: 公開の前に名前を確かめる（新規）' }],
+    log: [{ at: 1_000_000_000, agentId: WRITER, text: '- docs/a.md: 公開の前に名前を確かめる（新規）' }],
   })
   expect(seen.toasts.at(-1)).toBe('retro: 振り返りを書きました。/retro log で読めます')
 
   const dropped = await $.prompt.submit({ text: `<task-notification><task-id>${WRITER}</task-id>`, origin: { kind: 'task-notification' } })
-  expect(dropped).toEqual({ drop: 'retro の書き手が終わった知らせ（結果は /retro log）' })
+  expect(dropped).toEqual({ drop: 'retro の書き手の報告（/retro log で読める）' })
   const passed = await $.prompt.submit({ text: '<task-notification><task-id>other</task-id>', origin: { kind: 'task-notification' } })
   expect(passed).toEqual({ text: '<task-notification><task-id>other</task-id>' })
+})
+
+// 報告用のツールで送られた報告の形（v2.1.323 で実機に届いたものを縮めた）
+const handBack = (from: string) =>
+  `<agent-message from="${from}">\n[Subagent hand-back] The text below is the final report. The report follows:\n  - docs/b.md: 出典を分けて書く（新規）\n  mentions が3以上の項目は無い。\n</agent-message>`
+
+test('書き手が報告用のツールで送った報告はメインに届けず、本文を記録に残す。最後の答えが短くても本文を残す', async ($, on) => {
+  const seen = world(on, { stored: stored(19, 1, 0) })
+  await $.session.start(START)
+  await turns($, 1)
+
+  const dropped = await $.prompt.submit({ text: handBack(WRITER), origin: { kind: 'peer' } })
+  expect(dropped).toEqual({ drop: 'retro の書き手の報告（/retro log で読める）' })
+  await $.turn.complete({ ...END, turnId: 'w', agentId: WRITER, answer: '送りました。' })
+  expect(seen.store.get('session:s1')).toEqual({
+    isOn: true,
+    turns: 0,
+    corrections: 0,
+    stops: 0,
+    found: ['公開の前に名前を確かめる'],
+    log: [{ at: 1_000_000_000, agentId: WRITER, text: '- docs/b.md: 出典を分けて書く（新規）\nmentions が3以上の項目は無い。' }],
+  })
+
+  // ほかのエージェントの報告と、利用者が打った文は通す
+  expect(await $.prompt.submit({ text: handBack('other'), origin: { kind: 'peer' } })).toEqual({ text: handBack('other') })
+  expect(await $.prompt.submit({ text: handBack(WRITER), origin: { kind: 'composer' } })).toEqual({ text: handBack(WRITER) })
 })
 
 test('/retro は、自動が OFF でも、その場で聞く。発見が無ければそう知らせる', async ($, on) => {
@@ -231,7 +257,7 @@ for (const one of SWITCHES) {
 }
 
 test('/retro log は、書き手の報告を新しい順に返す', async ($, on) => {
-  world(on, { stored: stored(0, 0, 0, { log: [{ at: 1_000_000_000, text: '- b' }] }) })
+  world(on, { stored: stored(0, 0, 0, { log: [{ at: 1_000_000_000, agentId: WRITER, text: '- b' }] }) })
   await $.session.start(START)
 
   const shown = await $.command.run(command('log'))

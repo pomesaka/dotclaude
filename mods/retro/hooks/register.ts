@@ -2,14 +2,14 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 import type { SessionRecord, Trigger } from '../types'
 import { judgePrompt, parseJudgeReply, writerPrompt } from './prompt'
-import { actionOf, FOUND_MAX, isCompletion, isCorrection, isStop, LOG_MAX, recordOf, shouldJudge, stampOf } from './record'
+import { actionOf, FOUND_MAX, isCompletion, isCorrection, isStop, recordOf, reportBodyOf, reporterOf, shouldJudge, stampOf, withReport } from './record'
 
 // WHY /retro: スキルと同じ名前のコマンドは呼べない（/rich で起きた）。re という名前のスキルがある
 const COMMAND = 'retro'
 // 書き手のエージェントの説明。エージェントの一覧から、この Mod が立てたものを見分けるのにも使う
 const WRITER_DESCRIPTION = 'retro: 振り返りの発見を文書に書く'
-// 書き手が終わった知らせを止めたときの理由。会話の行に「Prompt dropped by a hook: …」として出る
-const WRITER_NOTICE_DROPPED = 'retro の書き手が終わった知らせ（結果は /retro log）'
+// 書き手の報告や終わった知らせを止めたときの理由。会話の行に「Prompt dropped by a hook: …」として出る
+const WRITER_NOTICE_DROPPED = 'retro の書き手の報告（/retro log で読める）'
 
 // $.store には、セッションごとに記録を持つ。キーは session:<セッションID>
 const SESSION_PREFIX = 'session:'
@@ -110,12 +110,19 @@ export const register: Register = on => {
     return next(e)
   }).catch((_$, e, next) => next(e))
 
-  // 利用者が直した発言を数える。書き手の終わった知らせは、メインに届けない。
-  // WHY 知らせを止める: 届くとメインが 1 ターン動き、書いた内容を読み直して報告する。結果は /retro log で読める
+  // 利用者が直した発言を数える。書き手の報告と終わった知らせは、メインに届けず、報告の本文を記録に残す。
+  // WHY 止める: 届くとメインが 1 ターン動き、書いた内容を読み直して報告する。結果は /retro log で読める。
+  // WHY 出どころの種類で絞らない: 報告は、終わった知らせ（task-notification）とは別の形で届いた（2026-11-17 に実機で確認）。
+  //   その出どころの種類は確かめていないので、書き手の ID が付いているかだけで見る
   on('prompt.submit', async ($, e, next) => {
-    if (e.origin.kind === 'task-notification') {
-      const agentId = /<task-id>([^<]+)<\/task-id>/.exec(e.text)?.[1]
-      return (await isWriter($, agentId)) ? { drop: WRITER_NOTICE_DROPPED } : next(e)
+    const reporter = e.origin.kind === 'composer' ? null : reporterOf(e.text)
+    if (reporter !== null && (await isWriter($, reporter))) {
+      const body = reportBodyOf(e.text)
+      if (body !== null) {
+        const at = await $.clock.now()
+        await change($, current => ({ ...current, log: withReport(current.log, { at, agentId: reporter, text: body }) }))
+      }
+      return { drop: WRITER_NOTICE_DROPPED }
     }
     // WHY composer だけ: 入力欄から送った文。next-step の札（plugin の asUser）は、モデルが書いた文なので数えない
     if (e.origin.kind === 'composer' && isCorrection(e.text)) await change($, current => ({ ...current, corrections: current.corrections + 1 }))
@@ -133,7 +140,8 @@ export const register: Register = on => {
     if (e.agentId !== undefined) {
       if (await isWriter($, e.agentId)) {
         const at = await $.clock.now()
-        await change($, current => ({ ...current, log: [{ at, text: e.answer.trim() }, ...current.log].slice(0, LOG_MAX) }))
+        const writerId = e.agentId
+        await change($, current => ({ ...current, log: withReport(current.log, { at, agentId: writerId, text: e.answer.trim() }) }))
         $.ui.toast('retro: 振り返りを書きました。/retro log で読めます', { timeoutMs: 8_000 })
       }
       return result
