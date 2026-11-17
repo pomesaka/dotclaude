@@ -48,6 +48,7 @@ Claude CodeとCodexの両方が読む、利用者の決めごと。Claude Code�
 | 削除、置き換え、複数の箇所にまたがる変更、PRの準備 | `working-rules.md` |
 | 画面を作る、直す | `frontend-policy.md`。Tailwindの色とレイアウトは`tailwind-layout.md`、チャートは`charts.md` |
 | 利用者ごとのデータを返すAPIを書く | `web-security.md` |
+| 例外を扱う、エラーログを書く | `error-logging.md` |
 | 名前を付ける、用語集を直す | `glossary-policy.md` |
 | 文書、コメント、commit、PRのどこに書くかを決める | `what-goes-where.md`、`documentation-practices.md` |
 | `CLAUDE.md`、スキル、エージェント、プロンプトを書く | `prompt-engineering.md` |
