@@ -2,7 +2,7 @@
 name: check-best-practices
 description: Claude Code のベストプラクティスリポジトリを調査し、dotclaude 環境との差分を分析して改善提案を行う。
 when_to_use: 「ベストプラクティス確認して」「dotclaudeを改善したい」と言われたとき。
-allowed-tools: Read, WebFetch(domain:platform.claude.com), WebFetch(domain:code.claude.com), Bash(bash ~/.claude/skills/check-best-practices/fetch.sh), Bash(bash ~/.claude/skills/check-best-practices/env.sh)
+allowed-tools: Read, WebFetch(domain:platform.claude.com), WebFetch(domain:code.claude.com), WebFetch(domain:claude.dev), Bash(bash ~/.claude/skills/check-best-practices/fetch.sh), Bash(bash ~/.claude/skills/check-best-practices/env.sh)
 context: fork
 agent: general-purpose
 ---
@@ -26,6 +26,8 @@ agent: general-purpose
 ## 比べる基準
 
 基準にするのは、Anthropicの公式の文書だ。`~/.claude/docs/prompt-engineering.md`を読み、末尾の「出典」に挙げてある4つ（プロンプトの全般の指針、モデルごとの指針、Claude Codeのベストプラクティス、`CLAUDE.md`と`rules/`の読み込まれ方）を`WebFetch`で取って読む。`prompt-engineering.md`は、この出典を利用者の環境に当てはめてまとめた文書なので、出典が`prompt-engineering.md`より新しくなっていれば、その差も報告する。
+
+Claude Codeのチームのブログ（https://claude.dev/blog/）も基準に入れる。一覧を読み、前回の確認の後に出た記事の本文を読む。前回がいつか分からなければ、利用者に聞く。本文を読んだ記事と、一覧の題しか見ていない記事は、報告で分けて書く。
 
 上のリポジトリは、基準でなく、取り込めるパターンを探す材料として読む。第三者がまとめたもので、古いモデルを前提にした勧めが混ざっている。次のような勧めは、公式の文書と食い違うので採らない。
 
