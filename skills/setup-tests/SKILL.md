@@ -78,21 +78,19 @@ allowed-tools: Read, Glob, Agent, Bash(jj git remote list), Bash(ls *), Bash(fd 
 ```markdown
 # テスト
 
-`/setup-tests` で作り直せる。
-
 何を守るかは、業務の文書にある: [業務フロー](docs/...)、[業務の決まり](docs/...)
 
 テスト名には、業務や決まりの名前を入れる。
 
 ## 作り
 
-| 段 | 置き場所 | 実行コマンド | CI で走る時点 |
+| 何を使うテストか | 置き場所 | 実行コマンド | CI で走る時点 |
 |---|---|---|---|
-| Small | `src/**/*.test.ts` | `bun test src` | push ごと |
-| Medium | `test/integration/` | `bun test test/integration` | push ごと（Small の後） |
-| Large | `e2e/` | `bunx playwright test` | マージ前 |
+| 単体テスト（ロジックだけ。DB・通信・ファイルを使わない） | `src/**/*.test.ts` | `bun test src --path-ignore-patterns '**/*.integration.test.ts'` | push ごと |
+| 統合テスト（ローカルの本物の DB・ストレージとつなぐ） | `src/**/*.integration.test.ts` | `bun test .integration.test.ts` | push ごと（単体テストの後） |
+| E2E（画面を端から端まで動かす） | `e2e/` | `bunx playwright test` | マージ前 |
 
-| つなぎ目 | Medium での扱い |
+| つなぎ目 | テストでの扱い |
 |---|---|
 | PostgreSQL | ローカルのコンテナの本物を使う |
 | 決済サービス | 公式のテストモードを使う |
@@ -117,4 +115,6 @@ allowed-tools: Read, Glob, Agent, Bash(jj git remote list), Bash(ls *), Bash(fd 
 ## Gotchas
 
 - **`TESTING.md` に、守るものとテストの設計の考え方を書かない**: 守るものは業務の文書に、段の決め方やケースの選び方は `testing-policy.md` にある。写すと、片方だけが直されて食い違う
+- **`TESTING.md`、ファイル名、コマンドに、Small / Medium / Large を書かない**: 段の名前は、テストの方針の文書の中だけの言葉で、プロジェクトの読み手は知らない。単体テスト・統合テスト・E2E と呼び、統合テストが何とつなぐかを `TESTING.md` の 1 行で定義する。ファイル名とコマンドは `*.integration.test.ts`・`test:integration` にする（決め方は `testing-policy.md` の段の表の下）
+- **`TESTING.md` に、利用者の手元の環境（`~/.claude` のパス、スキルやエージェントの名前）を書かない**: プロジェクトのファイルは、その環境を持たない人も読む。読み手が開けない文書や打てないコマンドへの言及は、困惑させるだけになる。考え方の文書を指したいときも、プロジェクトの中にある文書だけを指す
 - **棚卸しとテストの書き換えを同じ変更でしない**: 棚卸しは読むだけにする。直すときは、1 つの対象か 1 つの業務ごとに、設計表を作ってから進める
