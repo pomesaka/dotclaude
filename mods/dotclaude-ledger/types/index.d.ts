@@ -1,22 +1,12 @@
-// dotclaude の作業コピーへの 1 回の書き込み。
-// file は リポジトリの直下からの相対パス、cwd は書いたセッションの作業ディレクトリ（元のプロジェクト）。
-// excerpt は書いた中身の頭、why は書いた理由に当たる依頼の文。agentId はサブエージェントが書いたときだけ
-export type Entry = {
-  at: string
-  session: string
-  agentId?: string
-  cwd: string
-  tool: string
-  file: string
-  excerpt: string
-  why: string
-}
+// 記録の 1 行の形（Entry）は hooks/ledger.ts にある。スキルのスクリプトも読むので、claude-code の型から離して置く
+// まだコミットされていない書き込みのファイルの数
+export type Pending = number
 
 declare module 'claude-code' {
   interface PluginState {
     'dotclaude-ledger': {
-      // まだコミットされていない書き込みのファイルの数（全セッションの記録を合わせたもの）
-      pending: number
+      // 全セッションの記録を合わせた数
+      pending: Pending
     }
   }
 }

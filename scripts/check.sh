@@ -3,9 +3,10 @@
 #
 #   scripts/check.sh
 #
-# - シェルスクリプト（*.sh）を shellcheck にかける
-# - Python（*.py）を ruff の lint と書式の検査にかける
+# - シェルスクリプト（*.sh）を shellcheck にかけ、macOS の bash 3.2 に無い書き方が無いかを見る
+# - スキルと scripts/ の TypeScript を型検査し、bun test を走らせる。Python のファイルが無いかを見る
 # - tests/ のある Mod を claude plugin test にかける
+# スクリプトの書き方の決まりは docs/agent-environment.md の「スクリプトの書き方」にある
 #
 # 対象は jj が追跡しているファイルだけ（archive/ を除く）。どれかが落ちたら 1 で終わる。
 # WHY 1 本にまとめる: 走らせ忘れた検査の指摘（型、shellcheck）を、後から人に言われて直していた
@@ -29,17 +30,28 @@ section "shellcheck"
 shell_files=()
 while IFS= read -r file; do shell_files+=("$file"); done < <(tracked '\.sh$')
 if [ "${#shell_files[@]}" -gt 0 ]; then
-  # shellcheck は手元に入れていないので、bunx で固定の版を使う
-  bunx --silent shellcheck@0.11.0 --severity=warning "${shell_files[@]}" || failed+=(shellcheck)
+  # 手元に入れていないので、mise で固定の版を使う。
+  # WHY NOT bunx: npm の shellcheck は別の版の付け方の包みで、0.11.0 の指定が見つからずに落ちていた
+  mise exec shellcheck@0.11.0 -- shellcheck --severity=warning "${shell_files[@]}" || failed+=(shellcheck)
+  # WHY 自分で探す: shellcheck は bash の版の違いを見ない。macOS の /bin/bash は 3.2 で、
+  #   mapfile などが command not found になっても、set -e が無いと検査を飛ばしたまま先へ進む
+  if rg -n '^\s*(mapfile|readarray|declare -A)\b|\$\{[A-Za-z_][A-Za-z0-9_]*(,,|\^\^)\}' "${shell_files[@]}"; then
+    echo "bash 3.2 に無い書き方があります（mapfile、readarray、連想配列、大文字小文字の変換）"
+    failed+=("bash 3.2")
+  fi
 fi
 
-section "ruff"
+section "TypeScript のスクリプト"
+# WHY TypeScript に揃える: Mod と型や関数を共有でき、テストの書き方も Mod と同じになる（2026-11-18 に pomesaka が決めた）
 python_files=()
 while IFS= read -r file; do python_files+=("$file"); done < <(tracked '\.py$')
 if [ "${#python_files[@]}" -gt 0 ]; then
-  ruff check --select E,F,W,B,UP,SIM,I,N "${python_files[@]}" || failed+=("ruff check")
-  ruff format --check "${python_files[@]}" || failed+=("ruff format")
+  printf 'Python のファイルがあります。スクリプトは TypeScript で書く: %s\n' "${python_files[*]}"
+  failed+=(python)
 fi
+bun install --frozen-lockfile --silent || failed+=("bun install")
+bunx tsc -p tsconfig.json || failed+=(tsc)
+bun test skills scripts || failed+=("bun test")
 
 section "claude plugin test"
 for mod in mods/*/; do

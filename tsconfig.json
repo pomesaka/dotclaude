@@ -1,0 +1,16 @@
+{
+  // スキルとscripts/のTypeScriptのスクリプト（Bunで動かす）の型検査。scripts/check.shが走らせる。
+  // Modはそれぞれのフォルダのtsconfig.jsonとclaude plugin validateで検査するので、ここに入れない
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "lib": ["esnext"],
+    "types": ["bun"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["skills/**/*.ts", "scripts/**/*.ts"]
+}

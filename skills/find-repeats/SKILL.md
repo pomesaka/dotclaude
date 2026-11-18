@@ -4,19 +4,19 @@ description: Claude Code の会話の記録から、セッションをまたい�
 when_to_use: 「繰り返している作業を探して」「スクリプトにできる手順は」「決定論的にできるものは」と言われたとき。/re で振り返るとき。
 argument-hint: "[--days 30] [--min-sessions 3] [--top 30] [--max-len 4]"
 allowed-tools:
-  - Bash(${CLAUDE_SKILL_DIR}/count.py *)
+  - Bash(bun ${CLAUDE_SKILL_DIR}/count.ts *)
   - Read
 ---
 
 # find-repeats
 
-判断の要らない手順をエージェントが毎回手で打つと、遅く、トークンを食い、たまに間違える。このスキルは、その手順を見つけて、決定論的な仕組みへ移す候補を出す。数えるのは `count.py`、候補を選んで提案するのはモデル。
+判断の要らない手順をエージェントが毎回手で打つと、遅く、トークンを食い、たまに間違える。このスキルは、その手順を見つけて、決定論的な仕組みへ移す候補を出す。数えるのは `count.ts`、候補を選んで提案するのはモデル。
 
 ## 数えた結果
 
-!`${CLAUDE_SKILL_DIR}/count.py $ARGUMENTS`
+!`bun ${CLAUDE_SKILL_DIR}/count.ts $ARGUMENTS`
 
-`count.py` は、`~/.claude/projects/` の会話の記録から、メインの会話の道具の呼び出しを 1 手ずつ並べる。Bash は「コマンド名とサブコマンド」（`jj git`、`gh pr`）にならし、値は落とす。調べ物と読み書きの道具（`rg`、`sed`、`Read`、`Edit`、使い捨ての `python3`）は、判断の途中の手なので数えない。セッションの数が多い並びほど、どこでも繰り返している。
+`count.ts` は、`~/.claude/projects/` の会話の記録から、メインの会話の道具の呼び出しを 1 手ずつ並べる。Bash は「コマンド名とサブコマンド」（`jj git`、`gh pr`）にならし、値は落とす。調べ物と読み書きの道具（`rg`、`sed`、`Read`、`Edit`、使い捨ての `python3`）は、判断の途中の手なので数えない。セッションの数が多い並びほど、どこでも繰り返している。
 
 ## 候補を選んで出す
 

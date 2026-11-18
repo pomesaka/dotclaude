@@ -1,9 +1,21 @@
 // dotclaude の作業コピーへの書き込みの記録。1 回の書き込みが 1 行（JSON Lines）。
 // Mod が書き、dotclaude-sync のスキルのスクリプト（skills/dotclaude-sync/sync.ts）が読んで消す。
 // WHY 1 か所に置く: 書く側と読む側で形がずれると、読む側が黙って行を捨てる
-import type { Entry } from '../types'
+// WHY claude-code の型を読まない: スキルのスクリプト（Bun で動かす）もこのファイルを読み込む
 
-export type { Entry }
+// dotclaude の作業コピーへの 1 回の書き込み。
+// file はリポジトリの直下からの相対パス、cwd は書いたセッションの作業ディレクトリ（元のプロジェクト）。
+// excerpt は書いた中身の頭、why は書いた理由に当たる依頼の文。agentId はサブエージェントが書いたときだけ
+export type Entry = {
+  at: string
+  session: string
+  agentId?: string
+  cwd: string
+  tool: string
+  file: string
+  excerpt: string
+  why: string
+}
 
 // 記録の置き場所の、ホームからの位置。セッションごとに <セッションID>.jsonl を置く。
 // WHY リポジトリの外: 記録には、元のプロジェクトのパスと依頼の文が入る。dotclaude は公開のリポジトリ
