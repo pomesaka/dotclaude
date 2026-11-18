@@ -4,7 +4,7 @@ description: jj + gh を使って新しい PR を作成する。
 when_to_use: 「PRを作って」「プルリクを出して」「push して PR を作成して」と言われたとき。既存 PR の更新は update-pr を使う。
 disable-model-invocation: false
 argument-hint: "[base-branch]"
-allowed-tools: Bash(jj *), Bash(gh *), Bash(task *), Bash(bun *), Read, Glob, Write
+allowed-tools: Bash(jj *), Bash(gh *), Bash(task *), Bash(bun *), Bash(${CLAUDE_SKILL_DIR}/pr-push.sh *), Bash(${CLAUDE_SKILL_DIR}/pr-summary.sh *), Read, Glob, Write
 model: haiku
 ---
 
@@ -47,15 +47,7 @@ diffからはWHAT/HOWしか読み取れない。WHY（なぜ変えたか）は�
 
 PR本文に書くのは、却下した案、検証の結果、一時的に変えたもの、レビュアーへの説明。マージ後もコードを読む人に要るWHYは、PR本文だけに書かず、コードコメントに入っているかを確かめる。置き分けの基準は`~/.claude/docs/what-goes-where.md`にある。
 
-### 4. ブックマーク作成・プッシュ
-
-`--named <name>=@` を使う。bookmark create + track + push を1コマンドで行い、新規ブックマークの tracking エラーを回避できる。
-
-```bash
-jj git push --named <name>=@
-```
-
-### 5. 動作検証
+### 4. 動作検証
 
 PR作成前に変更の正しさを確認する。
 
@@ -66,7 +58,7 @@ PR作成前に変更の正しさを確認する。
 検証コマンドはプロジェクトの `CLAUDE.md` や `package.json` を参照して判断する。
 失敗した場合はPR作成前に修正する。
 
-### 6. PR作成
+### 5. 本文を書いて、push と PR 作成をスクリプトに任せる
 
 PRボディの「動作検証」セクションには、レビュアーが手元で再現・確認できる具体的な手順を書く。
 
@@ -114,11 +106,15 @@ PRボディの「動作検証」セクションには、レビュアーが手元
 🤖 Generated with [Claude Code](https://claude.ai/code)
 ````
 
-`gh pr create` が stdout に出力するURLが正しいPRのURL。`jj git push` が出力する `pull/new/...` のURLは使わない。
+本文を書いたら、push と PR の作成は `pr-push.sh` に任せる。ブランチが origin に無ければ `jj git push --named <name>=@`、PR が無ければ `gh pr create` を選んで実行し、最後に PR の URL、ブランチ、CI の状態を出す。手で `jj bookmark create`、`jj git push`、`gh pr create` を打たない。WHY: 毎回同じ並びを手で打っていて、`--named` を忘れて tracking のエラーを踏んでいた（find-repeats で 10 セッション以上に出た、2026-11-18）
 
 ```bash
-gh pr create --base <base branch> --head <name> --title '適切なタイトル' --body-file ~/.claude/tmp/pr-body-<短い名前>.md
+${CLAUDE_SKILL_DIR}/pr-push.sh <name> '適切なタイトル' ~/.claude/tmp/pr-body-<短い名前>.md [<base branch>]
 ```
+
+出力の 1 行目の URL を利用者に示す。`jj git push` が出す `pull/new/...` の URL は使わない。
+
+作業を頼んだセッション（PM のセッションなど）に報告するときは、`pr-summary.sh <PR 番号>` の出力をそのまま貼り、その上に「何を変えたか」を数行で書く。URL、ブランチ、CI の結果を手で写さない。
 
 ## Gotchas
 

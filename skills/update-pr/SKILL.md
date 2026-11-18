@@ -3,7 +3,7 @@ name: update-pr
 description: 既存 PR にコードを push してタイトル・ボディを更新する。
 when_to_use: 「PR を更新して」「PRの説明を直して」「変更を push して PR を更新して」と言われたとき。新規 PR 作成は create-pr を使う。
 argument-hint: "[PR番号]"
-allowed-tools: Bash(jj *), Bash(gh *), Bash(mise *), Read, Glob, Write
+allowed-tools: Bash(jj *), Bash(gh *), Bash(mise *), Bash(${CLAUDE_SKILL_DIR}/../create-pr/pr-push.sh *), Bash(${CLAUDE_SKILL_DIR}/../create-pr/pr-summary.sh *), Read, Glob, Write
 model: sonnet
 ---
 
@@ -58,15 +58,7 @@ PR更新前に変更の正しさを確認する。検証コマンドはプロジ
 - Linter/Formatter
 - 必要に応じてテスト
 
-### 6. プッシュ
-
-既存ブックマークの更新なので `--bookmark` で明示的に指定する。
-
-```bash
-jj git push --bookmark <bookmark名>
-```
-
-### 7. PR更新
+### 6. 本文を書いて、push と PR の更新をスクリプトに任せる
 
 既存のPRタイトル・ボディを最新の変更内容に合わせて更新する。
 ボディは create-pr と同じフォーマットで、今の差分の説明として全体を書き直す。「レビューで直した点」のような変更の経緯の節は足さない。pushのたびに節を足すと、今の差分が何をしているのかが読めなくなり、古い節の数字（テストの件数など）も実態とずれるためだ。経緯はコミットとPRのやり取りに残る。
@@ -115,11 +107,13 @@ PRボディの「動作検証」セクションには、レビュアーが手元
 🤖 Generated with [Claude Code](https://claude.ai/code)
 ````
 
-`gh pr edit` は更新後のPR URLを stdout に出力する。これをユーザーに提示する。
+本文を書いたら、push と本文の更新は create-pr の `pr-push.sh` に任せる。origin との差分を出し、中身が同じなら push せず、違えばブックマークを移して push し、`gh pr edit` で直して、本文が空になっていないかを確かめる。最後に PR の URL、ブランチ、CI の状態を出す。WHY: `jj desc → jj git push → gh pr edit` を毎回手で打っていた（find-repeats で 15 セッションに出た、2026-11-18）。下の Gotchas にある「push を飛ばして本文だけ直した」「本文が空になった」も、この中で防ぐ
 
 ```bash
-gh pr edit <PR番号> --title '更新後のタイトル' --body-file ~/.claude/tmp/pr-body-<PR番号>.md
+${CLAUDE_SKILL_DIR}/../create-pr/pr-push.sh <bookmark名> '更新後のタイトル' ~/.claude/tmp/pr-body-<PR番号>.md
 ```
+
+出力の 1 行目の URL を利用者に示す。作業を頼んだセッションに報告するときは、`pr-summary.sh <PR 番号>` の出力をそのまま貼り、その上に「何を変えたか」を数行で書く。
 
 ## Gotchas
 
