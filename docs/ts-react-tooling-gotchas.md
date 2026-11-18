@@ -14,7 +14,9 @@
   <!-- mentions: 1 | first-seen: 2026-08 -->
 - **`spyOn(globalThis, "fetch")`はグローバルを書き換えるので、`afterEach`で`mockRestore()`する**。戻さないと、同じファイルの後のテストへモックが漏れる。ローカルのオブジェクトへの`spyOn`は戻さなくてよい。
   <!-- mentions: 1 | first-seen: 2026-06 -->
-- **`bun test`は、テストを対象の隣に置いたまま、ファイル名で段ごとに分けて走らせられる**。Mediumのファイルを`*.medium.test.ts`と名付け、Smallは`bun test --path-ignore-patterns '**/*.medium.test.ts'`、Mediumは`bun test medium.test`で走らせる。段ごとにディレクトリを分けると、テストを対象の隣に置けなくなる。テストの準備のヘルパーが`bun:test`やテスト専用のライブラリを読むなら、本体のtsconfigの`exclude`と、テスト用のtsconfigの`include`に足す（Bun 1.4.3、2026-11に確認）。
+- **`bun test`は、テストを対象の隣に置いたまま、ファイル名で段ごとに分けて走らせられる**。統合テストのファイルを`*.integration.test.ts`と名付け、単体テストは`bun test --path-ignore-patterns '**/*.integration.test.ts'`、統合テストは`bun test integration.test`で走らせる。名前の決め方は`testing-policy.md`の段の表の下にある。段ごとにディレクトリを分けると、テストを対象の隣に置けなくなる。テストの準備のヘルパーが`bun:test`やテスト専用のライブラリを読むなら、本体のtsconfigの`exclude`と、テスト用のtsconfigの`include`に足す（Bun 1.4.3、2026-11に確認）。
+  <!-- mentions: 1 | first-seen: 2026-11 -->
+- **`test.each`の名前で、`$name`のすぐ後ろに全角の括弧を置くと、値に置き換わらない**。`金額（$name）`は`金額（$name`の後ろが文字化けしたまま出た。`金額は、$name`のように、`$name`を名前の末尾に置くか、後ろを半角の空白か読点で区切る。名前を変えた後は、テストの出力で名前が値に置き換わっているかを見る（Bun 1.4.3、2026-11に確認）。
   <!-- mentions: 1 | first-seen: 2026-11 -->
 
 ## Biome
