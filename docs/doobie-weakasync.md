@@ -23,4 +23,4 @@ def process[F[_]: Async](xa: Transactor[F]): F[Unit] =
 - **`fk`を`.use { fk => ... }`の外へ持ち出さない**: 中のDispatcherが終わっていて、実行時エラーになる
 - **dequeueだけ先にcommitしない**: `FOR UPDATE SKIP LOCKED`のロックはTXの中でしか保たれない。先にcommitすると、別のworkerが同じ行を取る。`.transact(xa)`は最後に1回だけ呼ぶ
 - **業務処理は`.attempt`で`Either`にしてから記録する**: 例外のまま伝えると、TXの全体がrollbackされ、失敗の記録（実行の履歴、失敗の回数）も消える
-- **外部I/Oはat-least-onceになる**: 送信した後、commitの前にプロセスが落ちると、TXはrollbackされ、別のworkerが拾ってもう一度送る。外部I/OはDBのTXに入らないので、この形では避けられない。対策は、受け手でのidempotency keyによる重複の排除、started→送信→doneの2段のcommit、outboxなど。最初はat-least-onceを受け入れるのが現実的。claimでの冪等化は`async-job-reliability.md`にある
+- **外部I/Oはat-least-onceになる**: 送信した後、commitの前にプロセスが落ちると、TXはrollbackされ、別のworkerが拾ってもう一度送る。外部I/OはDBのTXに入らないので、この形では避けられない。対策は、受け手でのidempotency keyによる重複の排除、started→送信→doneの2段のcommit、outboxなど。最初はat-least-onceを受け入れるのが現実的。claimできなかったときの扱いは`coding-policy.md`の「外部のシステムとつなぐ実装」にある

@@ -82,7 +82,19 @@ cf <command> --dry-run                           # 送るリクエストを表�
 - **`cf d1 list` に `--json` は無い**（引数のエラーになる。1.0.0-beta.5）。`cf d1 query` は、何もしなくても JSON で返す
 - **`cf d1 query <ID> --sql "文1; 文2; …"` は複数の文を 1 回で流せる**。結果は文ごとの配列で返る。DROP TABLE 20 文を 1 回で流して全部通った（2026-10-20、sandbox の D1）。途中で失敗したときに前の文まで巻き戻るかは試していない
 
-## 関連する文書
+## Access（Zero Trust）のアプリを手で設定する
 
-- Cloudflare Access（Zero Trust）のアプリを手で設定するとき: `~/.claude/docs/cloudflare-access-setup.md`
-- API トークンの Workers の権限で 403 になるとき、Workers Free の制限: `~/.claude/docs/cloudflare-workers-permissions.md`
+Self-hosted application を手で設定したときに見落とした点（2026-09-18 に確認）。
+
+- **AUD Tag と Application ID を取り違えない**。Overview に似た形の値が 2 つ並ぶ。AUD Tag（JWT の検証に使う）は 64 桁の 16 進数でハイフンが無く、Application ID は 8-4-4-4-12 の UUID だ。Application ID を AUD に入れると、検証のコードが全リクエストに 401 "invalid access token" を返し、設定の漏れ（503）に見えないので気づきにくい
+- **ポリシーが 0 件だと誰も通れない**。Access は deny-by-default で、Allow に当たらない人は拒否される。認可を DB だけで管理する設計でも、Access に `Allow` + Include `Everyone` のポリシーが 1 つ要る（Access は本人確認だけを受け持つ）
+- **Path のワイルドカードは親のパスを含まない**。`/admin/*` は `/admin` を含まない。ワイルドカードの無いパスが前方一致になるかは公式に書かれていないので、`/admin` と `/admin/*` の両方を登録する
+- **One-time PIN は新しい組織の既定に入っていない**。既定の Cloudflare identity provider は Cloudflare のアカウントを持つ人しかログインできない。外部の利用者に使わせるなら、Identity providers に OTP を足す
+
+## API トークンの Workers の権限とプラン
+
+Pulumi（`@pulumi/cloudflare`）で Worker を作ろうとして 403 が返ったときの調査（2026-09-25）。
+
+- **新しい権限体系（2026-09-15 GA）の Editor では、Worker を作れない**。Editor は既存の Worker の読み取り、更新、デプロイ、名前の変更まででき、作成と削除はできない（[Workers roles and permissions](https://developers.cloudflare.com/workers/authorization/workers/)）。Worker ごとの権限は、まだ無い Worker には付けられない。初回の作成は product の Admin か、legacy の Workers Scripts: Edit で行い、できた後でその Worker だけの Editor に絞り直す。症状は `403 { "message": "No access to the specified resource." }` だけで、足りない権限は各 API の "Accepted Permissions" を見ないと分からない
+- **権限の変更は、反映まで数分かかることがある**。legacy の Workers Scripts Write を足してから約 5 分後に通った。数分待っても直らないときだけ、権限の付け先（Account と Zone のどちらの塊か）を疑う
+- **任意の宛先へメールを送るには Workers Paid が要る**。Workers Free では、`send_email` で送れるのは検証済みの宛先だけで、Email Service の API が `403 Unauthorized`（code 2036）を返し、権限の問題と見分けにくい（[Pricing](https://developers.cloudflare.com/email-service/platform/pricing/)）。Free は、1 リクエストの CPU 時間が 10ms、外部の呼び出しが 50 回までで、署名や JWT の検証、外部 API を呼ぶアプリは収まらないことがある（[Workers Limits](https://developers.cloudflare.com/workers/platform/limits/)）
