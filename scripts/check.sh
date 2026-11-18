@@ -25,14 +25,17 @@ section() {
 }
 
 section "shellcheck"
-mapfile -t shell_files < <(tracked '\.sh$')
+# WHY mapfile を使わない: macOS の /bin/bash は 3.2 で mapfile が無く、検査が走らないまま先へ進んでいた
+shell_files=()
+while IFS= read -r file; do shell_files+=("$file"); done < <(tracked '\.sh$')
 if [ "${#shell_files[@]}" -gt 0 ]; then
   # shellcheck は手元に入れていないので、bunx で固定の版を使う
   bunx --silent shellcheck@0.11.0 --severity=warning "${shell_files[@]}" || failed+=(shellcheck)
 fi
 
 section "ruff"
-mapfile -t python_files < <(tracked '\.py$')
+python_files=()
+while IFS= read -r file; do python_files+=("$file"); done < <(tracked '\.py$')
 if [ "${#python_files[@]}" -gt 0 ]; then
   ruff check --select E,F,W,B,UP,SIM,I,N "${python_files[@]}" || failed+=("ruff check")
   ruff format --check "${python_files[@]}" || failed+=("ruff format")
