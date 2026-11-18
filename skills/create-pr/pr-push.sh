@@ -36,7 +36,7 @@ if jj log -r "$branch@origin" --no-graph -T 'commit_id' >/dev/null 2>&1; then
   if [ -z "$(jj diff --from "$branch@origin" --to @ --summary)" ]; then
     echo "pr-push.sh: origin と中身が同じなので push しない（CI を走り直させないため）"
   else
-    jj bookmark set "$branch" -r @ --allow-backwards
+    jj bookmark set "$branch" -r @
     jj git push --bookmark "$branch"
   fi
 else

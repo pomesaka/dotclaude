@@ -3,6 +3,8 @@
 # 使い方: stop.sh <出力のフォルダ> [last]
 set -u
 
+here=$(cd "$(dirname "$0")" && pwd)
+
 dir=${1:?stop.sh: 出力のフォルダを渡す}
 last=${2:-}
 pid_file=$dir/xlisten.pid
@@ -31,10 +33,10 @@ fi
 # WHY: Monitor は 60 秒ごとにまとめて渡すので、止めた時点で最後の 1 分ぶんが届いていない
 if [ -n "$last" ]; then
   cd "$dir/events" || exit 1
-  for f in $(ls); do
-    case $f in [0-9]*.jsonl) ;; *) continue ;; esac
+  for f in [0-9]*.jsonl; do
+    [ -e "$f" ] || continue
     n=${f%.jsonl}
     [ "$n" -gt "$last" ] || continue
-    jq -r 'if .type == "speech" then "voice  \(.from)\(if .speaker then " " + .speaker else "" end): \(.text)" elif .type == "note" then "note  \(.text)" else tojson end' "$f"
+    jq -r -f "$here/line.jq" "$f"
   done
 fi

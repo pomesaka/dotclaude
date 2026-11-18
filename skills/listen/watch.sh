@@ -5,19 +5,21 @@
 # 最後に届いた行の後のファイル名を渡して立て直す。0 なら最初から読む
 set -u
 
+here=$(cd "$(dirname "$0")" && pwd)
+
 dir=${1:?watch.sh: 出力のフォルダを渡す}
 last=${2:-0}
 cd "$dir/events" || exit 1
 
-# WHY sleep 60: 1 分ぶんの行を 1 回の知らせにまとめる。利用者はリアルタイム性を求めていない
+# WHY sleep 60: 1 分ぶんの行を 1 回の知らせにまとめる。pomesaka はリアルタイム性を求めていない
 while :; do
   sleep 60
-  for f in $(ls); do
-    case $f in [0-9]*.jsonl) ;; *) continue ;; esac
+  for f in [0-9]*.jsonl; do
+    [ -e "$f" ] || continue
     n=${f%.jsonl}
     [ "$n" -gt "$last" ] || continue
     [ -s "$f" ] || break
-    jq -r 'if .type == "speech" then "voice  \(.from)\(if .speaker then " " + .speaker else "" end): \(.text)" elif .type == "note" then "note  \(.text)" elif .type == "error" then "error  \(.message)" else tojson end' "$f"
+    jq -r -f "$here/line.jq" "$f"
     last=$n
   done
   echo "last=$last"
