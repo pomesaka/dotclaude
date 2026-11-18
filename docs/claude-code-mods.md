@@ -82,8 +82,8 @@ Mods（`plugins/mods`）は早期アクセスで、型定義の冒頭に「予�
   <!-- mentions: 1 | first-seen: 2026-10 -->
 - **`tool.check`のエンジンの判定は「読むだけ」の判定ではない**: `tool.check`のhookで`await next(e)`すると、エンジンの判定`{ decision, rule?, reason? }`が読める。`e.agentId`も付く。autoモードで見た判定は次のとおり。設定の許可ルールに合うコマンド（`ls`、`rg`、`cat`）は`allow`で`rule`にそのルールが入る。`rg x > out.txt`と`ls && touch x`は、許可ルールに合う部分があっても`ask`になる（リダイレクトと、つないだ先の書き込みをエンジンが見分ける）。許可ルールに無いコマンドは、`pwd`や`echo hi`でも`ask`になる。`sed -i.bak …`は`Bash(sed:*)`のルールで`allow`になる。`allow`は「利用者が確認なしで通すと決めた」という意味で、ファイルを書き換えるコマンドも含む。読み取り専用に絞るなら、自分で読むコマンドの一覧を持ち、エンジンの`allow`は「リダイレクトが無い」ことの確認に使う（v2.1.296、2026-10-11に同じ試作で確認）
   <!-- mentions: 1 | first-seen: 2026-10 -->
-- **Modが立てたエージェントが終わると、メインに知らせが届いてメインが1ターン動く**: `prompt.submit`に`origin.kind === 'task-notification'`で来る。文は`<task-notification><task-id>エージェントのID</task-id><tool-use-id>toolu_plugin_…`で始まる。メインが動いている最中は、ターンが終わるまで待たされてから届く。`prompt.submit`のhookが`next`を呼ばずに`{ drop: 理由 }`を返すと、メインは動かない。ただし会話の行に「Prompt dropped by a hook: 理由」が1行出る。バックグラウンドのシェルが終わった知らせも同じ出どころなので、止めるのは`task-id`が自分の立てたエージェントのものだけにする。観察では、知らせが届いたのは`session.send`で続きを送った後の答えのときだけで、最初の答えの後は4〜11秒待っても届かなかった（理由は調べていない。同じ試作で確認）
-  <!-- mentions: 1 | first-seen: 2026-10 -->
+- **Modが立てたエージェントが終わると、メインに知らせが届いてメインが1ターン動く**: `prompt.submit`に`origin.kind === 'task-notification'`で来る。文は`<task-notification><task-id>エージェントのID</task-id><tool-use-id>toolu_plugin_…`で始まる。メインが動いている最中は、ターンが終わるまで待たされてから届く。`prompt.submit`のhookが`next`を呼ばずに`{ drop: 理由 }`を返すと、メインは動かない。ただし会話の行に「Prompt dropped by a hook: 理由」が1行出る。バックグラウンドのシェルが終わった知らせも同じ出どころなので、止めるのは`task-id`が自分の立てたエージェントのものだけにする。観察では、知らせが届いたのは`session.send`で続きを送った後の答えのときだけで、最初の答えの後は4〜11秒待っても届かなかった（理由は調べていない。同じ試作で確認）。エージェントの報告は、この形だけで届くとは限らない。エンジンが報告用のツールを呼ばせるエージェントの報告は、`<agent-message from="エージェントのID">`の形で、`task-notification`とは別の出どころから届き、`<task-id>`だけを見ていた`mods/retro`は止められずにメインが1ターン動いた（v2.1.323、2026-11に実機で確認）。止める、拾う、数える判定は、実機で届いた文を1件見てから形を決める。見られないときは、出どころの種類で絞らず、文に入っている自分のエージェントのIDで判定する
+  <!-- mentions: 2 | first-seen: 2026-10 -->
 
 ## ツールの呼び出し（`tool.call`）
 
