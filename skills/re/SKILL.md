@@ -43,7 +43,7 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash(fd *), Bash(rg *)
 | TypeScript、React、Next.jsの学び | レビューで差分から見える規約と罠は`typescript.md`、`react.md`、`react-a11y.md`、`nextjs.md`。差分に現れない道具の癖（Bun、Biome、開発環境）は`ts-react-tooling-gotchas.md` |
 | あるスキルの手順で間違えた点 | そのスキルの`Gotchas`の節。本文の手順が既にその点を述べているなら、節に足さずに本文の文を直す |
 | どの作業でも要る決めごと | Claude Codeだけに当てはまるなら`~/.claude/CLAUDE.md`、Codexと共通なら`~/.claude/docs/shared-agent-policy.md` |
-| 毎回手で走らせている検査 | 文書には書かず、hookにする案を報告に挙げる。どのイベントで走らせるかは`~/.claude/docs/hooks-policy.md`で決める |
+| 毎回手で打っている、判断の要らない手順や検査 | 文書には書かず、スクリプト、検査、Mod、hookのどれにするかを`~/.claude/docs/agent-environment.md`の順番で決め、作る案を報告に挙げる |
 
 `CLAUDE.md`と`shared-agent-policy.md`は、毎回の起動で全文が読まれる。関係のない作業でも読まれるので、足すのはどの作業でも要る決めごとだけにし、原則と理由を1文で書く。特定の作業でだけ要る学びは、手順や実例も含めて`docs/`の文書に書く。
 

@@ -43,7 +43,8 @@ Claude CodeとCodexに共通の決めごと（道具、コミット、判断の�
 | サブエージェントに任せる、報告を受け取る | `~/.claude/docs/subagent-delegation.md` |
 | hook | `~/.claude/docs/hooks-policy.md` |
 | Mod（`mods/`） | `~/.claude/docs/claude-code-mods.md` |
-| スキル | `/create-skill`。本文で使うと書いた道具は、`allowed-tools`にも入れる |
+| スキル | `~/.claude/docs/prompt-engineering.md`。本文で使うと書いた道具とスクリプトは、`allowed-tools`にも入れる |
+| スキル、スクリプト、Mod、hookのどれにするか | `~/.claude/docs/agent-environment.md` |
 
 ## サブエージェント
 
