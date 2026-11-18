@@ -90,4 +90,4 @@ URL をユーザーに案内する。
   <!-- mentions: 1 | first-seen: 2026-06 -->
 - **`next dev --port N`のようにポートを固定したdevコマンドは、502になる**: portlessは`PORT`の環境変数でポートを割り当ててからdevのプロセスを起動する。`--port`を固定すると`PORT`が無視され、portlessは誰も待ち受けていないポートへ転送する。`package.json`の`dev`から`--port`を外す。
   <!-- mentions: 1 | first-seen: 2026-06 -->
-- 起動した画面をPlaywrightなどの一時スクリプトで確かめるときは、`~/.claude/docs/bash-tips.md`の「一時スクリプトは、ワークスペースのルートで走らせない」を読む。
+- 起動した画面をPlaywrightなどの一時スクリプトで確かめるときは、`~/.claude/docs/bash-tips.md`の「一時スクリプトは、ワークスペースのルートで走らせない」を読む。ログインの要る画面は、`~/.claude/docs/frontend-policy.md`の「ブラウザの癖」も読む。
