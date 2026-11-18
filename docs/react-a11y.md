@@ -20,12 +20,9 @@ Biomeのa11yルールは、`<div>`にroleやariaを付ける前に、意味を�
 | `noStaticElementInteractions` | `<div onClick>`、`<div onMouseEnter>`、`<div onMouseLeave>` | ハンドラを`<button>`などの操作できる要素へ移す |
 
 - **`noStaticElementInteractions`は`onMouseEnter`と`onMouseLeave`も拒否する**（jsx-a11yより広い）。ホバーで状態を変えるなら、ハンドラを行の中の`<button>`に集める。コンテナの`onMouseLeave`での解除もできないので、隣の行のボタンの`onMouseEnter`で解除する。
-  <!-- mentions: 1 | first-seen: 2026-06 -->
 - **同じ要素に条件つきの`role`と`aria-*`を並べると拒否される**。`role={cond ? "tabpanel" : undefined}`と`aria-labelledby={cond ? id : undefined}`は、条件が同じでも静的には安全と示せない。値だけの三項も同じ。要素ごと三項で分け、それぞれに固定の値を渡す。
-  <!-- mentions: 1 | first-seen: 2026-05 -->
 - `<fieldset>`の既定の見た目は`className="border-0 p-0 m-0"`で消す。`<fieldset>`には`aria-label`を付けず、`<legend className="sr-only">`だけにする（名前が二重になる）。
 - `aria-required`は`radiogroup`に付けない（WAI-ARIA 1.2で許されていない属性で、支援技術は無視する）。必須は、各`<input type="radio">`の`required`で表す。
-  <!-- mentions: 1 | first-seen: 2026-06 -->
 
 ## 単一選択は`sr-only`のradioにする
 
@@ -38,7 +35,6 @@ Biomeのa11yルールは、`<div>`にroleやariaを付ける前に、意味を�
   {opt.label}
 </label>
 ```
-<!-- mentions: 2 | first-seen: 2026-05 -->
 
 ## 操作できる要素の中に、操作できる要素を入れない
 
@@ -49,7 +45,6 @@ Biomeのa11yルールは、`<div>`にroleやariaを付ける前に、意味を�
 - Radixの`PopoverTrigger asChild`と`Button`の中に削除ボタンを置くと、buttonの中のbuttonになり、動きが壊れる。トリガーの中に置くしかないときは、内側を`<span role="button" tabIndex={0} onKeyDown={...}>`で書き、`onClick`で`e.stopPropagation()`、`onKeyDown`でEnterとSpaceを受ける。`<span role="button">`を使ってよいのは、この入れ子を避けるときだけにする。
 - Radixの`asChild`でトリガーそのものを作るときは、`<span>`でなく`<button>`を渡す。`<span>`では`aria-haspopup`と`aria-expanded`は付くが、キーボードのフォーカスが保証されない。無効にしたいときは`<button disabled>`にする。
 
-<!-- mentions: 3 | first-seen: 2026-05 -->
 
 ## live region
 
@@ -62,37 +57,24 @@ Biomeのa11yルールは、`<div>`にroleやariaを付ける前に、意味を�
 - 飾りのアイコンとUnicodeの記号（✓、⚠）は`aria-hidden="true"`にする。live regionに`aria-label`は付けない（中身と二重に読まれる）。静的な空の状態の`<div>`には`role="status"`を付けない。
 - 差し込みか中身の変化かは、見た目やARIAのスナップショットでは区別できない。状態を変える前に対象の要素へ`dataset.probe`を付け、変えた後、文字の入った要素にその属性が残っているかを見る。
 
-<!-- mentions: 8 | first-seen: 2026-05 -->
 
 - `aria-busy`は、`<div>`でなく、roleを持つ要素（`<section>`、`<main>`、`<article>`）に付ける。`aria-busy={isLoading || undefined}`と書くと、falseのときに属性が消える。
-  <!-- mentions: 2 | first-seen: 2026-05 -->
 - Skeletonの中の操作できる要素には`inert`を付ける（React 19ではbooleanのpropとして書ける）。`pointer-events-none`と`aria-hidden`だけでは、キーボードのフォーカスが入る。
-  <!-- mentions: 1 | first-seen: 2026-05 -->
 
 ## アクセシブル名
 
 - **`aria-label`は、見えている文字をそのまま先頭に含める**（WCAG 2.5.3 Label in Name。先頭に置くのはW3CのUnderstanding 2.5.3が勧める形で、2026-09-14に確認）。音声操作の利用者は、見えている文字を読み上げて操作する。見えている文字で足りるなら`aria-label`を消す。行ごとに対象の名前を足すときは「見えている文字（対象名）」の形にして、1つの関数（`labelWithSubject(visible, subject)`）で作る。`${name} を無効化`のように見えている文字を削る形や、`${name} の QR を無効化`のように種類の名前を足す形にはしない。後者は、名前が利用者の入力だと「検証用 QR の QR」と読まれる。状態で文字が変わるボタン（無効化と再有効化）は、見えている文字とラベルに同じ変数を渡す。レビューでは`rg -n 'aria-label=\{'`で拾い、ラベルの先頭がボタンの子の文字と同じかを見る。
-  <!-- mentions: 4 | first-seen: 2026-06 -->
 - **ネイティブの`<dialog>`は、中の見出しを自動では名前にしない**。Esc、フォーカスの閉じ込め、inertはブラウザが担うが、名前は付かず「ダイアログ」とだけ読まれる。`useId()`のidを見出しに振り、`<dialog aria-labelledby={id}>`で結ぶ。`getByRole('dialog', { name: ... })`で確かめる。
-  <!-- mentions: 1 | first-seen: 2026-09 -->
 - 見えている警告の文があるときは、その文を`aria-label`に詰めず、`aria-describedby`で指す。ラベルは短い動詞にする。
-  <!-- mentions: 1 | first-seen: 2026-06 -->
 - カードのリンクは、`<Link aria-labelledby={headingId}>`と`<h3 id={headingId}>`で、読まれる内容を見出しに絞る。
 - `<button disabled>`に`aria-disabled`を重ねない。`aria-disabled`を使うのは、`disabled`を付けずにフォーカスを残したいときだけ。
-  <!-- mentions: 1 | first-seen: 2026-06 -->
 
 ## そのほかの決めごとと罠
 
 - **見た目だけ隠すときは、`hidden`や`display:none`でなく`sr-only`を使う**。`<label class="btn">...<input type="file" hidden></label>`は、マウスでは動くが、タブ順から消えてキーボードでは届かない。フォーカスリングは隠れたinputの側に出て見えないので、ラベルに出し直す（`has-[:focus-visible]:outline-2`）。判断基準は「この隠した要素は、フォーカスを受ける必要があるか」。
-  <!-- mentions: 1 | first-seen: 2026-09 -->
 - **横スクロールの領域に置いた、幅いっぱいの透明な`<button>`は、クリックで横スクロールの位置が飛ぶ**。フォーカスが移り、ブラウザがその要素を見える範囲へスクロールする。`onMouseDown={(e) => e.preventDefault()}`で、クリックでのフォーカスの移動だけを止める（`onClick`とTabでのフォーカスは残る）。`tabIndex={-1}`では直らない。
-  <!-- mentions: 1 | first-seen: 2026-06 -->
 - **一覧の行の「…」メニューは、ネイティブのPopover API（`popover="auto"`と`popoverTarget`）で作る**。自前の`position: absolute`は、祖先が`overflow-hidden`（角丸の表、カード）だと最後の行で切れる。Popoverはtop layerに描かれるので切れない。位置は自分で決める（対応ブラウザが揃うまでCSS anchor positioningには頼らない）。`onBeforeToggle`で`newState === "open"`のときにトリガーの`getBoundingClientRect()`を読んで`top`、`bottom`、`right`を入れる（`onToggle`では、1フレーム別の場所に出る）。閉じる、フォーカスを戻す、外側のクリック、Escはブラウザが担う。`role="menu"`を名乗ると矢印キーの移動を自分で実装する契約になるので、ボタンを並べるだけならroleを付けない。項目に`popoverTargetAction="hide"`を付けると、押した時点で閉じる。結果の通知はメニューの外に出し、確認のダイアログはメニューの外のstateで開く。
-  <!-- mentions: 1 | first-seen: 2026-09 -->
 - **ランドマーク（`<section>`）は、独立した機能の単位にだけ付け、飾りのまとまりは素の`<div>`にする**。迷ったら`<section>`にする。素の`<div>`の`aria-label`は支援技術に無視される。レビューで足す、消すが揺れやすいので、この基準で決める。多すぎると感じたら、`<section>`と`aria-label`を一緒に消す。
-  <!-- mentions: 2 | first-seen: 2026-06 -->
 - `<main>`は1ページに1つ。レイアウトが既に持っているなら、ページの側は`<section aria-label="...">`にする。
 - `<Link>`を無効にするには、`aria-disabled`、`tabIndex={-1}`、`pointer-events-none`の3つが要る。`aria-disabled`だけでは、TabでフォーカスしてEnterで開ける。
-  <!-- mentions: 1 | first-seen: 2026-05 -->
 - 「ファイル名: foo.mp4」のような対の表示は`<dl>`、`<dt>`、`<dd>`で書き、アイコンは`aria-hidden="true"`にする。
-  <!-- mentions: 1 | first-seen: 2026-06 -->

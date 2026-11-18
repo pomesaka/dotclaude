@@ -207,7 +207,7 @@ test('書き手が終わったら、報告を残して知らせる。終わっ�
 
 // 報告用のツールで送られた報告の形（v2.1.323 で実機に届いたものを縮めた）
 const handBack = (from: string) =>
-  `<agent-message from="${from}">\n[Subagent hand-back] The text below is the final report. The report follows:\n  - docs/b.md: 出典を分けて書く（新規）\n  mentions が3以上の項目は無い。\n</agent-message>`
+  `<agent-message from="${from}">\n[Subagent hand-back] The text below is the final report. The report follows:\n  - docs/b.md: 出典を分けて書く（新規）\n  既にあった原則は無かった。\n</agent-message>`
 
 test('書き手が報告用のツールで送った報告はメインに届けず、本文を記録に残す。最後の答えが短くても本文を残す', async ($, on) => {
   const seen = world(on, { stored: stored(19, 1, 0) })
@@ -223,7 +223,7 @@ test('書き手が報告用のツールで送った報告はメインに届け�
     corrections: 0,
     stops: 0,
     found: ['公開の前に名前を確かめる'],
-    log: [{ at: 1_000_000_000, agentId: WRITER, text: '- docs/b.md: 出典を分けて書く（新規）\nmentions が3以上の項目は無い。' }],
+    log: [{ at: 1_000_000_000, agentId: WRITER, text: '- docs/b.md: 出典を分けて書く（新規）\n既にあった原則は無かった。' }],
   })
 
   // ほかのエージェントの報告と、利用者が打った文は通す

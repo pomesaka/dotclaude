@@ -15,28 +15,22 @@
 - DBのSecurity Groupのegressは`[]`にする（RDSは外へ接続を始めない）
 - ECRには、lifecycle policy（untaggedのイメージが溜まると費用が増える）、暗号化、prodだけの`protect`を付ける。`protect`を全環境に付けると、devのリソースを消せなくなる。`encryptionConfigurations`は配列（単数形は型エラー）
 - マルチテナントのSaaSでは、初めは1顧客に1つのALBを持たせる。共有のALBとホスト名でのルーティングは、設定の誤りが全顧客に及び、ログと費用の按分が混ざり、各顧客のスタックに共有ALBのListener Ruleを変える権限が要る。顧客が50を超えて費用の差が効いてきたら、Tierごと（小口は共有、大口は専用）を考える
-  <!-- mentions: 1 | first-seen: 2026-05 -->
 
 ## Configとstate
 
 - **`config.require`を足したら、全スタックの`Pulumi.<stack>.yaml`に同じ変更でキーを足す**: 値が決まっていないprodにも、コメントアウトでなく仮の値（`"https://placeholder-replace-after-ISSUENUM.example.com"`など）を入れる。コメントアウトは`require`で落ちる。`Pulumi.dev.yaml`を作ったら、`Pulumi.prod.yaml`と`Pulumi.main.yaml`も一緒に作る。
-  <!-- mentions: 2 | first-seen: 2026-06 -->
 
 - **リソースに渡すローカルのファイルパスは、実行時の作業ディレクトリからの相対パスにする**: `contentFile`や`directory`に`path.resolve(...)`した絶対パスを渡すと、その文字列がstateに入る。CI（`/home/runner/work/...`）と手元（`/Users/...`）で先頭が違うので、中身が同じでも`pulumi preview`が毎回「更新あり」と出す。stateに書く前に`path.relative(process.cwd(), absolutePath)`で直す。`pulumi`を実行するディレクトリ（`Pulumi.yaml`のある場所）を、CIと手元で揃えておく。Cloudflare Workerの`contentFile`、`assets.directory`と、`command.local.Command`の`dir`で起きた。
-  <!-- mentions: 1 | first-seen: 2026-09 -->
 
 - **`pulumi.output(urlMap)`は、内側のOutputをほどかない**: `urlMap`が`Record<string, Output<string>>`のとき、`pulumi.output(urlMap)`は`Output<Record<string, Output<string>>>`になる。`pulumi.all(urlMap)`なら`Output<Record<string, string>>`になる。前者を`StackReference.requireOutput("ecrUrls")`で読む側は、`.apply(urls => urls["key"])`が`string`として扱われ、実行時エラーになる。
-  <!-- mentions: 1 | first-seen: 2026-05 -->
 
 - **`requireOutput()`の`as`キャスト**: `requireOutput()`は`Output<any>`を返すため型アノテーション方式はコンパイルエラー。`as pulumi.Output<string>`が唯一の実用的な型付け方法。CLAUDE.mdの「as禁止」はTypeScriptのappコードのルールであり、Pulumiのinfraコードには適用しない
 
 ## Secrets Manager
 
 - **Pulumiで管理するのはSecretの入れ物（`aws.secretsmanager.Secret`）だけにし、値（`SecretVersion`）は管理しない**: `SecretVersion`を管理すると、値が変わるたびに`pulumi up`でupdateが走り、CIが壊れる。初期値や手でのローテーションが要る値は、AWS CLIかコンソールから入れる。入れ物だけなら、CIのロールに値を読む権限は要らない（`CreateSecret`、`DescribeSecret`、`DeleteSecret`、`GetResourcePolicy`で足りる）。`SecretVersion`を管理するなら`secretsmanager:GetSecretValue`が要る。`pulumi up --refresh`が`SecretVersion`を読むときにこのAPIを呼び、無いと`AccessDenied`で落ちる。付けるときは、Resourceを自プロジェクトのARN（`secret:myproj-*`、`secret:/myproj/*`）に限り、RDSが管理するmaster secret（`rds!`で始まる）には及ばせない。
-  <!-- mentions: 3 | first-seen: 2026-06 -->
 
 - **Secretに`name`を固定すると、devでNameConflictになりやすい**: 消したSecretは既定で30日のあいだ「pending deletion」になり、同じ名前で作り直せない。devでは`recoveryWindowInDays: 0`ですぐ消えるようにする。prodは既定の30日のままにして、誤って消したときに戻せるようにする。
-  <!-- mentions: 1 | first-seen: 2026-06 -->
 
 ## 既にあるリソースをComponentResourceの下へ移す
 
@@ -49,23 +43,18 @@
 3. **statementとargsの中身が同じか**: 中身が変わると、aliasが効いてもupdateかreplaceが出る
 
 previewでは、componentのcreate、意図した改名のcreate+delete（IAMのRolePolicyは同じroleに別名で共存でき、createが先なので権限の空白は無い）、TaskDefinitionのrevisionのreplaceは、出てよい差分。状態を持つリソース（Secret、RandomPassword、S3、SecurityGroupRule、ECS Service）のreplaceやdeleteは、aliasが漏れている兆候。
-<!-- mentions: 1 | first-seen: 2026-06 -->
 
 ## ALBのアクセスログ
 
 - **`accessLogs`のバケットには、`bucket.id`でなく`bucketPolicy.id`を渡す**: ALBは`accessLogs`を有効にするとき、バケットへ試しにPutObjectする。`BucketPolicy`は別のリソースなので、`bucket.id`を渡すだけでは、ポリシーが付く前にALBが動いてAccess Deniedになる。`bucketPolicy.id`（値はバケット名と同じ）を渡すと、Outputの依存が`BucketPolicy`を通り、付くまで待つ。`dependsOn: [secBucket]`はComponentResourceの単位なので、中のリソースの順序までは決まらない。
-  <!-- mentions: 1 | first-seen: 2026-06 -->
 
 - **ログを書き込むPrincipalは、サービスプリンシパル（`logdelivery.elasticloadbalancing.amazonaws.com`）にする**: AWSの公式ドキュメント「Enable access logs for your Application Load Balancer」は、`aws.elb.getServiceAccount`（リージョンごとのELBのアカウントID）を「Legacy bucket policy」としている。サービスプリンシパルなら、`getServiceAccount`の呼び出しも、CIのロールへの`elasticloadbalancing:DescribeAccountLimits`も要らない。Resourceは`${bucketArn}/AWSLogs/${accountId}/*`、Conditionに`ArnLike: { "aws:SourceArn": "arn:aws:elasticloadbalancing:*:${accountId}:loadbalancer/*" }`を足して、同じアカウントのALBに限る（2026-06-11に確認）。
-  <!-- mentions: 1 | first-seen: 2026-06 -->
 
 - **バケット自身のARNを参照するStatementは、componentの中で組み立てる**: `extraPolicyStatements`のように外からStatementを渡す形だと、`Resource`に`bucket.arn`を入れたいときに循環する。`albLogDelivery?: { accountId }`のような専用の引数を持たせ、constructorの中で組み立てる。外から渡す形は、バケットのARNを含まないStatementに限る。
-  <!-- mentions: 1 | first-seen: 2026-06 -->
 
 ## IAM
 
 - **Pulumiのデプロイロールは、触るサービスを`service:*`で持つ。IAMだけは広げない**: action単位にすると、`up --refresh`が呼ぶread系のAPI（`rds:DescribeGlobalClusters`など、resource-levelに対応しないものが多い）で403が続く。IAMは`role/<prefix>-*`に絞ったままにする（CIに`iam:*`をResource `*`で渡すと、侵害されたときに任意のロールへAdministratorAccessを付けられる）。Secretsはactionを広げてよいが、Resourceは自プロジェクトのARNに限る。新しいサービスを足すときは、手元のadminで`pulumi up`して権限以外の誤り（ビルド、コンテナのmanifestの形、リソースの設定）を先に出す（`preview`では出ない）。adminでは権限不足は見つからないので、`rg 'new aws\.'`でinfraが触るサービスを並べてロールと比べる。正確に洗い出すなら、CIのロールか同じポリシーのロールをassumeして`up`するか、`iamlive`を使う。CIの往復（毎回十数分）で1つずつ直さない。
-  <!-- mentions: 2 | first-seen: 2026-06 -->
 - アカウント単位のAPI（`ecs:DescribeServices`、`ecr:GetAuthorizationToken`など）はARNで絞れず、`Resource: "*"`が要る。操作ごとにStatementを分けて、Resourceの範囲を使い分ける
 - PulumiでIAMロールを管理するなら、`PassRole`に加えて`CreateRole`、`DeleteRole`、`GetRole`、`AttachRolePolicy`、`DetachRolePolicy`、`TagRole`が要る。`arn:aws:iam::<ACCOUNT>:role/<prefix>-*`に絞った専用のStatementにする
 - ポリシーが重なっているときは、広い範囲（`ecs:*`）を残し、個別のStatement（`ECSUpdate`）を消す。ECRは`PulumiInfraAccess`から外し、専用のStatement（`ECRAuth`、`ECRRepoAccess`）に任せる
@@ -85,7 +74,5 @@ AWSの認証（IAMユーザーのキーか、OIDCか）は、プロジェクト�
 - **ECSのイメージの更新は、`aws ecs update-service`でなく`config-map`で渡す**: `update-service --force-new-deployment`はECSのリソース名を直に書くことになり、インフラとアプリでデプロイの仕組みが分かれる。`index.ts`で`const imageTag = config.get("imageTag") ?? "latest"`を読み、`pulumi/actions`の`config-map`で`imageTag: { value: ${{ github.sha }} }`を渡す。タスク定義の更新、ローリングアップデート、安定を待つ処理をPulumiが受け持ち、初回と2回目以降が同じ仕組みになる。`config-map`は手元の`Pulumi.<stack>.yaml`を書き換えない。
 
 - **bootstrapのworkflowでは`upsert: true`を使う**: `pulumi stack init ... || true`で失敗を隠した後に`upsert: false`で`up`すると、initが本当に失敗していたとき「スタックが無い」で`up`も落ちる。
-  <!-- mentions: 1 | first-seen: 2026-05 -->
 
 - **prodのスタックも`infra-deploy.yml`のmatrixに入れる**: 外すと、`Pulumi.prod.yaml`の`imageTag`をPRで変えてマージしても、何も起きない。「prodへのデプロイを利用者が決める」は「`Pulumi.prod.yaml`の変更をPRで承認する」ことで、CIのmatrixからprodを外すことではない。
-  <!-- mentions: 1 | first-seen: 2026-05 -->

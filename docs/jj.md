@@ -23,12 +23,10 @@ gh pr create --head <name> --base main
 PRを積むときは、向き先を1つ前のブランチにして作り、すぐに`gh stack link`でStackとして登録する（`~/.claude/docs/gh-stack.md`）。
 
 ## jj workspace で `gh` が `fatal: not a git repository` になる場合は `--repo owner/name` を明示する
-<!-- mentions: 1 | first-seen: 2026-09 -->
 
 `.jj/repo` が別パス（例: `~/github.com/<owner>/<repo>/.jj/repo`）の git store を指す構成（claude-deck workspace 等）では、作業ディレクトリに `.git/` が存在しないため `gh` の自動検出が失敗する（`cat .jj/repo` で実体パスを確認できる）。対処は `cd` で実体へ移動することではなく、`gh` の全コマンドに `--repo <owner>/<repo>` を明示すること（`gh pr list --repo owner/name ...` / `gh pr edit <N> --repo owner/name ...` / `gh pr view <N> --repo owner/name ...`）。
 
 ## PR を push した後、別件を始める前に `jj new` する
-<!-- mentions: 3 | first-seen: 2026-06 -->
 
 jj では working copy (`@`) 自体が PR のコミット。push 後にそのまま無関係なファイルを編集すると、変更が同じ push 済みコミットに amend され、別の関心事が 1 つの PR に混ざる（次に `jj git push` した時点で紛れ込む）。push の後、別件を始める前に `jj new` で新しい WC を切る。claude-deck workspace では jj コマンドを打つたびに on-disk 編集が `@` へ自動スナップショットされるので、新しい作業を始める前に、`@` が push 済みの PR のコミットでないかを `jj log` で見る。
 
@@ -37,7 +35,6 @@ jj では working copy (`@`) 自体が PR のコミット。push 後にそのま
 混ざってしまったら、`jj new` で子を作り、別件のファイルだけ `jj squash --from <PRコミット> --into @ <パス>` で移す。PR コミットは origin と同じ内容に戻る。同じファイルに両方の変更があるときはパス単位で動かせないので、`jj diff --from '<bookmark>@origin' --to @ --git` を patch に書き出し、`jj new <origin の実コミット>` で作った子に `git apply` で当て直す。その後 `jj bookmark set <bookmark> -r <origin の実コミット> --allow-backwards` でブックマークを戻し、混ざったコミットを `jj abandon` する。親には origin の実コミットを指定する（書き換えた版を親にすると、積んだ PR が CONFLICTING になる）。生成物の drift を push 済みの状態に戻す `jj restore --from <bookmark>@origin <paths>` は、auto-mode classifier が破壊的操作として block することがある。
 
 ## push済みのPRに足す、分ける
-<!-- mentions: 11 | first-seen: 2026-06 -->
 
 jjは作業コピーの編集を、知らせずに`@`のコミットへ入れる。push済みのPRのコミットに別の変更が混ざったとき、またはPRに足したい変更が別のコミットにあるときの操作。
 
@@ -48,7 +45,6 @@ jjは作業コピーの編集を、知らせずに`@`のコミットへ入れる
 - **push済みのbookmarkに新しいセッションで追記すると、`@`が説明の無い子のコミットになることがある**: push済みのコミットは、jjの既定の設定でimmutableとして扱われるためだ（`jj st`の`Parent commit (@-)`がbookmarkと同じになる）。そのままpushすると、PRに説明の無いコミットが並ぶ。`EDITOR=true jj squash --from @ --into <bookmark名>`でbookmarkのコミットへまとめてからpushする。`-m`は付けない。付けると、bookmarkのコミットの説明が上書きされる。
 
 ## 積んだPRの下がマージされたら、上を`main`へ載せ直す
-<!-- mentions: 3 | first-seen: 2026-06 -->
 
 下がsquash mergeされると、GitHubは上のbaseを`main`に変える。手元の上のbookmarkは下のコミットを親に持ったままなので、`jj git fetch`の後に`@`が衝突する。`jj rebase -b <上のbookmark> -d main`で載せ直し、空になった下のコミットを`jj abandon`して、`jj git push --bookmark <上のbookmark> --force`でpushする。
 
@@ -56,7 +52,6 @@ jjは作業コピーの編集を、知らせずに`@`のコミットへ入れる
 - 下がmerge commitでマージされたときは、下のコミットが`main`の祖先になるので、`jj rebase -s <積みの根> -d main`だけで済む。下のbookmarkが手元から消えていたら、マージされている。rebaseの途中でも、pushの前に`jj log -r '<積みの根>-'`が`main`の祖先になっていないかを見る。
 
 ## 積んだ PR の下のほうを直すときは、競合を下から順に解消する
-<!-- mentions: 1 | first-seen: 2026-10 -->
 
 下の revision に `jj squash --into <rev>` すると、上の revision は自動で rebase され、競合は上へ伝わる。上から直すと、下の競合が残ったままなので直した内容がまた競合する。
 
@@ -74,27 +69,18 @@ jj log -r 'main..<先端>' --no-graph -T 'if(conflict, "CONFLICT ", "ok ") ++ bo
 `jj rebase`や`jj new A B`で衝突したrevisionを解くときに当てはまる。
 
 - **解く場所**: 衝突したrevisionの上に`jj new <衝突したrev>`で子を作り、編集して`jj squash`で親へ入れる。`jj log`で×が消えたことを見る。`@`自身が衝突したrevisionで、それを直接編集したなら`jj squash`は要らない。その`jj squash`は親（immutableなmain）へ向かうので失敗する。編集は`@`に入っているので、そのまま`jj git push`できる。
-  <!-- mentions: 2 | first-seen: 2026-05 -->
 - **`jj squash -m "..."`は、宛先の説明を置き換える**: 意味のある説明を持つrevisionへ入れた後は、`jj desc -r <rev> -m '<元の説明>'`で戻す。`-m`を省くと、両方の説明が空でないときにエディタが開く。`EDITOR=true`を付けると開かない。`--message ""`では元の説明を保てない。
-  <!-- mentions: 2 | first-seen: 2026-06 -->
 - **列を載せ直して下が衝突すると、上もすべて衝突した状態になる**: `@`でファイルを解いても、中間のrevisionに衝突が残り、`jj git push`は`Won't push commit since it has conflicts`で拒否する。上の「積んだ PR の下のほうを直すときは、競合を下から順に解消する」のとおりに解く。1つのrevisionにまとめてよい列なら、`EDITOR=true jj squash --from <上> --into <下>`を繰り返す。`jj squash -r X --into Y`は使えない（`-r`と`--into`は同時に指定できない）。
-  <!-- mentions: 1 | first-seen: 2026-05 -->
 - **解いた後、印の残りを探す**: `rg -n '^(<<<<<<<|>>>>>>>|%%%%%%%|\+\+\+\+\+\+\+)'`。jjは、差分が大きいと広い範囲を1つの衝突にまとめる。冒頭側（`<<<<<<<`から`+++++++`まで）だけをEditで置き換えると、`>>>>>>> conflict N of M ends`が離れた場所に残る。印の対が崩れるとjjは解消済みと扱うので、`jj st`は警告しない。`.md`の中の印は、biomeなどのlintにも出ない。
-  <!-- mentions: 1 | first-seen: 2026-06 -->
 - **`+++++++`（自分の側）の節が空なら、自分の側はそのファイルを消している**: `+++++++`と`>>>>>>>`の間に行が無ければ当たる。ファイルを`rm`して解く。残してmainの変更を取り込むと、意図した削除が気づかないうちに元に戻る。
-  <!-- mentions: 1 | first-seen: 2026-06 -->
 - **祖先に無いファイルを両方が足した衝突では、`%%%%%%%`の節がmainの版を表す**: 節の行はすべて`+`で始まる（空の祖先からmainの版への追加）。`+`を外した中身がmainの版で、その後の`+++++++`の行から先が自分の版。migrationのsnapshotのような大きいファイルは、ReadとWriteでなく、スクリプトで読み書きする。
-  <!-- mentions: 3 | first-seen: 2026-06 -->
 - **印の中に`\\\\\\\`、Unicode、長い文字列があるときは、スクリプトで解く**: Editの`old_string`は完全に一致しないと当たらず、こういう衝突では一致しにくい。衝突の直前にある一意な行の位置と、`>>>>>>> conflict N of N ends`の位置を`find`で取り、その間を解いた中身に置き換える。最後に`<<<<<<< conflict`が0件であることを確かめる。印の文字列そのものに一致させずに済み、1つのファイルの複数の衝突を1回の書き込みで解ける。
-  <!-- mentions: 1 | first-seen: 2026-06 -->
 
 ## `jj log` DAG の視覚的近接は親子関係を意味しない
-<!-- mentions: 2 | first-seen: 2026-06 -->
 
 `jj log` の DAG 表示で `@` が `main` の隣に表示されていても、実際の parent が `main` ではなく別のコミット（例: `main` よりも古い revert コミット）である場合がある。リベースが要るかは、`jj log` の見た目でなく `jj show @` の `Parents:` か、`jj st` の `Parent commit (@-)` で判断する。graph の `├─╯` の合流は「`@` がその先のコミットと親を共有する兄弟」という意味で、合流の行のすぐ上に見えるコミットが `@` の親とは限らない。実際の parent が `main` でなければ `jj rebase -s @ -d main` が必要。
 
 ## 差分の基準点を確かめる
-<!-- mentions: 3 | first-seen: 2026-06 -->
 
 差分がPRの説明と合わないほど大きいときは、基準点がずれている。
 
@@ -103,12 +89,10 @@ jj log -r 'main..<先端>' --no-graph -T 'if(conflict, "CONFLICT ", "ok ") ++ bo
 - **`jj diff`は、衝突を解いた行を、2つの版が行の中で混ざった形で描く**: 正しい文が壊れて見える。衝突を解いた後の中身は、`jj diff`でなく`rg`とReadで実際のファイルを見る。
 
 ## `jj diffu -r 'A..B'` は真の A→B 差分にならないことがある。`jj diff --from A --to B` を使う
-<!-- mentions: 1 | first-seen: 2026-09 -->
 
 `update-pr` フローで「前回 push からの差分」を見るのに `jj diffu -r '<bookmark>@origin..@'` を使うと、divergent（同じ change ID がローカルと origin で異なるコミットを指す = amend 直後）な状態では range revset が意図通り 2 点間の diff にならず、その change が持つ変更全体（機能追加時点からの全差分）が出てしまうことがある。前回 push 分との差分が多すぎると感じたら、`jj diff --from '<bookmark>@origin' --to @ --stat` に切り替える。
 
 ## `jj diff -- <path>` のパスに `(` `)` が入ると fileset parse error
-<!-- mentions: 1 | first-seen: 2026-07 -->
 
 jj の `--` 以降は git と違い単なるパスではなく fileset 式として構文解析される。Next.js の route group（`app/(app)/...`）のように括弧を含むパスをそのまま渡すと `Failed to parse fileset: Syntax error` で落ちる。パス全体を fileset の文字列リテラルとして二重引用する。
 
@@ -145,14 +129,12 @@ jj diff --stat
 jj には `git mv` 相当のコマンドがない。`Write` ツールで新パスにファイルを作成 → `Bash(rm <旧パス>)` で削除する2ステップで対応する。
 
 ## `.gitignore` 追加後の既存追跡ファイルの除外
-<!-- mentions: 1 | first-seen: 2026-06 -->
 
 `.gitignore` にパスを追加しても、既に jj の working copy で追跡中のファイルは自動的には除外されず、`jj status` で `A <path>` として表示されたままになる。`jj file untrack <path>` で追跡から外す。
 
 `jj file untrack` が対象にするのは ignored なファイルだけで、`.gitignore` に書く前に実行すると `error: ... is not ignored` で失敗する。① `.gitignore` にパターンを追加 → ② `jj file untrack` の順で行う。
 
 ## `jj new <branch>` でクリーンブランチを作る際にディスクファイルが branch 状態に戻る
-<!-- mentions: 1 | first-seen: 2026-06 -->
 
 `jj new main` を実行するとディスク上のファイルは main の状態に戻る（作業コピーが main の子になるため）。ブランチに混在した複数 issue の変更を分けたいときは、`jj new main` の後に、必要なファイルだけを旧ブランチから復元する。
 
@@ -162,7 +144,6 @@ jj restore --from <旧ブランチの revision> -- <file1> <file2> ...
 ```
 
 ## rebase conflict の両側が同一内容に収束している場合
-<!-- mentions: 3 | first-seen: 2026-05 -->
 
 `jj resolve --list` が "2-sided conflict including 1 deletion" を示しても、main 側とブランチ側の最終内容が同じになっていることがある（両者が独立して同じリファクタリングを行った場合など）。手でマージする前に、`jj file show -r main <file>` の内容と、conflict ファイルの branch 側の内容を比べる。差分がなければ main の内容で上書きして `jj squash` するだけで解決できる。
 
@@ -171,7 +152,6 @@ jj restore --from <旧ブランチの revision> -- <file1> <file2> ...
 上流のブランチの上に積んで作業し、上流がsquash mergeでmainに入った後に載せ直すと、上流が触ったファイルがすべて2-sided conflictになる。自分の側は上流の変更をそのまま含むので、衝突の中身は「上流の版」と「mainを経た上流の版」でほぼ同じだ。`jj new <衝突したrev>` → `jj restore --from main -- <パス>...` → `jj squash`で、印を手で消さずにmainの版へ置き換えられる。自分の側がそのファイルを独自に変えていると、その変更が消える。先に`jj diff --from <上流のbookmark> --to <自分のbookmark> -- <パス>`で、独自の変更が無いことを確かめる。
 
 ## divergent commit の解消
-<!-- mentions: 2 | first-seen: 2026-05 -->
 
 `jj workspace update-stale` や並行した別ワークスペースの操作で、同一 change ID が複数のコミットに分岐（divergent）することがある。`jj log` で `(divergent)` + `mxyvqxwo/0`, `mxyvqxwo/6` のようなサフィックスが付いたら対処する。
 
@@ -192,7 +172,6 @@ jj は各ワークスペースが独立して `@` をスナップショットす
 `update-stale` で古い operation log の状態に飛ぶと、`jj log` で main が古い revision を指しているように見える。`jj op log` を辿るより、目的の change hash へ `jj edit <hash>` で移り、`jj rebase -r @ -d main` で正しい親に乗せ直す方が早い。bookmark に `(ahead by N commits, behind by N commits)` と出たら、通常の `jj git push` でリモートを合わせる（`--allow-backwards` は要らない）。
 
 ## ローカルの`main`が空のコミットを指しているとき
-<!-- mentions: 1 | first-seen: 2026-09 -->
 
 複数のワークスペースが同時に`jj git fetch`などを行うと、`Concurrent modification detected, resolving automatically`の警告とともに、ローカルの`main`が中身のない空のコミットを指すことがある。原因は、いまのワークスペースの操作とは限らない。このまま`jj rebase -s <root> -d main`をしても、空のコミットへ載せ直すだけで、意味のある衝突が出ないか、何も変わらない。
 

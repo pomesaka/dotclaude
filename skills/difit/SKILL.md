@@ -74,10 +74,6 @@ jj diffu -r '@' | mise exec -- portless <name> --app-port <P> npx difit - --clea
 
 - **コメントの読み方は、`~/.claude/docs/working-rules.md`の「利用者のレビューのコメントは、書かれた箇所の直しでなく、前提への問いとして読む」にある**: 命名や構造に自信がない段階で呼んでも、こうした問いをもらえる。
 - **「モデルは何を生成しているのか」「なぜXには対応していないのか」と問われたら、`~/.claude/docs/domain-design-practices.md`を読む**: 前の問いは「AI Agentの設計原則」、後の問いは「横断モジュールへの入力境界パターン」に、原因と直し方がある。
-  <!-- mentions: 3 | first-seen: 2026-05 -->
 - **`npx difit`が`npm error Override without name: <key>`で落ちたら、`bunx difit`に替える**: `npx`は作業ディレクトリの`package.json`の`overrides`を検証し、bunが許す説明用のキー（`"_comment_kysely"`など）を弾く。portlessのログに`Using port <P>`が出ていても、この段階で落ちるので、起動に失敗したらログの最後の行を読む。`bunx`でもstdinのパイプ、`--port`、`--host`、`--no-open`はそのまま通る（2026-06に確認）。bunを使わないリポジトリでは`npx`のままでよい。
-  <!-- mentions: 1 | first-seen: 2026-06 -->
 - **コメントのブロックは、difitが終了した後に遅れて書き出される**: タスクの出力ファイルを`Client disconnected, shutting down server...`の直後に読むと、`📝 Comments from review session:`のブロックがまだ無く、コメントなしに見える。「指摘なし」とするのは、出力の末尾に`[exited with code 0]`があり、`Total comments:`の行が無いときにする。利用者が「コメントを書いた」と言ったら、同じファイルを読み直す。
-  <!-- mentions: 1 | first-seen: 2026-09 -->
 - **PRの全体を流す前に、ブランチがbaseの先頭から分岐しているかを確かめる**: baseが古いブランチで差分を流すと、baseに先に入ったコミットが巻き戻しの差分として出て、利用者がその差分の指摘に時間を使う。分岐点の出し方は`~/.claude/docs/jj.md`の「差分の基準点を確かめる」にある。baseの先頭より古ければ、rebaseしてから流す。
-  <!-- mentions: 1 | first-seen: 2026-09 -->
