@@ -7,6 +7,12 @@ export const EVENTS_FOR_TURN = 1
 // コミットや PR の作成で振り返るときの、最後に振り返ってからのターン数の下限。
 // WHY 下限を持つ: コミットを続けて刻む作業で、そのたびに聞かない
 export const TURNS_FOR_COMPLETION = 10
+// 1 ターンで道具を多く呼んだときに振り返る、メインの道具の呼び出しの数の下限と、最後に振り返ってからのターン数の下限。
+// WHY 手数で聞く: 判断の要らない手を毎回手で打っていても、モデルは自分の手数を数えないので気づかない。
+//   dotclaude-sync を文章のスキルで作り、1 回の実行で 11 回の呼び出しのうち 7 回ほどが決まった手だった（2026-11-18）
+// WHY ターン数の下限: 調べものが続く作業で、ターンごとに聞かない
+export const TOOL_CALLS_FOR_BUSY = 8
+export const TURNS_FOR_BUSY = 3
 // compact の直前に振り返るときの下限。compact の後は会話が要約に置き換わるので、ここでは出来事を問わずに聞く
 export const TURNS_FOR_COMPACT = 3
 
@@ -100,6 +106,8 @@ export const shouldJudge = (record: SessionRecord, trigger: Trigger): boolean =>
       return record.isOn && record.turns >= TURNS_FOR_COMPACT
     case 'completion':
       return record.isOn && record.turns >= TURNS_FOR_COMPLETION
+    case 'busy':
+      return record.isOn && record.turns >= TURNS_FOR_BUSY
     case 'turn':
       return record.isOn && record.turns >= TURNS_FOR_TURN && record.corrections + record.stops >= EVENTS_FOR_TURN
   }

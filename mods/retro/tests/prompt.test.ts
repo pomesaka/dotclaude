@@ -22,15 +22,16 @@ for (const one of REPLIES) {
   })
 }
 
-const JUDGES: { name: string; found: string[]; answer: string | null; has: string[]; lacks: string[] }[] = [
-  { name: '答えと前の発見がある', found: ['a', 'b'], answer: '直しました。', has: ['<answer>\n直しました。\n</answer>', '<found>\n- a\n- b\n</found>'], lacks: [] },
+const JUDGES: { name: string; found: string[]; answer: string | null; toolCalls?: number; has: string[]; lacks: string[] }[] = [
+  { name: '答えと前の発見がある', found: ['a', 'b'], answer: '直しました。', has: ['<answer>\n直しました。\n</answer>', '<found>\n- a\n- b\n</found>'], lacks: ['道具を'] },
   { name: '答えも前の発見も無い', found: [], answer: null, has: ['<found>\nまだ無い\n</found>'], lacks: ['<answer>'] },
   { name: '長い答えは末尾を残す', found: [], answer: `${'x'.repeat(6_000)}結び`, has: ['（前略）', '結び\n</answer>'], lacks: [] },
+  { name: '手数が多かったら、決まった手を探させる', found: [], answer: null, toolCalls: 11, has: ['道具を 11 回呼んだ', 'agent-environment.md'], lacks: [] },
 ]
 
 for (const one of JUDGES) {
   test(`judgePrompt: ${one.name}`, async () => {
-    const prompt = judgePrompt(one.found, one.answer)
+    const prompt = judgePrompt(one.found, one.answer, one.toolCalls ?? null)
     expect(one.has.map(part => prompt.includes(part))).toEqual(one.has.map(() => true))
     expect(one.lacks.map(part => prompt.includes(part))).toEqual(one.lacks.map(() => false))
   })

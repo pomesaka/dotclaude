@@ -10,7 +10,7 @@ export type Finding = {
 
 // 振り返りを始めたきっかけ。
 // turn は一定のターン数と出来事、completion はコミットや PR の作成、compact は compact の直前、manual は /retro
-export type Trigger = 'turn' | 'completion' | 'compact' | 'manual'
+export type Trigger = 'turn' | 'completion' | 'busy' | 'compact' | 'manual'
 
 // 書き手のエージェントの報告。agentId は、報告した書き手。同じ書き手の報告は 1 件にまとめる
 export type LogEntry = { at: number; agentId: string; text: string }

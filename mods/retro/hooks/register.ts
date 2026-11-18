@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 import type { SessionRecord, Trigger } from '../types'
 import { judgePrompt, parseJudgeReply, writerPrompt } from './prompt'
-import { actionOf, FOUND_MAX, isCompletion, isCorrection, isStop, recordOf, reportBodyOf, reporterOf, shouldJudge, stampOf, withReport } from './record'
+import { actionOf, FOUND_MAX, TOOL_CALLS_FOR_BUSY, isCompletion, isCorrection, isStop, recordOf, reportBodyOf, reporterOf, shouldJudge, stampOf, withReport } from './record'
 
 // WHY /retro: スキルと同じ名前のコマンドは呼べない（/rich で起きた）。re という名前のスキルがある
 const COMMAND = 'retro'
@@ -22,6 +22,8 @@ const isJudging = atom({ plugin: 'retro', key: 'isJudging' } as const, false)
 let lastAnswer: string | null = null
 // このターンの中で、コミットや PR の作成が走ったか。ターンの終わりに読んで戻す
 let isCompletedInTurn = false
+// このターンでメインが道具を呼んだ回数。ターンの終わりに読んで戻す
+let toolCallsInTurn = 0
 // この Mod が立てた書き手のエージェントの ID。
 // WHY モジュール変数でよい: 消えても、エージェントの一覧の説明から判定し直せる
 const writers = new Set<string>()
@@ -58,7 +60,7 @@ const isWriter = async ($: EngineInterface, agentId: string | undefined): Promis
 //   往復のたびに会話の全部を送り直す。発見を聞くのは分岐の 1 回で済ませ、書き手には発見だけを渡して会話を持たせない（2026-11-13 に利用者と決めた）。
 // WHY 発見が無ければ立てない: 何も書かないエージェントに、文書を読む分を使わせない。
 // WHY 聞けたら数を戻す: 発見が無かった区間を、次のきっかけで読み直さない。聞けなかったときは戻さず、次のきっかけで聞き直す
-const judge = async ($: EngineInterface, trigger: Trigger): Promise<void> => {
+const judge = async ($: EngineInterface, trigger: Trigger, toolCalls: number | null = null): Promise<void> => {
   const isAsked = trigger === 'manual'
   if (await read($, isJudging)) {
     if (isAsked) $.ui.toast('retro: いま振り返っています')
@@ -67,7 +69,7 @@ const judge = async ($: EngineInterface, trigger: Trigger): Promise<void> => {
   await update($, isJudging, () => true)
   try {
     const before = await load($)
-    const reply = await $.model.fork({ prompt: judgePrompt(before.found, lastAnswer) })
+    const reply = await $.model.fork({ prompt: judgePrompt(before.found, lastAnswer, toolCalls) })
     const findings = reply.isAnswered ? parseJudgeReply(reply.text) : reply.reason
     if (typeof findings === 'string') {
       if (isAsked) $.ui.toast(`retro: 振り返れませんでした（${findings}）`, { timeoutMs: 8_000 })
@@ -107,6 +109,7 @@ export const register: Register = on => {
   on('turn.start', async (_$, e, next) => {
     lastAnswer = null
     isCompletedInTurn = false
+    toolCallsInTurn = 0
     return next(e)
   }).catch((_$, e, next) => next(e))
 
@@ -130,8 +133,12 @@ export const register: Register = on => {
   }).catch((_$, e, next) => next(e))
 
   // WHY メインの Bash だけ見る: サブエージェントのコミットは、メインの作業の区切りとは限らない
-  on('tool.call', { tool: 'Bash' }, async (_$, e, next) => {
-    if (e.agentId === undefined && isCompletion(e.command)) isCompletedInTurn = true
+  // WHY メインだけ数える: サブエージェントの手数は、そのエージェントの任された作業の量で、メインの手順の癖ではない
+  on('tool.call', async (_$, e, next) => {
+    if (e.agentId === undefined) {
+      toolCallsInTurn += 1
+      if (e.tool === 'Bash' && isCompletion(e.command)) isCompletedInTurn = true
+    }
     return next(e)
   }).catch((_$, e, next) => next(e))
 
@@ -149,12 +156,23 @@ export const register: Register = on => {
     const isAnswered = e.reason === 'answer' && e.answer.trim() !== ''
     lastAnswer = isAnswered ? e.answer : null
     const isCompleted = isCompletedInTurn
+    const toolCalls = toolCallsInTurn
     isCompletedInTurn = false
+    toolCallsInTurn = 0
     const current = await change($, now => ({ ...now, turns: now.turns + 1, stops: now.stops + (isStop(e.reason) ? 1 : 0) }))
     // WHY 答えて終わったターンだけ: 中断やエラーの直後は、利用者が止めた作業の途中にいる
     if (!isAnswered) return result
-    const trigger: Trigger | null = isCompleted && shouldJudge(current, 'completion') ? 'completion' : shouldJudge(current, 'turn') ? 'turn' : null
-    if (trigger !== null) void judge($, trigger).catch(() => undefined)
+    const isBusy = toolCalls >= TOOL_CALLS_FOR_BUSY
+    const trigger: Trigger | null =
+      isCompleted && shouldJudge(current, 'completion')
+        ? 'completion'
+        : isBusy && shouldJudge(current, 'busy')
+          ? 'busy'
+          : shouldJudge(current, 'turn')
+            ? 'turn'
+            : null
+    // WHY 手数はどのきっかけでも渡す: コミットで振り返るターンも、手数が多ければ決まった手を探させる
+    if (trigger !== null) void judge($, trigger, isBusy ? toolCalls : null).catch(() => undefined)
     return result
   }).catch((_$, e, next) => next(e))
 

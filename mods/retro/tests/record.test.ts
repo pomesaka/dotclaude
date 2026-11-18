@@ -88,7 +88,10 @@ for (const one of COMMANDS) {
 
 const record = (turns: number, corrections: number, stops: number, isOn = true) => ({ isOn, turns, corrections, stops, found: [], log: [] })
 
-const JUDGES: { name: string; record: ReturnType<typeof record>; trigger: 'turn' | 'completion' | 'compact' | 'manual'; is: boolean }[] = [
+const JUDGES: { name: string; record: ReturnType<typeof record>; trigger: 'turn' | 'completion' | 'busy' | 'compact' | 'manual'; is: boolean }[] = [
+  { name: '道具を多く呼んだターンで、3 ターン', record: record(3, 0, 0), trigger: 'busy', is: true },
+  { name: '道具を多く呼んだターンでも、2 ターン', record: record(2, 0, 0), trigger: 'busy', is: false },
+  { name: '自動が OFF なら、道具を多く呼んでも聞かない', record: record(30, 0, 0, false), trigger: 'busy', is: false },
   { name: '20 ターンで、直された発言が 1 つ', record: record(20, 1, 0), trigger: 'turn', is: true },
   { name: '20 ターンで、止まったターンが 1 つ', record: record(20, 0, 1), trigger: 'turn', is: true },
   { name: '20 ターンでも、出来事が無い', record: record(20, 0, 0), trigger: 'turn', is: false },

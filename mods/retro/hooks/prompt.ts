@@ -9,8 +9,15 @@ export const FINDINGS_MAX = 3
 // found は、このセッションでこれまでに見つけた発見の見出し。answer は、Claude が直前に返した答え。null は、渡せる答えが無い。
 // WHY 答えを入れる: 分岐が使うのは「メインが最後に送った要求」で、直前の答えはまだ会話に入っていない（型定義の fork の説明）。
 // WHY 前の見出しを入れる: 同じ区間を読み直して、同じ発見を書き手に渡さない
-export const judgePrompt = (found: readonly string[], answer: string | null): string => `[retro: この会話を振り返り、次の作業に活かせる発見だけを挙げる。Claude として作業を続けるのではない。]
+// toolCalls は、直前のターンでメインが道具を呼んだ回数。多かったときだけ渡し、その中の決まった手を探させる
+export const judgePrompt = (found: readonly string[], answer: string | null, toolCalls: number | null = null): string => `[retro: この会話を振り返り、次の作業に活かせる発見だけを挙げる。Claude として作業を続けるのではない。]
 ${
+  toolCalls === null
+    ? ''
+    : `
+直前のターンで、Claude は道具を ${toolCalls} 回呼んだ。その中に、毎回同じで判断の要らない手（状態を調べる、指す先を確かめる、決まった順でコマンドを打つ）があれば、スクリプト、検査、Mod、hook のどれにするかを添えて発見に挙げる。置き場は ~/.claude/docs/agent-environment.md の順番で選ぶ。どの手も、その場で考えて打った手なら挙げない。
+`
+}${
   answer === null
     ? ''
     : `
@@ -30,7 +37,7 @@ ${found.length === 0 ? 'まだ無い' : found.map(one => `- ${one}`).join('\n')}
 - 却下した案のある設計の判断
 - スキルや作業の進め方で、次は変えたいと分かったこと
 - このプロジェクトだけの決まり
-- 毎回手で走らせている静的な検査（hook にできるもの）
+- 毎回手で打っている、判断の要らない手順や検査（スクリプト、lint、hook にできるもの）
 
 会話の要約、このセッションだけで終わる情報、すでに文書に書いてあることは挙げない。迷ったら挙げない。
 多くても ${FINDINGS_MAX} 個。無ければ空の並びを返す。空でよい。
