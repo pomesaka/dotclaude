@@ -283,6 +283,7 @@ playwright-cli close
 
 - **`default` セッションはマシン上の全 Claude セッションで共有される。検証では必ず `-s=<名前>` を付ける**: 別セッションが同じ `default` ブラウザで `goto` すると、自分の操作の途中で URL が別ポート（別ワークスペースの dev サーバー）に変わり、「自分の変更が効いていない」ように見える。対処: `playwright-cli -s=<workspace名> open ...` で始め、以降のコマンドにも毎回 `-s=` を付ける。症状が出たら `playwright-cli -s=<名前> eval "location.href"` でまず URL を確認する。
 - **名前付きセッションは必ず `open` で始める。dev サーバーが動いていても `goto` 単体は失敗する**: `playwright-cli -s=<名前> goto <url>` は `The browser '<名前>' is not open, please run open first` で落ちる（`-s=` の名前はブラウザの実体を指しており、`open` がその起動を兼ねるため）。`open <url>` が `goto` も兼ねるので、最初の 1 コマンドを `open <url>` にすればコマンドが 1 往復減る。
+- **手元で作った HTML は、`file://` でなく http で配ってから開く**: `open file://…/x.html` で撮ったスクショが真っ白になり、同じページをローカルの `python3 -m http.server` で配って `http://127.0.0.1:<port>/x.html` で開くと正しく描かれた。原因は確かめていない（playwright-cli 1.59.0-alpha、2026-11 に確認）。開く URL が http(s) になっているかを最初に見る。
 
 - **ファイル選択まわり: `upload` はワークスペース配下のファイルしか受け付けず、失敗するとファイルチューザーの状態が消える**: スクラッチパッドや `/tmp` のファイルを渡すと "outside allowed roots" で拒否される。拒否された後に同じパスを直しても、ファイルチューザーの待ち状態は失われているので**チューザーを開く操作からやり直す**必要がある（モーダル内なら再度開く）。置き場は gitignore 済みの `.playwright-cli/` が安全。また、`sr-only` で隠した `<input type="file">` を `click` するとラベルがクリックを奪ってタイムアウトする。可視の `<label>` の ref を `click` する。
 
