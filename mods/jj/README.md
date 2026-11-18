@@ -85,6 +85,10 @@ paneを開いているあいだは、Bashの後と番の終わりに自動で読
 
 **仕様を変えたら、`SESSION_CONTEXT`も直す。**
 
+## pushの1手の知らせ
+
+ClaudeがBashで`jj bookmark create`（`jj b c`）を実行すると、その結果の後に「新しいブックマークのpushは`jj git push --named <名前>=@`の1手で済む。PRまで作るなら`pr-push.sh`を使う」とClaudeにだけ知らせる。実行は止めない。ローカルだけで使うブックマークもあるためだ。既存のブックマークを動かす`jj bookmark set`は対象にしない。文は`hooks/push-hint.ts`にある。
+
 ## 開発
 
 ```bash

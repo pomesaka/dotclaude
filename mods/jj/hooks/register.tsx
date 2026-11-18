@@ -5,6 +5,7 @@ import type { JjCounts } from '../types'
 import { SESSION_CONTEXT } from './context'
 import { cellWidth, clip } from './format'
 import { CHANGED_ARGV, LOG_ARGV, SNAPSHOT_ARGV, UNPUSHED_ARGV, countsOf, parseLog } from './jj'
+import { pushHintOf } from './push-hint'
 
 const counts = atom({ plugin: 'jj', key: 'counts' } as const, null)
 const log = atom({ plugin: 'jj', key: 'log' } as const, null)
@@ -86,6 +87,15 @@ export const register: Register = on => {
     return ran
     // WHY catch: この hook はすべてのツールの呼び出しを通る。数え直しで何が起きても、ツールの結果はそのまま返す
   }).catch(($, e, next) => next(e))
+
+  // jj bookmark create の後に、push の 1 手の形を Claude に知らせる。実行は止めない。
+  // WHY 実行の後に足す: tool.call の hook から Claude へ文を渡せるのは、結果の context だけ
+  on('tool.call', { tool: 'Bash' }, async (_$, e, next) => {
+    const ran = await next(e)
+    const hint = pushHintOf(e.command)
+    if (hint === null || ran.deny !== undefined) return ran
+    return { ...ran, context: [...(ran.context ?? []), hint] }
+  }).catch((_$, e, next) => next(e))
 
   // 番の終わりにだけ作業コピーを記録する。Edit や Write で編集した分が、ここで件数に入る
   on('turn.complete', async ($, e, next) => {
