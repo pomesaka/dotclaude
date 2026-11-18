@@ -2,7 +2,7 @@
 name: dotclaude-sync
 description: dotclaudeの作業コピーに溜まった、いくつものセッションの書き込みを、dotclaude-ledgerのModの記録で書き手と理由を確かめながら関心事ごとにコミットし、公開してよいかを確かめてpushする。
 when_to_use: dotclaudeのセッションで「commitしてpushして」「溜まってる変更を入れて」「dotclaudeを同期して」と言われたとき。ほかのプロジェクトのセッションでは使わない。
-allowed-tools: Read, Write, Bash(bun ~/.claude/skills/dotclaude-sync/sync.ts:*), Bash(jj diff:*), Bash(jj split:*)
+allowed-tools: Read, Write, Bash(bun ~/.claude/skills/dotclaude-sync/sync.ts:*), Bash(jj diff:*)
 ---
 
 # dotclaudeの変更をまとめてコミットする
@@ -22,7 +22,7 @@ jj diff --git
 
 差分を全部読んでから、1つの理由で入った変更を1つのコミットにまとめる。
 
-- 1つのファイルに別々の理由の変更が混ざっていたら、`jj split`で分ける
+- 1つのファイルに別々の理由の変更が混ざっていたら、ファイルごと近いコミットに入れ、混ざった変更をメッセージに1行ずつ書く。行の単位で分けるには`jj split`の対話の画面が要り、そこまでの厳密さは求められていない（pomesakaの判断、2026-11-18）
 - 書きかけに見える変更は、コミットせずに作業コピーに残し、利用者に伝える
 - 記録の`why`が「振り返って」のような依頼の文なら、差分から、何を学びとして足したかを読み取る
 
