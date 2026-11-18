@@ -40,7 +40,7 @@ agent: general-purpose
 
 ### プロジェクトの規約
 
-!`cat ./CLAUDE.md 2>/dev/null`
+!`cat ./CLAUDE.md 2>/dev/null || true`
 
 !`[ -d ./.claude/rules ] && cat ./.claude/rules/*.md 2>/dev/null || true`
 

@@ -1,0 +1,8 @@
+{
+  "name": "verify-guide",
+  "version": "0.1.0",
+  "description": "When the agent launches an app (portless, playwright-cli open, a dev server), tells it once per repository whether the repository has a run guide (.claude/skills/verify, verifier-*, run-*) to follow, or that it should write one after verifying",
+  "author": {
+    "name": "pomesaka"
+  }
+}

@@ -89,7 +89,8 @@
     "danger-guard@dotclaude": true,
     "quiet-prompts@dotclaude": true,
     "claude-security@claude-plugins-official": true,
-    "ui-design@pomesaka-ui-design": true
+    "ui-design@pomesaka-ui-design": true,
+    "verify-guide@dotclaude": true
   },
   "extraKnownMarketplaces": {
     "claude-deck": {

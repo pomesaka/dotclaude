@@ -68,6 +68,11 @@
       "description": "Looks back on the session in the background and writes what is worth keeping into the docs: a fork of the conversation lists the findings, and only when there are some, a subagent without the conversation writes them following the re skill. Runs before a compact, after commits and PRs, and after long stretches with corrections; /retro runs it now"
     },
     {
+      "name": "verify-guide",
+      "source": "./mods/verify-guide",
+      "description": "When the agent launches an app (portless, playwright-cli open, a dev server), tells it once per repository whether the repository has a run guide (.claude/skills/verify, verifier-*, run-*) to follow, or that it should write one after verifying"
+    },
+    {
       "name": "dotclaude-ledger",
       "source": "./mods/dotclaude-ledger",
       "description": "Records every Edit and Write that lands in the dotclaude working copy (file, an excerpt, and the request it answered) outside the repository, so one dotclaude session can split and commit changes many sessions wrote; adds a dotclaude N count to the line under the prompt"
