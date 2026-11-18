@@ -2,8 +2,10 @@
 # 公開リポジトリへ push する前に、出してはいけない文字列が入っていないかを調べる。
 #
 #   scripts/check-public.sh [remote] [branch]    既定は origin main
+#   scripts/check-public.sh --working-copy       jj の作業コピー（@）で足した行
 #
 # 調べる対象は、<remote>/<branch> にまだ無いコミットの差分・メッセージ・作者のメールアドレス。
+# --working-copy では、コミットする前の作業コピーで足した行を調べる（dotclaude-sync がコミットの前に使う）。
 # 見つかれば該当行を出して 1 で終わる。
 #
 # WHY 先端のファイルでなくコミットの差分を見る: 途中のコミットで足して後のコミットで消した文字列も、push すれば履歴に残る。
@@ -44,17 +46,21 @@ eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.
 hooks\.slack\.com/services/[A-Za-z0-9/]{10,}
 EOF
 
-# リモートにまだ無いコミットだけを見る。リモートに枝が無ければ（最初の push）、すべてのコミットを見る
-if git -C "$repo" rev-parse -q --verify "refs/remotes/$remote/$branch" >/dev/null; then
-  range="$remote/$branch..$branch"
-else
-  range="$branch"
-fi
-
 # 調べるのは、コミットメッセージと作者と、差分で足した行だけ。
 # WHY 消した行と前後の行を見ない: どちらもすでに公開されている。名前を消すコミットが、消した名前で止まらないようにする
-git -C "$repo" log --no-color --format='commit %H%nauthor %an <%ae>%ncommitter %cn <%ce>%n%B' "$range" >"$log"
-git -C "$repo" log -p --no-color --format= "$range" | rg '^\+' >>"$log" || true
+if [ "$remote" = "--working-copy" ]; then
+  range="作業コピー"
+  jj -R "$repo" diff --git -r @ | rg '^\+' >"$log" || true
+else
+  # リモートにまだ無いコミットだけを見る。リモートに枝が無ければ（最初の push）、すべてのコミットを見る
+  if git -C "$repo" rev-parse -q --verify "refs/remotes/$remote/$branch" >/dev/null; then
+    range="$remote/$branch..$branch"
+  else
+    range="$branch"
+  fi
+  git -C "$repo" log --no-color --format='commit %H%nauthor %an <%ae>%ncommitter %cn <%ce>%n%B' "$range" >"$log"
+  git -C "$repo" log -p --no-color --format= "$range" | rg '^\+' >>"$log" || true
+fi
 
 # WHY いったんファイルに書く: `rg | head` の形だと、head が先に閉じたときに rg が SIGPIPE で落ち、
 # pipefail のせいで「見つからなかった」側に分岐する（2026-10-10 に、検出したのに成功で終わることを確認）

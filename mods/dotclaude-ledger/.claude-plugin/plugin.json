@@ -1,0 +1,9 @@
+{
+  "name": "dotclaude-ledger",
+  "version": "0.1.0",
+  "description": "Records every Edit and Write that lands in the dotclaude working copy (file, an excerpt, and the request it answered) outside the repository, so one dotclaude session can split and commit changes many sessions wrote; adds a dotclaude N count to the line under the prompt",
+  "author": {
+    "name": "pomesaka"
+  },
+  "types": "./types/index.d.ts"
+}

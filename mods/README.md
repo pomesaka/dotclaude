@@ -16,6 +16,7 @@ Claude CodeのMod（`plugins/mods`）の置き場。このリポジトリをフ�
 | `rich` | カード、図、質問をターミナルに描く`show`ツール |
 | `status-band` | ステータス行の代わりの帯。モデル、コンテキスト、場所。ほかのModが、帯の右に自分の札を足す |
 | `retro` | reのスキル（振り返り）を裏で回す。compactの直前、コミットやPRの後、直された区間の後に、会話を分岐させて発見を聞き、発見があれば会話を持たないサブエージェントに文書へ書かせる |
+| `dotclaude-ledger` | どのセッションがdotclaudeの作業コピーに書いたかを、リポジトリの外（`~/.claude/dotclaude-ledger/`）に記録する。記録は、書いたファイル、中身の頭、そのときの依頼の文。dotclaudeのセッションが、`dotclaude-sync`のスキルで記録を読み、関心事ごとにコミットする。プロンプトの下の行に`dotclaude N`の札を足す |
 | `devrep` | 作業の状況（いましていること、次にすること、利用者がすること、自由な節）を、会話を分岐させて書かせ、paneに置く。自動更新がONなら5ターンごとに、OFFならpaneの「更新する」で書く。プロンプトの下の行に`devrep`の札を足す |
 
 ## 読み込みの仕組み
@@ -43,9 +44,10 @@ claude plugin install rich@dotclaude --scope user
 claude plugin install status-band@dotclaude --scope user
 claude plugin install devrep@dotclaude --scope user
 claude plugin install retro@dotclaude --scope user
+claude plugin install dotclaude-ledger@dotclaude --scope user
 ```
 
-プロンプトの下の行に札を足すMod（`jj`、`pr`、`refs`、`questions`、`devrep`）は、`settings.json`の`enabledPlugins`で`status-band@dotclaude`より前に書く。先に書いたModが外側になり、帯の右に札を並べる。札どうしも、先に書いたものが右になる。`devrep`、`questions`、`refs`、`pr`、`jj`、`status-band`の順に書くと、帯の右に、jjの件数とボタン、PRの番号と`pr`、`refs`、`pending 1`、`devrep`の順で並ぶ。`claude plugin install`は末尾に足すので、入れた後に行を移す。
+プロンプトの下の行に札を足すMod（`jj`、`pr`、`refs`、`questions`、`devrep`、`dotclaude-ledger`）は、`settings.json`の`enabledPlugins`で`status-band@dotclaude`より前に書く。先に書いたModが外側になり、帯の右に札を並べる。札どうしも、先に書いたものが右になる。`devrep`、`questions`、`refs`、`pr`、`jj`、`status-band`の順に書くと、帯の右に、jjの件数とボタン、PRの番号と`pr`、`refs`、`pending 1`、`devrep`の順で並ぶ。`claude plugin install`は末尾に足すので、入れた後に行を移す。
 
 `settings.json`をこのリポジトリから引き継いでいれば、`extraKnownMarketplaces`と`enabledPlugins`はすでに入っている。パスがマシンによって違う場合は、`extraKnownMarketplaces.dotclaude.source.path`を直す。
 
