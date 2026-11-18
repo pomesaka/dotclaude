@@ -1,7 +1,7 @@
 ---
 name: diagnose-complexity
 description: コードの複雑さの根本原因を分析し、モデル設計のズレに帰着できるか診断する。
-when_to_use: 「このコード複雑すぎる」「なぜこんなに分岐が多い」「モデルがズレてる気がする」「分岐の組み合わせ爆発を整理したい」「設計レベルで複雑さを減らしたい」と言われたとき。差分の局所クリーンアップは /simplify、ドメインモデルの正面監査・隠れた概念発見は review-domain を使う。このスキルは**複雑さホットスポット起点で逆算する diff-非依存の設計診断**。
+when_to_use: 「このコード複雑すぎる」「なぜこんなに分岐が多い」「モデルがズレてる気がする」「分岐の組み合わせ爆発を整理したい」「設計レベルで複雑さを減らしたい」と言われたとき。差分の局所クリーンアップは /simplify、ドメインモデルの設計と記録は model-domain を使う。このスキルは**複雑さホットスポット起点で逆算する diff-非依存の設計診断**。
 allowed-tools: Read, Grep, Glob, Bash(cat *), Bash(jj diffu *), Bash(jj diff *), Bash(find *), Bash(fd *), Bash(rg *), Bash(wc *), WebSearch, WebFetch, AskUserQuestion
 context: fork
 agent: general-purpose
@@ -12,7 +12,6 @@ model: opus
 
 ## このスキルの立ち位置
 
-- **review-domain（additive, ドメインモデル正面監査）**: ドメインモデルを正面から監査し、**隠れた新概念を発見・追加**する
 - **このスキル（subtractive / corrective, 複雑さ起点で逆算）**: 観察された**複雑さホットスポットから逆算**して、既存モデルのズレを矯正し複雑さを減らす
 - **/simplify（local, 差分限定）**: `jj diff` の変更行に対する reuse/efficiency クリーンアップ
 

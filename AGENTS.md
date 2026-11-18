@@ -54,7 +54,7 @@ Codex スキルを書く・直すときは `~/.codex/docs/codex.md` を参照す
 
 ## Frontend Implementation
 
-- プロジェクトルートに `DESIGN.md` がなければ `~/.codex/docs/design-md/` のコレクション（linear / vercel / notion / stripe / claude）から `use-design` スキルで適用できる
+- プロジェクトルートに `DESIGN.md` がなければ `~/.codex/docs/design-md/` のコレクション（linear / vercel / notion / stripe / claude）から選んで、ルートに写せる
 - 必要に応じて `~/.agents/skills/frontend-design/SKILL.md` を読む
 
 ## スキルの発見

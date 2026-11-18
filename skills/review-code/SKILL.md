@@ -1,7 +1,7 @@
 ---
 name: review-code
 description: 変更差分を、利用者の規約と設計の基準に照らしてレビューする。
-when_to_use: 「レビューして」「差分を見て」「PR前に確認して」「コードを見てほしい」と言われたとき。ドメイン設計・型設計の分析は review-domain を使う。
+when_to_use: 「レビューして」「差分を見て」「PR前に確認して」「コードを見てほしい」と言われたとき。ドメインモデルの設計は model-domain、複雑さの診断は diagnose-complexity を使う。
 allowed-tools: Read, Grep, Glob, Bash(jj diff *), Bash(jj diffu *), Bash(git diff *), Bash(gh pr diff *)
 context: fork
 agent: general-purpose

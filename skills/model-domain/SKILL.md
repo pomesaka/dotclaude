@@ -1,7 +1,7 @@
 ---
 name: model-domain
 description: DDDのドメインモデリングを実施し、ユビキタス言語・集約設計・層構造を確定し、型と構造、コードコメント、用語集に記録する。
-when_to_use: 「ドメインモデリングしよう」「業務概念を整理したい」「DDD設計したい」「用語を整理してモデルに落としたい」「新規ドメイン設計 / 既存の大幅再設計を確定して記録まで一気にやりたい」と言われたとき。提案・調査止まりでよい場合は review-domain、複雑さ起点の診断は diagnose-complexity を使う。このスキルは**設計を確定して記録するところまで**をスコープにする。
+when_to_use: 「ドメインモデリングしよう」「業務概念を整理したい」「DDD設計したい」「用語を整理してモデルに落としたい」「新規ドメイン設計 / 既存の大幅再設計を確定して記録まで一気にやりたい」と言われたとき。複雑さ起点の診断は diagnose-complexity を使う。このスキルは**設計を確定して記録するところまで**をスコープにする。
 argument-hint: "[対象ドメイン/機能領域]"
 allowed-tools: Read, Write, Edit, Grep, Glob, Bash(cat *), Bash(fd *), Bash(find *), Bash(rg *), Bash(jj diffu *), Bash(ls *), AskUserQuestion
 ---
@@ -10,7 +10,6 @@ allowed-tools: Read, Write, Edit, Grep, Glob, Bash(cat *), Bash(fd *), Bash(find
 
 ## このスキルの立ち位置
 
-- **review-domain（監査・提案）**: 既存コードを読んで隠れた概念を発見し、改善を提案する。設計の確定・記録は行わない
 - **diagnose-complexity（診断）**: 複雑さホットスポットから逆算してモデルのズレを特定する。diagnose で根本原因が判明した後、このスキルで再設計を確定・記録する流れも有効
 - **このスキル（設計・確定・記録）**: ゼロベースまたは大幅改訂でドメインモデルを**構築して確定し、型と構造、コードコメント、用語集に書き下ろす**
 
