@@ -32,7 +32,7 @@ jj diff --git
 bun ~/.claude/skills/dotclaude-sync/sync.ts check
 ```
 
-`check`は、作業コピーで足した行を`check-public.sh`と同じ規則で調べ、`~/.claude/…`のパスが実在するかを見て、変えたModのテストを走らせる。
+`check`は、作業コピーで足した行を`check-public.sh`と同じ規則で調べ、`~/.claude/…`のパスが実在するかを見る。スキルと`scripts/`のTypeScriptの型検査とテスト、変えたModの`claude plugin validate`と`claude plugin test`も走らせる。
 
 スクリプトでは止められないものは、足した行を読んで確かめる。
 

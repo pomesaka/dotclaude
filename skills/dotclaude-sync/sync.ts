@@ -22,9 +22,12 @@ const run = (argv: string[]): { code: number; out: string; err: string } => {
   return { code: ran.exitCode, out: ran.stdout.toString(), err: ran.stderr.toString() }
 }
 
+// WHY 成功しても stderr を出す: jj は結果（作ったコミット、push した先）を stderr に書く。
+//   出さないと、確かめるために jj log を呼び直すことになる
 const must = (argv: string[]): string => {
   const ran = run(argv)
   if (ran.code !== 0) throw new Error(`${argv.join(' ')} failed:\n${ran.err}${ran.out}`)
+  process.stderr.write(ran.err)
   return ran.out
 }
 
@@ -109,10 +112,27 @@ const check = (): boolean => {
     console.error(`check: 足した行が指す次のパスが、リポジトリにありません:\n${missing.map(path => `  - ${path}`).join('\n')}`)
     isClean = false
   }
+  // スキルと scripts/ の TypeScript は、速いので毎回全部を見る
+  for (const argv of [
+    ['bunx', 'tsc', '-p', 'tsconfig.json'],
+    ['bun', 'test', 'skills', 'scripts'],
+  ]) {
+    const ran = run(argv)
+    if (ran.code !== 0) {
+      console.error(`check: ${argv.join(' ')} が落ちました:\n${ran.out}${ran.err}`)
+      isClean = false
+    }
+  }
   // 変えた Mod のテストだけを走らせる。
   // WHY 全部を走らせない: 変えていない Mod のテストが落ちていると、そのたびにコミットが止まる。全体は scripts/check.sh で見る
   const mods = new Set([...changedFiles()].map(file => file.match(/^mods\/([^/]+)\//)?.[1]).filter(mod => mod !== undefined))
   for (const mod of mods) {
+    // WHY validate も走らせる: 型の契約（types/index.d.ts）の書き方の誤りは、テストでは落ちず、読み込みで弾かれる
+    const validated = run(['claude', 'plugin', 'validate', `mods/${mod}`])
+    if (validated.code !== 0) {
+      console.error(`check: mods/${mod} の claude plugin validate が落ちました:\n${validated.out.split('\n').filter(line => line.includes('❯') || line.includes('✘')).join('\n')}`)
+      isClean = false
+    }
     if (!existsSync(join(root, 'mods', mod, 'tests'))) continue
     const tested = run(['claude', 'plugin', 'test', `mods/${mod}`])
     if (tested.code !== 0) {
