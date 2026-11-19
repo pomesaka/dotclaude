@@ -63,7 +63,7 @@ jj diffu -r '@' | mise exec -- portless <name> --app-port <P> npx difit - --clea
 
 ## 対応後の仕上げ
 
-コメントがあって対応が完了した場合、`update-pr` スキルを呼び出す（Skill ツール使用）。push・PR 更新・`re`（振り返り）がまとめて実行される。コメントがなければスキップ。
+コメントがあって対応が完了した場合、`update-pr` スキルを呼び出す（Skill ツール使用）。push と PR の更新がまとめて実行される。コメントがなければスキップ。
 
 ## 制約
 
