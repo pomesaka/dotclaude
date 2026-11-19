@@ -36,7 +36,7 @@ agent: general-purpose
 | React のコンポーネント | `react.md`、`react-a11y.md` |
 | Next.js | `nextjs.md` |
 | Tailwind の色とレイアウト | `tailwind-layout.md` |
-| 画面（文言、遷移、通知） | `frontend-policy.md` |
+| 画面（文言、遷移、通知） | ui-design（`~/github.com/pomesaka/ui-design/`）の`DESIGN.md`、`docs/composition.md`、`components/README.md`の「結果の伝え方」 |
 
 ### プロジェクトの規約
 

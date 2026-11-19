@@ -88,4 +88,4 @@ URL をユーザーに案内する。
 - **通常起動のホスト名は、アプリの`package.json`の`name`で決まる**: ワークスペースのディレクトリ名ではないので、ワークスペース名を付けたホスト名は404になる（`"name": "acme"`なら`acme.localhost`）。ワークスペース名やブックマーク名が付くのは、`portless <custom-name> <cmd>`で起動したときだけだ。
 - **ホスト名をenvで固定する認証ライブラリ（BetterAuthなど）は、portlessのホスト名と食い違うと`Invalid origin`になる**: devサーバーのログに`Invalid origin: https://<起動したホスト名>`が出たら、`BETTER_AUTH_URL`などのenvと、起動したホスト名が違う。直し方は3つある。ワークスペースごとに`.env.local`のURLを書き換える。ライブラリのtrustedOriginsを、Originヘッダーから決める関数にする（ライブラリの調査が要る）。固定の名前で起動してenvを1つに保つ（複数のワークスペースを同時には起動できない）。
 - **`next dev --port N`のようにポートを固定したdevコマンドは、502になる**: portlessは`PORT`の環境変数でポートを割り当ててからdevのプロセスを起動する。`--port`を固定すると`PORT`が無視され、portlessは誰も待ち受けていないポートへ転送する。`package.json`の`dev`から`--port`を外す。
-- 起動した画面をPlaywrightなどの一時スクリプトで確かめるときは、`~/.claude/docs/bash-tips.md`の「一時スクリプトは、ワークスペースのルートで走らせない」を読む。ログインの要る画面は、`~/.claude/docs/frontend-policy.md`の「ブラウザの癖」も読む。
+- 起動した画面をPlaywrightなどの一時スクリプトで確かめるときは、`~/.claude/docs/bash-tips.md`の「一時スクリプトは、ワークスペースのルートで走らせない」を読む。ログインの要る画面は、`~/.claude/docs/browser-quirks.md`も読む。
