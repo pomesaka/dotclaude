@@ -52,6 +52,7 @@
 - **環境変数やフォームの文字列を数値にするとき、`Number()`も`Number.parseInt()`も`NaN`をエラーなしで返す**（`parseInt("12abc", 10)`は`12`を返す。node 22で確認）。境界でZodの`z.coerce.number().int().positive()`に通す。
 - **Zodのスキーマの合成は、`.extend()`でなく`.shape`のspreadで書く**（`z.object({ ...dbEnvSchema.shape, KEY: z.string() })`）。zod v4では合成の主なAPIが`.shape`のspreadで、`.extend()`は型推論が浅くなる場面があり、非推奨の方向にある。
 - **`z.discriminatedUnion`は`.refine()`を付けたスキーマを受けない**。`.refine()`は`ZodObject`を`ZodEffects`に変える。`z.union([schema.refine(...), other])`を使う。2〜3択なら速さの差は感じない。
+- **postgres.jsの`DO`ブロックの中では、テンプレートに埋めた値がbindされない**。postgres.jsは値を`$1`のパラメータで送るが、`DO`ブロックは引数の無い関数の本体なので、`ERROR: there is no parameter $1`で落ちる。文字列を連結して`sql.unsafe()`に渡すとSQLインジェクションになる。`` sql`SELECT format('CREATE ROLE %I LOGIN PASSWORD %L', ${name}, ${password}) AS stmt` ``でサーバーにエスケープさせ（`%I`は識別子、`%L`はリテラル）、返った文を`sql.unsafe()`で実行する。存在の確かめのような`DO`の要らない部分は、ふつうのparameterizedなクエリにする。
 - **`g`フラグ付きのRegExpをモジュールの定数にして`exec()`や`test()`で使うと、`lastIndex`が呼び出しをまたいで残り、2回目から結果がずれる**。毎回新しいRegExpを返す関数にする。`replace()`と`matchAll()`は定数のままでよい（node 22で確認）。
 
 ## 型検査の癖
