@@ -37,6 +37,7 @@ Claude CodeとCodexの両方が読む、利用者の決めごと。Claude Code�
 - プロジェクトのルートに`DESIGN.md`があれば、画面を作るときの基準にする。`TESTING.md`があれば、テストの設計とレビューの前に読む。
 - AIが作りがちな画面（Interのフォント、紫のグラデーション、どこにでもある配置）にしない。
 - 文書、コメント、議事録、コミット、PRで、決めた人や確かめた相手を「利用者」と書かない。外の人には誰のことか分からないためだ。会社の文書（Accel-Hackのリポジトリ、議事録）でも個人の公開リポジトリ（dotclaudeなど）でも、「pomesakaと確認」「pomesakaの指示」と書く。会話の中の返答は、この限りでない。
+- 会社のリポジトリのブランチ名、コミット、PR、READMEには、pomesakaが個人で作っている道具やプロジェクトの名前を書かず、変更の中身（何を、なぜ）だけを書く。その名前を消すと読み手が変更を理解できないときは、書く前にpomesakaに聞く。道具の位置づけ（社内の共通部品か、など）も、確かめずに書かない。ブランチ名とPRの本文の編集の履歴は、後から消せないためだ。
 
 ## 作業ごとに読む文書
 
@@ -48,7 +49,7 @@ Claude CodeとCodexの両方が読む、利用者の決めごと。Claude Code�
 | 設計を決める、責務を分ける | `code-design.md`、`domain-design-practices.md` |
 | テストを設計する、書く、レビューする | `testing-policy.md` |
 | 削除、置き換え、複数の箇所にまたがる変更、PRの準備 | `working-rules.md` |
-| 画面を作る、直す | `frontend-policy.md`。Tailwindの色とレイアウトは`tailwind-layout.md`、チャートは`charts.md` |
+| 画面を作る、直す | ui-design（`~/github.com/pomesaka/ui-design/`）の`DESIGN.md`と`docs/composition.md`。画面の案を作るときは、`ui-design:ui-designer`のサブエージェントに任せる。実装と確かめのときのブラウザの癖は`browser-quirks.md`、Tailwindの色とレイアウトは`tailwind-layout.md`、チャートは`charts.md` |
 | 利用者ごとのデータを返すAPIを書く | `web-security.md` |
 | 例外を扱う、エラーログを書く | `error-logging.md` |
 | 名前を付ける、用語集を直す | `glossary-policy.md` |
