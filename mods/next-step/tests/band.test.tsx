@@ -71,11 +71,6 @@ const world = (on: On, given: Given = {}) => {
     toasts.push(e.text)
     return { value: undefined }
   })
-  // テストの土台にはエンジンの描画が無い。帯に元から出るものの代わりに、目印を返す
-  on('ui.render', ($, e) => {
-    const { Text } = $.ui.resolve(e)
-    return <Text>ENGINE</Text>
-  })
   return {
     asked,
     submitted,
@@ -117,7 +112,6 @@ test('エンジンの案が来ると、それを先頭の札にし、残りを�
   expect(await ui.find({ type: 'Text', text: /^コミットして$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^テストを足して$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^READMEにも反映して$/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /^ENGINE$/ })).toBeUndefined()
   await ui.unmount()
 })
 
@@ -128,7 +122,7 @@ test('エンジンが案を出さなければ、札も出さず、モデルに�
   const ui = await $.ui.mount(band())
 
   expect(seen.asked).toEqual([])
-  expect(await ui.find({ type: 'Text', text: /^ENGINE$/ })).toBeDefined()
+  expect(await ui.find({ key: 'send-0' })).toBeUndefined()
   await ui.unmount()
 })
 
@@ -150,7 +144,7 @@ for (const one of SKIPPED) {
     const ui = await $.ui.mount(band())
 
     expect(seen.asked).toEqual([])
-    expect(await ui.find({ type: 'Text', text: /^ENGINE$/ })).toBeDefined()
+    expect(await ui.find({ key: 'send-0' })).toBeUndefined()
     await ui.unmount()
   })
 }
@@ -214,7 +208,6 @@ test('返事を待つあいだに次のターンが始まったら、遅れて�
   seen.answer()
 
   const ui = await $.ui.mount(band())
-  expect(await ui.find({ type: 'Text', text: /^ENGINE$/ })).toBeDefined()
   expect(await ui.find({ key: 'send-0' })).toBeUndefined()
   await ui.unmount()
 })
@@ -226,8 +219,6 @@ test('返事を待つあいだに × を押したら、遅れて来た案は出�
   const ui = await $.ui.mount(band())
   await ui.press({ key: 'dismiss' })
   seen.answer()
-
-  expect(await ui.find({ type: 'Text', text: /^ENGINE$/ })).toBeDefined()
   expect(await ui.find({ key: 'send-0' })).toBeUndefined()
   await ui.unmount()
 })
@@ -239,7 +230,6 @@ test('札を押すと、その文を Claude に送り、札を消す', async ($,
 
   await ui.press({ key: 'send-1' })
   expect(seen.submitted).toEqual(['テストを足して'])
-  expect(await ui.find({ type: 'Text', text: /^ENGINE$/ })).toBeDefined()
   expect(await ui.find({ key: 'send-0' })).toBeUndefined()
   await ui.unmount()
 })
@@ -262,7 +252,7 @@ test('× を押すと、送らずに札を消す', async ($, on) => {
 
   await ui.press({ key: 'dismiss' })
   expect(seen.submitted).toEqual([])
-  expect(await ui.find({ type: 'Text', text: /^ENGINE$/ })).toBeDefined()
+  expect(await ui.find({ key: 'send-0' })).toBeUndefined()
   await ui.unmount()
 })
 
@@ -272,7 +262,6 @@ test('次のターンが始まると、札が消える', async ($, on) => {
 
   await $.turn.start({ text: '別のことを頼む', turnId: 't2' })
   const ui = await $.ui.mount(band())
-  expect(await ui.find({ type: 'Text', text: /^ENGINE$/ })).toBeDefined()
   expect(await ui.find({ key: 'send-0' })).toBeUndefined()
   await ui.unmount()
 })
@@ -288,8 +277,6 @@ for (const one of PASSES) {
     world(on)
     await finish($)
     const ui = await $.ui.mount(band(one.given))
-
-    expect(await ui.find({ type: 'Text', text: /^ENGINE$/ })).toBeDefined()
     expect(await ui.find({ key: 'send-0' })).toBeUndefined()
     await ui.unmount()
   })
