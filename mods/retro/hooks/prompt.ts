@@ -46,6 +46,7 @@ ${candidates}
 - スキルや作業の進め方で、次は変えたいと分かったこと
 - このプロジェクトだけの決まり
 - 毎回手で打っている、判断の要らない手順や検査
+- 使ったスキル、エージェント、Mod の使いにくさ。守りにくい決まり、長すぎる出力、作業に合わない手順、待たされる所。間違えていなくても、使っていて困ったなら挙げる
 
 会話の要約、このセッションだけで終わる情報は挙げない。迷ったら挙げない。
 多くても ${FINDINGS_MAX} 個。無ければ空の並びを返す。空でよい。
@@ -53,13 +54,14 @@ ${candidates}
 - title: 1 行の見出し。具体的な API 名でなく、次のプロジェクトでも使える原則の形で書く
 - detail: 何が起き、次はどう動くべきか。判断の基準を 1 文で添える
 - evidence: 根拠にした会話の発言や出来事を短く。道具やライブラリの挙動なら、名前と版を添える
-- kind: 同じことを防ぐのに、文に頼らずに済むなら "mechanism"（hook、lint、スクリプト、Mod、環境の設定の直しで止められる、知らせられる）。判断が要り、文で伝えるしかないなら "doc"。detail には、mechanism ならどの仕組みで防ぐかを書く
+- kind: スキル、エージェント、Mod の使いにくさなら "request"（そのスキルやエージェントの作りを直す要望）。同じことを防ぐのに、文に頼らずに済むなら "mechanism"（hook、lint、スクリプト、Mod、環境の設定の直しで止められる、知らせられる）。判断が要り、文で伝えるしかないなら "doc"。detail には、mechanism ならどの仕組みで防ぐかを、request なら直す方向の案を書く
+- target: request のときだけ、使いにくかったスキル、エージェント、Mod の名前（"test-designer" など）。ほかは null
 - isSevere: 1 回でも害が大きいなら true（データを失う、公開してはいけないものを出す、外へ送る、お金に響く）。ほかは false
 - same: 控えに同じ教訓があれば、その id（"c12" など）。言い回しや起きた場面が違っても、次にとるべき動きが同じなら同じとみなす。無ければ null
 - 利用者に答えるときの言語で書く
 
 JSON だけを返す。前置きも説明も付けない。
-{"findings":[{"title":"…","detail":"…","evidence":"…","kind":"doc","isSevere":false,"same":null}]}`
+{"findings":[{"title":"…","detail":"…","evidence":"…","kind":"doc","isSevere":false,"same":null,"target":null}]}`
 
 const field = (value: unknown, key: string): unknown =>
   typeof value === 'object' && value !== null && key in value ? Reflect.get(value, key) : undefined
@@ -86,8 +88,10 @@ export const parseJudgeReply = (reply: string): Finding[] | string => {
     const same = text(field(one, 'same'))
     const finding = { title: text(field(one, 'title')), detail: text(field(one, 'detail')), evidence: text(field(one, 'evidence')) }
     if (finding.title === '' || finding.detail === '') return `findings[${index}] needs a non-empty title and detail`
-    if (!isKind(kind)) return `findings[${index}].kind must be "doc" or "mechanism"`
-    findings.push({ ...finding, kind, isSevere: field(one, 'isSevere') === true, same: same === '' ? null : same })
+    if (!isKind(kind)) return `findings[${index}].kind must be "doc", "mechanism" or "request"`
+    const target = text(field(one, 'target'))
+    // WHY 要望でない発見の target は捨てる: 一覧の札に、関係の無い名前を出さない
+    findings.push({ ...finding, kind, isSevere: field(one, 'isSevere') === true, same: same === '' ? null : same, target: kind === 'request' && target !== '' ? target : null })
   }
   return findings.slice(0, FINDINGS_MAX)
 }

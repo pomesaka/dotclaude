@@ -11,6 +11,7 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 import { type Entry, formatEntry, LEDGER_DIR, parseEntries } from '../../mods/dotclaude-ledger/hooks/ledger'
+import { candidatesText, foldEvents, parseEvents, RETRO_DIR } from '../../mods/retro/hooks/candidates'
 import { growthNotice } from '../curate-docs/growth'
 
 // リポジトリの直下。このファイルは skills/dotclaude-sync/ にある。~/.claude/skills のリンクから呼ばれても実体で数える
@@ -206,6 +207,20 @@ const push = (): void => {
   // WHY push の後に測る: 指示の文書が増えるのは、ほかのセッションの書き込みがここで入るとき
   const notice = growthNotice()
   if (notice !== null) console.log(notice)
+  const requests = pendingRequests()
+  if (requests !== '') console.log(`\nスキル、エージェント、Mod への要望（retro の控え。直したら /retro drop <id> で外す）:\n${requests}`)
+}
+
+// retro の控えのうち、スキル、エージェント、Mod への要望を、回数の多い順に出す。
+// WHY ここで出す: 要望を直すのは、dotclaude で開いたセッションだけ。push のたびに目に入るようにする
+const pendingRequests = (): string => {
+  const dir = join(homedir(), RETRO_DIR)
+  if (!existsSync(dir)) return ''
+  const events = readdirSync(dir)
+    .filter(name => name.endsWith('.jsonl'))
+    .flatMap(name => parseEvents(readFileSync(join(dir, name), 'utf8')))
+  const requests = foldEvents(events).filter(one => one.kind === 'request')
+  return requests.length === 0 ? '' : candidatesText(requests)
 }
 
 const [command, ...rest] = process.argv.slice(2)

@@ -11,7 +11,21 @@ const REPLY = JSON.stringify({ findings: [FINDING] })
 // 控えに 1 回ある発見と、それと同じだと答える返事。2 回目なので文書に上げる
 const COUNTED = { id: 'c1', title: FINDING.title, detail: FINDING.detail, kind: 'doc', count: 1, evidence: ['前の回'], lastAt: 1, writtenAt: null }
 const AGAIN = JSON.stringify({ findings: [{ ...FINDING, same: 'c1' }] })
-const counted = { candidates: { next: 2, list: [COUNTED] } }
+// 控えの出来事のファイル。s0 はほかのセッション、s1 はこのセッション
+const HOME = '/Users/p'
+const DIR = `${HOME}/.claude/retro`
+const OWN = `${DIR}/s1.jsonl`
+const OTHER = `${DIR}/s0.jsonl`
+const NOW = 1_000_000_000
+const line = (event: object): string => `${JSON.stringify(event)}\n`
+// ほかのセッションで c1 が 1 回出ている
+const COUNTED_FILES = { [OTHER]: line({ type: 'seen', id: 'c1', title: FINDING.title, detail: FINDING.detail, kind: 'doc', evidence: '前の回', target: null, at: 1 }) }
+// ファイルの行を出来事として読む
+const eventsIn = (text: string | undefined): { [key: string]: unknown }[] =>
+  (text ?? '')
+    .split('\n')
+    .filter(one => one !== '')
+    .map(one => JSON.parse(one))
 const WRITER = 'w1'
 // compact する会話。エンジンは空の会話の compact を拒む
 const MESSAGES = [{ role: 'user' as const, text: '直して', toolUses: [] }]
@@ -24,6 +38,10 @@ type Given = {
   reply?: string | null
   // エージェントを立てるのを断る
   isSpawnDenied?: boolean
+  // ~/.claude/retro/ の下のファイル
+  files?: { [path: string]: string }
+  // HOME が取れない
+  isHomeless?: boolean
 }
 
 const world = (on: On, given: Given = {}) => {
@@ -40,7 +58,19 @@ const world = (on: On, given: Given = {}) => {
     toasts,
     submitted,
     reply: given.reply === undefined ? REPLY : given.reply,
+    files: new Map(Object.entries(given.files ?? {})),
+    // fs.write で書いた先のパス
+    written: [] as string[],
   }
+  on('env.get', (_$, e) => ({ value: e.name === 'HOME' && given.isHomeless !== true ? HOME : undefined }))
+  on('fs.exists', (_$, e) => ({ value: seen.files.has(e.path) || (e.path === DIR && seen.files.size > 0) }))
+  on('fs.read', (_$, e) => ({ value: seen.files.get(e.path) ?? '' }))
+  on('fs.write', (_$, e) => {
+    seen.files.set(e.path, e.text)
+    seen.written.push(e.path)
+    return { value: undefined }
+  })
+  on('fs.list', () => ({ value: [...seen.files.keys()].map(path => ({ name: path.slice(path.lastIndexOf('/') + 1), kind: 'file' as const, size: 0, mtimeMs: 0, isLink: false })) }))
   const agents: { id: string; description: string; type: string; status: 'running' | 'completed' }[] = []
 
   on('session.id', () => ({ value: 's1' }))
@@ -108,17 +138,18 @@ test('20 ターンたち、そのあいだに直されていたら、分岐に�
   expect(seen.asked.length).toBe(1)
   expect(seen.spawned).toEqual([])
   expect(seen.store.get('session:s1')).toEqual({ isOn: true, turns: 0, corrections: 0, stops: 0, found: ['公開の前に名前を確かめる'], log: [] })
-  expect(seen.store.get('candidates')).toEqual({
-    next: 2,
-    list: [{ id: 'c1', title: FINDING.title, detail: FINDING.detail, kind: 'doc', count: 1, evidence: [FINDING.evidence], lastAt: 1_000_000_000, writtenAt: null }],
-  })
+  // 控えは $.store でなく、このセッションのファイルに 1 行足す
+  expect(seen.store.has('candidates')).toBe(false)
+  expect(seen.written.every(path => path === OWN)).toBe(true)
+  const [event] = eventsIn(seen.files.get(OWN))
+  expect({ ...event, id: undefined }).toEqual({ type: 'seen', id: undefined, title: FINDING.title, detail: FINDING.detail, kind: 'doc', evidence: FINDING.evidence, target: null, at: NOW })
   expect(seen.toasts).toEqual(['retro: 1 件を控えに数えました'])
   // メインには何も送らない
   expect(seen.submitted).toEqual([])
 })
 
 test('分岐には、ほかのセッションも含めた控えの見出しを渡す', async ($, on) => {
-  const seen = world(on, { stored: { ...stored(19, 1, 0), ...counted } })
+  const seen = world(on, { stored: stored(19, 1, 0), files: COUNTED_FILES })
   await $.session.start(START)
 
   await turns($, 1)
@@ -126,16 +157,18 @@ test('分岐には、ほかのセッションも含めた控えの見出しを�
 })
 
 test('控えと同じ発見が 2 回目に出たら、会話を持たない書き手をメインと同じモデルで立て、回数を 0 に戻す', async ($, on) => {
-  const seen = world(on, { stored: { ...stored(19, 1, 0), ...counted }, reply: AGAIN })
+  const seen = world(on, { stored: stored(19, 1, 0), files: COUNTED_FILES, reply: AGAIN })
   await $.session.start(START)
 
   await turns($, 1)
   expect(seen.spawned.map(one => ({ subagentType: one.subagentType, model: one.model }))).toEqual([{ subagentType: 'general-purpose', model: undefined }])
   expect(seen.spawned[0]?.prompt.includes('"count": 2')).toBe(true)
-  expect(seen.store.get('candidates')).toEqual({
-    next: 2,
-    list: [{ ...COUNTED, count: 0, evidence: [FINDING.evidence, '前の回'], lastAt: 1_000_000_000, writtenAt: 1_000_000_000 }],
-  })
+  // ほかのセッションのファイルは書き換えず、自分のファイルに seen と written を足す
+  expect(seen.files.get(OTHER)).toBe(COUNTED_FILES[OTHER])
+  expect(eventsIn(seen.files.get(OWN)).map(one => [one.type, one.id])).toEqual([
+    ['seen', 'c1'],
+    ['written', 'c1'],
+  ])
   expect(seen.toasts).toEqual(['retro: 1 件を控えに数えました。くり返し出た 1 件を文書に書いています'])
 })
 
@@ -162,11 +195,12 @@ for (const one of FIRSTS) {
 }
 
 test('書き手を立てられなかったら、回数を残して次に上げ直す', async ($, on) => {
-  const seen = world(on, { stored: { ...stored(19, 1, 0), ...counted }, reply: AGAIN, isSpawnDenied: true })
+  const seen = world(on, { stored: stored(19, 1, 0), files: COUNTED_FILES, reply: AGAIN, isSpawnDenied: true })
   await $.session.start(START)
 
   await turns($, 1)
-  expect(seen.store.get('candidates')).toEqual({ next: 2, list: [{ ...COUNTED, count: 2, evidence: [FINDING.evidence, '前の回'], lastAt: 1_000_000_000 }] })
+  expect(eventsIn(seen.files.get(OWN)).map(one => [one.type, one.id])).toEqual([['seen', 'c1']])
+  expect(((await $.command.run(command('candidates')))?.text ?? '').startsWith('c1  2 回  文書')).toBe(true)
 })
 
 test('発見が無ければ、書き手を立てず、数だけ戻す', async ($, on) => {
@@ -237,7 +271,7 @@ test('コミットしたターンは、10 ターンたっていれば、直さ�
 })
 
 test('compact の直前に、3 ターンたっていれば聞いてから compact に進む', async ($, on) => {
-  const seen = world(on, { stored: { ...stored(3, 0, 0), ...counted }, reply: AGAIN })
+  const seen = world(on, { stored: stored(3, 0, 0), files: COUNTED_FILES, reply: AGAIN })
   await $.session.start(START)
 
   await $.session.compact({ trigger: 'manual', messages: MESSAGES })
@@ -246,7 +280,7 @@ test('compact の直前に、3 ターンたっていれば聞いてから compac
 })
 
 test('書き手が終わったら、報告を残して知らせる。終わった知らせはメインに届けない', async ($, on) => {
-  const seen = world(on, { stored: { ...stored(19, 1, 0), ...counted }, reply: AGAIN })
+  const seen = world(on, { stored: stored(19, 1, 0), files: COUNTED_FILES, reply: AGAIN })
   await $.session.start(START)
   await turns($, 1)
 
@@ -272,7 +306,7 @@ const handBack = (from: string) =>
   `<agent-message from="${from}">\n[Subagent hand-back] The text below is the final report. The report follows:\n  - docs/b.md: 出典を分けて書く（新規）\n  既にあった原則は無かった。\n</agent-message>`
 
 test('書き手が報告用のツールで送った報告はメインに届けず、本文を記録に残す。最後の答えが短くても本文を残す', async ($, on) => {
-  const seen = world(on, { stored: { ...stored(19, 1, 0), ...counted }, reply: AGAIN })
+  const seen = world(on, { stored: stored(19, 1, 0), files: COUNTED_FILES, reply: AGAIN })
   await $.session.start(START)
   await turns($, 1)
 
@@ -335,14 +369,66 @@ test('/retro に読めない引数を渡すと、使い方を返す', async ($, 
 })
 
 test('/retro candidates は控えを回数の多い順に返し、/retro drop で 1 件を外す', async ($, on) => {
-  const other = { ...COUNTED, id: 'c2', title: '書いたファイルが差分に出るかを見る', detail: 'Write の後に hook で知らせる', kind: 'mechanism', count: 3 }
-  const seen = world(on, { stored: { candidates: { next: 3, list: [COUNTED, other] } } })
+  const other = { ...COUNTED, id: 'c2', title: '書いたファイルが差分に出るかを見る', detail: 'Write の後に hook で知らせる', kind: 'mechanism', count: 3, target: null }
+  const seen = world(on, { files: { [OTHER]: `${COUNTED_FILES[OTHER]}${line({ type: 'imported', candidate: other, at: 2 })}` } })
   await $.session.start(START)
 
   expect(await $.command.run(command('candidates'))).toEqual({
     text: 'c2  3 回  仕組み  書いたファイルが差分に出るかを見る\n    Write の後に hook で知らせる\nc1  1 回  文書  公開の前に名前を確かめる\n    公開リポジトリに案件名を書かない',
   })
   expect(await $.command.run(command('drop c2'))).toEqual({ text: 'retro: dropped c2.' })
-  expect(seen.store.get('candidates')).toEqual({ next: 3, list: [COUNTED] })
+  // 外した出来事は自分のファイルに足し、ほかのセッションのファイルは書き換えない
+  expect(eventsIn(seen.files.get(OWN)).map(one => [one.type, one.id])).toEqual([['dropped', 'c2']])
+  expect(((await $.command.run(command('candidates')))?.text ?? '').includes('c2')).toBe(false)
   expect(await $.command.run(command('drop c9'))).toEqual({ text: 'retro: no counted finding has the id c9. /retro candidates lists them.' })
+})
+
+// 前の版が $.store に持っていた控えを、ファイルへ移す
+const LEGACY = { candidates: { next: 2, list: [COUNTED, { id: 'c2', title: '形が合わない' }] } }
+const MIGRATIONS: { name: string; stored: { [key: string]: unknown }; files: { [path: string]: string }; imported: string[]; isKeyKept: boolean }[] = [
+  { name: 'ファイルが無く古い控えがあれば、形の合う控えを imported にして、キーを消す', stored: LEGACY, files: {}, imported: ['c1'], isKeyKept: false },
+  { name: 'ファイルがもうあれば、移さずにキーだけ消す', stored: LEGACY, files: COUNTED_FILES, imported: [], isKeyKept: false },
+  { name: '古い控えが無ければ、何も書かない', stored: {}, files: {}, imported: [], isKeyKept: false },
+]
+
+for (const one of MIGRATIONS) {
+  test(`移し替え: ${one.name}`, async ($, on) => {
+    const seen = world(on, { stored: one.stored, files: one.files })
+    await $.session.start(START)
+
+    await $.command.run(command('candidates'))
+    await $.command.run(command('candidates'))
+    const imported = eventsIn(seen.files.get(OWN)).filter(event => event.type === 'imported')
+    expect(imported.map(event => Reflect.get(Object(event.candidate), 'id'))).toEqual(one.imported)
+    expect(seen.store.has('candidates')).toBe(one.isKeyKept)
+  })
+}
+
+test('移した控えと同じ発見が出たら、2 回目として文書に上げる', async ($, on) => {
+  const seen = world(on, { stored: { ...stored(19, 1, 0), ...LEGACY }, reply: AGAIN })
+  await $.session.start(START)
+
+  await turns($, 1)
+  expect(seen.spawned.length).toBe(1)
+})
+
+test('HOME が取れなければ、控えに数えず、文書にも上げない', async ($, on) => {
+  const seen = world(on, { stored: stored(19, 1, 0), reply: AGAIN, isHomeless: true })
+  await $.session.start(START)
+
+  await turns($, 1)
+  expect(seen.written).toEqual([])
+  expect(seen.spawned).toEqual([])
+  expect(await $.command.run(command('candidates'))).toEqual({ text: 'retro: HOME is not set, so there are no counted findings.' })
+})
+
+test('スキルやエージェントの使いにくさは、要望として対象の名前と数え、文書に書かない', async ($, on) => {
+  const request = { ...FINDING, title: '設計表が長すぎる', kind: 'request', isSevere: true, target: 'test-designer' }
+  const seen = world(on, { stored: stored(19, 1, 0), reply: JSON.stringify({ findings: [request] }) })
+  await $.session.start(START)
+
+  await turns($, 1)
+  expect(seen.spawned).toEqual([])
+  expect(seen.toasts).toEqual(['retro: 1 件を控えに数えました（スキルやエージェントへの要望 1 件。/retro candidates で読めます）'])
+  expect(((await $.command.run(command('candidates')))?.text ?? '').includes('1 回  要望: test-designer  設計表が長すぎる')).toBe(true)
 })

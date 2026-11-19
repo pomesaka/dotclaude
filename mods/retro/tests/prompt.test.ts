@@ -2,15 +2,17 @@ import { expect, test } from 'claude-code/testing'
 
 import { judgePrompt, parseJudgeReply, writerPrompt } from '../hooks/prompt'
 
-const ONE = { title: '公開の前に名前を確かめる', detail: '公開リポジトリに案件名を書かない', evidence: '2026-11-13 に指摘された', kind: 'doc', isSevere: false, same: null }
+const ONE = { title: '公開の前に名前を確かめる', detail: '公開リポジトリに案件名を書かない', evidence: '2026-11-13 に指摘された', kind: 'doc', isSevere: false, same: null, target: null }
 
 const REPLIES: { name: string; reply: string; parsed: unknown }[] = [
   { name: '発見が 1 つ', reply: JSON.stringify({ findings: [ONE] }), parsed: [ONE] },
   { name: '発見が無い', reply: '{"findings":[]}', parsed: [] },
   { name: 'コードの囲みと前置きが付いている', reply: `振り返りました。\n\`\`\`json\n${JSON.stringify({ findings: [ONE] })}\n\`\`\``, parsed: [ONE] },
-  { name: '根拠と害と同じ控えが無くても読む', reply: '{"findings":[{"title":"a","detail":"b","kind":"mechanism"}]}', parsed: [{ title: 'a', detail: 'b', evidence: '', kind: 'mechanism', isSevere: false, same: null }] },
-  { name: '同じ控えと害を読む', reply: '{"findings":[{"title":"a","detail":"b","kind":"doc","isSevere":true,"same":"c3"}]}', parsed: [{ title: 'a', detail: 'b', evidence: '', kind: 'doc', isSevere: true, same: 'c3' }] },
-  { name: '防ぎ方が無い', reply: '{"findings":[{"title":"a","detail":"b"}]}', parsed: 'findings[0].kind must be "doc" or "mechanism"' },
+  { name: '根拠と害と同じ控えが無くても読む', reply: '{"findings":[{"title":"a","detail":"b","kind":"mechanism"}]}', parsed: [{ title: 'a', detail: 'b', evidence: '', kind: 'mechanism', isSevere: false, same: null, target: null }] },
+  { name: '同じ控えと害を読む', reply: '{"findings":[{"title":"a","detail":"b","kind":"doc","isSevere":true,"same":"c3"}]}', parsed: [{ title: 'a', detail: 'b', evidence: '', kind: 'doc', isSevere: true, same: 'c3', target: null }] },
+  { name: '要望は対象の名前を読む', reply: '{"findings":[{"title":"a","detail":"b","kind":"request","target":" test-designer "}]}', parsed: [{ title: 'a', detail: 'b', evidence: '', kind: 'request', isSevere: false, same: null, target: 'test-designer' }] },
+  { name: '要望でない発見の対象は捨てる', reply: '{"findings":[{"title":"a","detail":"b","kind":"doc","target":"re"}]}', parsed: [{ title: 'a', detail: 'b', evidence: '', kind: 'doc', isSevere: false, same: null, target: null }] },
+  { name: '防ぎ方が無い', reply: '{"findings":[{"title":"a","detail":"b"}]}', parsed: 'findings[0].kind must be "doc", "mechanism" or "request"' },
   { name: '4 つ目からは捨てる', reply: JSON.stringify({ findings: [ONE, ONE, ONE, ONE] }), parsed: [ONE, ONE, ONE] },
   { name: 'JSON が無い', reply: '特にありません', parsed: 'the reply has no JSON object' },
   { name: 'JSON が壊れている', reply: '{"findings":[}', parsed: 'the reply is not valid JSON' },
@@ -41,7 +43,7 @@ for (const one of JUDGES) {
 }
 
 test('writerPrompt: 上げる控えと回数、作業ディレクトリを渡し、re のスキルに従わせる', async () => {
-  const prompt = writerPrompt([{ id: 'c1', title: ONE.title, detail: ONE.detail, kind: 'doc', count: 2, evidence: ['a'], lastAt: 1, writtenAt: 1 }], '/repo')
+  const prompt = writerPrompt([{ id: 'c1', title: ONE.title, detail: ONE.detail, kind: 'doc', count: 2, evidence: ['a'], lastAt: 1, writtenAt: 1, target: null }], '/repo')
   expect(prompt.includes('"title": "公開の前に名前を確かめる"')).toBe(true)
   expect(prompt.includes('"count": 2')).toBe(true)
   expect(prompt.includes('"wasWrittenBefore": true')).toBe(true)

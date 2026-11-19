@@ -1,5 +1,6 @@
-// 発見をどう防ぐか。doc は文書に書く。mechanism は hook、lint、スクリプト、Mod、環境の直しで防げるので、文書に書かずに作る候補にする
-export type Kind = 'doc' | 'mechanism'
+// 発見をどう防ぐか。doc は文書に書く。mechanism は hook、lint、スクリプト、Mod、環境の直しで防げるので、文書に書かずに作る候補にする。
+// request は、スキル、エージェント、Mod の使いにくさ（守りにくい決まり、長すぎる出力、合わない手順）で、dotclaude のセッションが作り直す
+export type Kind = 'doc' | 'mechanism' | 'request'
 
 // 会話を分岐させて見つけさせた、次に活かせる発見
 export type Finding = {
@@ -14,6 +15,8 @@ export type Finding = {
   isSevere: boolean
   // 控えにある同じ発見の id。null は新しい発見
   same: string | null
+  // request のときの、使いにくかったスキル、エージェント、Mod の名前。ほかの種類では null
+  target: string | null
 }
 
 // 控えの 1 件。セッションをまたいで、同じ発見が何回出たかを数える
@@ -30,10 +33,18 @@ export type Candidate = {
   lastAt: number
   // 最後に文書に上げた時刻。null はまだ上げていない
   writtenAt: number | null
+  // request のときの対象の名前。ほかの種類では null
+  target: string | null
 }
 
-// 控えの全体。next は、次に付ける id の番号
-export type Candidates = { next: number; list: Candidate[] }
+// 控えの出来事。~/.claude/retro/<セッションID>.jsonl に 1 行ずつ足し、全ファイルを at の順に束ねて控えの一覧を作る。
+// WHY 出来事で持つ: 1 つの値を読んで書き戻すと、同時に振り返った別のセッションの回数を上書きで消した
+// seen は発見が 1 回出た、written は文書に上げた、dropped は /retro drop で外した、imported は $.store からの移し替え
+export type RetroEvent =
+  | { type: 'seen'; id: string; title: string; detail: string; kind: Kind; evidence: string; target: string | null; at: number }
+  | { type: 'written'; id: string; at: number }
+  | { type: 'dropped'; id: string; at: number }
+  | { type: 'imported'; candidate: Candidate; at: number }
 
 // 振り返りを始めたきっかけ。
 // turn は一定のターン数と出来事、completion はコミットや PR の作成、compact は compact の直前、manual は /retro

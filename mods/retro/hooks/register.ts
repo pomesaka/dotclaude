@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
-import type { Candidates, SessionRecord, Trigger } from '../types'
-import { candidatesForJudge, candidatesOf, candidatesText, markWritten, tally } from './candidates'
+import type { Candidate, RetroEvent, SessionRecord, Trigger } from '../types'
+import { candidatesForJudge, candidatesText, foldEvents, formatEvents, parseEvents, RETRO_DIR, storedCandidatesOf, tally, writtenEvents } from './candidates'
 import { judgePrompt, parseJudgeReply, writerPrompt } from './prompt'
 import { actionOf, FOUND_MAX, TOOL_CALLS_FOR_BUSY, isCompletion, isCorrection, isStop, recordOf, reportBodyOf, reporterOf, shouldJudge, stampOf, withReport } from './record'
 
@@ -15,8 +15,8 @@ const WRITER_NOTICE_DROPPED = 'retro の書き手の報告（/retro log で読�
 // $.store には、セッションごとに記録を持つ。キーは session:<セッションID>
 const SESSION_PREFIX = 'session:'
 const SESSIONS_MAX = 30
-// 控えは、セッションをまたいで 1 つを持つ
-const CANDIDATES_KEY = 'candidates'
+// 前の版が控えを持っていたキー。初回に ~/.claude/retro/ へ移して消す
+const LEGACY_CANDIDATES_KEY = 'candidates'
 
 const isJudging = atom({ plugin: 'retro', key: 'isJudging' } as const, false)
 
@@ -48,12 +48,65 @@ const change = async ($: EngineInterface, fn: (current: SessionRecord) => Sessio
   return written
 }
 
-const loadCandidates = async ($: EngineInterface): Promise<Candidates> => candidatesOf(await $.store.get(CANDIDATES_KEY))
+// 控えの出来事を書くディレクトリ。HOME が取れなければ null で、控えを使わない
+const retroDir = async ($: EngineInterface): Promise<string | null> => {
+  const home = await $.env.get('HOME')
+  return home === undefined ? null : `${home}/${RETRO_DIR}`
+}
 
-const changeCandidates = async <T>($: EngineInterface, fn: (current: Candidates) => { candidates: Candidates; result: T }): Promise<T> => {
-  const { candidates, result } = fn(await loadCandidates($))
-  await $.store.set(CANDIDATES_KEY, candidates)
-  return result
+const jsonlFiles = async ($: EngineInterface, dir: string): Promise<string[]> =>
+  (await $.fs.exists(dir)) ? (await $.fs.list(dir)).filter(entry => entry.kind === 'file' && entry.name.endsWith('.jsonl')).map(entry => `${dir}/${entry.name}`) : []
+
+// このセッションのファイルに出来事を足す。
+// WHY セッションごとのファイル: $.fs に追記が無く、読んで書き直すしかない。1 つのファイルを書くのを 1 つのセッションに限れば、
+//   ほかのセッションの行を上書きで消さない。同じセッションの中は、順に並べて重ならないようにする
+let queue: Promise<void> = Promise.resolve()
+const appendEvents = ($: EngineInterface, events: readonly RetroEvent[]): Promise<void> => {
+  queue = queue
+    .then(async () => {
+      const dir = await retroDir($)
+      if (dir === null || events.length === 0) return
+      const path = `${dir}/${await $.session.id()}.jsonl`
+      const before = (await $.fs.exists(path)) ? await $.fs.read(path) : ''
+      await $.fs.write(path, `${before}${formatEvents(events)}`)
+    })
+    .catch(() => undefined)
+  return queue
+}
+
+// 前の版の $.store の控えを、ファイルがまだ1つも無いときに1度だけ移す
+const importLegacy = async ($: EngineInterface, dir: string): Promise<void> => {
+  const stored = await $.store.get(LEGACY_CANDIDATES_KEY)
+  if (stored === undefined) return
+  if ((await jsonlFiles($, dir)).length === 0) {
+    const at = await $.clock.now()
+    const moved = storedCandidatesOf(stored)
+    await appendEvents(
+      $,
+      moved.map(candidate => ({ type: 'imported', candidate, at })),
+    )
+    // WHY 書けたのを見てから消す: appendEvents は書けなくても黙るので、先に消すと回数を失う
+    if (moved.length > 0 && (await jsonlFiles($, dir)).length === 0) return
+  }
+  await $.store.delete(LEGACY_CANDIDATES_KEY)
+}
+
+// 全セッションのファイルを束ねて、控えの一覧を作る。null は、HOME が取れず控えを使えない
+const loadCandidates = async ($: EngineInterface): Promise<Candidate[] | null> => {
+  const dir = await retroDir($)
+  if (dir === null) return null
+  await importLegacy($, dir)
+  await queue
+  const texts = await Promise.all((await jsonlFiles($, dir)).map(path => $.fs.read(path).catch(() => '')))
+  return foldEvents(texts.flatMap(parseEvents))
+}
+
+// ほかのセッションの控えと重ならない id。WHY 連番をやめる: 番号を数えるには全体を読んで書き戻すことになる
+const newIdFor = (list: readonly Candidate[]) => (): string => {
+  for (;;) {
+    const id = `c${Math.random().toString(36).slice(2, 7)}`
+    if (!list.some(one => one.id === id)) return id
+  }
 }
 
 // そのエージェントが、この Mod の立てた書き手か
@@ -81,7 +134,8 @@ const judge = async ($: EngineInterface, trigger: Trigger, toolCalls: number | n
   await update($, isJudging, () => true)
   try {
     const before = await load($)
-    const reply = await $.model.fork({ prompt: judgePrompt(before.found, candidatesForJudge((await loadCandidates($)).list), lastAnswer, toolCalls) })
+    const list = (await loadCandidates($)) ?? []
+    const reply = await $.model.fork({ prompt: judgePrompt(before.found, candidatesForJudge(list), lastAnswer, toolCalls) })
     const findings = reply.isAnswered ? parseJudgeReply(reply.text) : reply.reason
     if (typeof findings === 'string') {
       if (isAsked) $.ui.toast(`retro: 振り返れませんでした（${findings}）`, { timeoutMs: 8_000 })
@@ -92,14 +146,20 @@ const judge = async ($: EngineInterface, trigger: Trigger, toolCalls: number | n
       if (isAsked) $.ui.toast('retro: 残す発見はありませんでした')
       return
     }
-    const at = await $.clock.now()
-    const promoted = await changeCandidates($, current => {
-      const counted = tally(current, findings, at)
-      return { candidates: counted.candidates, result: counted.promoted }
-    })
     await change($, current => ({ ...current, found: [...findings.map(one => one.title), ...current.found].slice(0, FOUND_MAX) }))
+    // WHY 数え直す: 分岐に聞いている間に、ほかのセッションが同じ控えを数えていることがある
+    const current = await loadCandidates($)
+    if (current === null) {
+      if (isAsked) $.ui.toast('retro: HOME が取れないので、控えに数えられませんでした', { timeoutMs: 8_000 })
+      return
+    }
+    const at = await $.clock.now()
+    const { events, promoted } = tally(current, findings, at, newIdFor(current))
+    await appendEvents($, events)
     const mechanisms = findings.filter(one => one.kind === 'mechanism').length
-    const kept = `retro: ${findings.length} 件を控えに数えました${mechanisms === 0 ? '' : `（仕組みの候補 ${mechanisms} 件。/retro candidates で読めます）`}`
+    const requests = findings.filter(one => one.kind === 'request').length
+    const notes = [mechanisms === 0 ? '' : `仕組みの候補 ${mechanisms} 件`, requests === 0 ? '' : `スキルやエージェントへの要望 ${requests} 件`].filter(one => one !== '')
+    const kept = `retro: ${findings.length} 件を控えに数えました${notes.length === 0 ? '' : `（${notes.join('、')}。/retro candidates で読めます）`}`
     if (promoted.length === 0) {
       $.ui.toast(kept)
       return
@@ -113,8 +173,7 @@ const judge = async ($: EngineInterface, trigger: Trigger, toolCalls: number | n
       return
     }
     if (started.agentId !== undefined) writers.add(started.agentId)
-    const ids = promoted.map(one => one.id)
-    await changeCandidates($, current => ({ candidates: markWritten(current, ids, at), result: undefined }))
+    await appendEvents($, writtenEvents(promoted.map(one => one.id), await $.clock.now()))
     $.ui.toast(`${kept}。くり返し出た ${promoted.length} 件を文書に書いています`)
   } finally {
     await update($, isJudging, () => false)
@@ -224,17 +283,17 @@ export const register: Register = on => {
         return { text: log.map(one => `${stampOf(new Date(one.at))}\n${one.text}`).join('\n\n') }
       }
       case 'candidates': {
-        const { list } = await loadCandidates($)
+        const list = await loadCandidates($)
+        if (list === null) return { text: 'retro: HOME is not set, so there are no counted findings.' }
         if (list.length === 0) return { text: 'retro: no findings have been counted yet.' }
         return { text: candidatesText(list) }
       }
       case 'drop': {
         const { id } = action
-        const isDropped = await changeCandidates($, current => {
-          const list = current.list.filter(one => one.id !== id)
-          return { candidates: { ...current, list }, result: list.length < current.list.length }
-        })
-        return { text: isDropped ? `retro: dropped ${id}.` : `retro: no counted finding has the id ${id}. /retro candidates lists them.` }
+        const list = await loadCandidates($)
+        if (list === null || !list.some(one => one.id === id)) return { text: `retro: no counted finding has the id ${id}. /retro candidates lists them.` }
+        await appendEvents($, [{ type: 'dropped', id, at: await $.clock.now() }])
+        return { text: `retro: dropped ${id}.` }
       }
       case 'run':
         void judge($, 'manual').catch(() => undefined)
