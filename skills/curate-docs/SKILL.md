@@ -2,7 +2,7 @@
 name: curate-docs
 description: ~/.claude/docs/ とスキルを監査し、使われていないもの、重複、食い違い、古い記述、積み重なった実例を見つけて整理する。実例は原則にまとめ、消える固有の情報を archive に移す。
 when_to_use: 「docs を整理して」「スキルを整理して」「使っていないものを消したい」「docs が大きくなってきた」「重複を見て」「原則にまとめて」「gotcha が多すぎる」と言われたとき。
-allowed-tools: Read, Edit, Write, AskUserQuestion, WebSearch, WebFetch, Bash(fd *), Bash(wc *), Bash(rg *), Bash(date *), Bash(bun ~/.claude/skills/curate-docs/usage.ts:*)
+allowed-tools: Read, Edit, Write, AskUserQuestion, WebSearch, WebFetch, Bash(fd *), Bash(wc *), Bash(rg *), Bash(date *), Bash(bun ~/.claude/skills/curate-docs/usage.ts:*), Bash(bun ~/.claude/skills/curate-docs/growth.ts:*)
 ---
 
 # curate-docs
@@ -109,6 +109,8 @@ fd -e md . ~/.claude/docs
 短くすること自体は目的でない。利用者が決めたこと、複数の実装にまたがる約束、外部の制約は、長くても残す。消す前に「これを消すと、誰が、どの判断で困るか」に答え、答えられたものは残す。
 
 `~/.claude/`の下は、実体のパス（`~/github.com/pomesaka/dotclaude/...`）で編集する。
+
+直し終えたら、`bun ~/.claude/skills/curate-docs/growth.ts mark`で、いまの文字数を前回の整理の値として`baseline.json`に書き、整理と一緒にコミットする。dotclaude-syncのpushが、この値から2割を超えて増えたときに整理を勧める。
 
 ### まとめて退避する
 

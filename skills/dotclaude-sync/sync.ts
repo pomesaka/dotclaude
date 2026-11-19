@@ -11,6 +11,7 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 import { type Entry, formatEntry, LEDGER_DIR, parseEntries } from '../../mods/dotclaude-ledger/hooks/ledger'
+import { growthNotice } from '../curate-docs/growth'
 
 // リポジトリの直下。このファイルは skills/dotclaude-sync/ にある。~/.claude/skills のリンクから呼ばれても実体で数える
 const root = dirname(dirname(dirname(realpathSync(import.meta.path))))
@@ -202,6 +203,9 @@ const push = (): void => {
   if (pub.code !== 0) throw new Error('check-public.sh が止めました。挙がった行を直してから push し直す')
   process.stdout.write(must(['jj', 'git', 'push', '-b', 'main']))
   prune()
+  // WHY push の後に測る: 指示の文書が増えるのは、ほかのセッションの書き込みがここで入るとき
+  const notice = growthNotice()
+  if (notice !== null) console.log(notice)
 }
 
 const [command, ...rest] = process.argv.slice(2)

@@ -59,7 +59,7 @@ bun ~/.claude/skills/dotclaude-sync/sync.ts commit -F <メッセージのファ�
 bun ~/.claude/skills/dotclaude-sync/sync.ts push
 ```
 
-`push`は、`jj git fetch`をしてリモートの`main`が進んでいれば、その上へrebaseする。そのあと`main`を動かし、`check-public.sh`を通してからpushし、作業コピーに残っていないファイルの記録を消す。rebaseで競合したとき、`check-public.sh`が何かを挙げたときは、pushせずに止まる。挙がった行を直してからやり直す。誤検知だと考えたら、直さずに利用者へ伝える。
+`push`は、`jj git fetch`をしてリモートの`main`が進んでいれば、その上へrebaseする。そのあと`main`を動かし、`check-public.sh`を通してからpushし、作業コピーに残っていないファイルの記録を消す。pushの後、指示の文書（`CLAUDE.md`、`docs/`、スキル）が前回の整理から2割を超えて増えていれば、`/curate-docs`を勧める文を出す。出たら、報告に添えてpomesakaに勧める。rebaseで競合したとき、`check-public.sh`が何かを挙げたときは、pushせずに止まる。挙がった行を直してからやり直す。誤検知だと考えたら、直さずに利用者へ伝える。
 
 ## 報告
 
