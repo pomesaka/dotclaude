@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>デザインコンペの比較</title>
+<!--
+  デザインコンペの比較ページ。init.ts がコンペのフォルダへ index.html として写す。
+  同じフォルダの manifest.json（案、切り替える引数、幅）を読んで組み立てるので、ここは直さない。
+
+  案は縮めずに実寸で出す。縮めると字も操作も読めず、比べる意味が無くなるため。
+  選んだ幅の案が横に全部収まるなら列で並べ、収まらなければタブで1案ずつ出す。
+  タブを切り替えても、スクロールの位置を揃える（同じ場所を見比べるため）。
+-->
+<style>
+  :root {
+    --bg: #f4f3ef; --surface: #fff; --fg: #1f1e1b; --muted: #6a6760; --line: #d9d6cd; --accent: #2f4f63; --on-accent: #fff;
+    font-family: system-ui, "Hiragino Sans", "Noto Sans JP", sans-serif; color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { display: flex; flex-direction: column; padding: 12px 16px 0; background: var(--bg); color: var(--fg); font-size: 14px; line-height: 1.6; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 24px; margin-bottom: 8px; }
+  header h1 { font-size: 17px; margin: 0; }
+  .note { font-size: 12px; color: var(--muted); }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-bottom: 10px; }
+  .controls fieldset { border: 0; padding: 0; margin: 0; display: flex; gap: 4px; align-items: center; }
+  .controls legend { float: left; margin-right: 6px; color: var(--muted); }
+  .controls button { font: inherit; border: 1px solid var(--line); background: var(--surface); border-radius: 3px; padding: 2px 10px; cursor: pointer; }
+  .controls button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  .stage { flex: 1; min-height: 0; overflow: auto; }
+  .row { display: flex; gap: 16px; height: 100%; width: max-content; margin: 0 auto; }
+  .col, .wide { display: flex; flex-direction: column; height: 100%; }
+  .wide { width: max-content; margin: 0 auto; }
+  .head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; font-weight: 600; }
+  .head a { margin-left: auto; font-weight: 400; font-size: 12px; color: var(--accent); }
+  .head .hint { font-weight: 400; font-size: 12px; color: var(--muted); margin-left: 12px; }
+  [role="tab"] { font: inherit; font-weight: 600; border: 1px solid var(--line); border-bottom: 0; background: transparent; padding: 4px 16px; border-radius: 3px 3px 0 0; color: var(--muted); cursor: pointer; }
+  [role="tab"][aria-selected="true"] { background: var(--surface); color: var(--fg); border-color: var(--fg); }
+  iframe { border: 1px solid var(--line); background: var(--surface); display: block; flex: 1; min-height: 0; }
+  iframe[hidden] { display: none; }
+  .error { color: #a8412a; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<header><h1 id="title">デザインコンペの比較</h1><span class="note">架空のデータで動くモックです。保存も送信もしません。</span></header>
+<div class="controls" id="controls"></div>
+<div class="stage" id="stage"></div>
+<script>
+(async () => {
+  const stage = document.getElementById("stage");
+  let m;
+  try {
+    m = await (await fetch("manifest.json", { cache: "no-store" })).json();
+  } catch (e) {
+    stage.innerHTML = `<p class="error">manifest.json を読めませんでした: ${e}\n同じフォルダに置いて、check.ts で形を確かめてください。</p>`;
+    return;
+  }
+  const params = m.params ?? {};
+  const widths = m.widths ?? [390, 1280];
+  const mocks = m.mocks ?? [];
+  document.getElementById("title").textContent = `${m.title ?? "デザインコンペ"} の比較`;
+  document.title = `${m.title ?? "デザインコンペ"} の比較`;
+
+  const q = new URLSearchParams(location.search);
+  const opts = { width: q.get("width") ?? String(widths[0]), tab: q.get("tab") ?? mocks[0]?.key };
+  for (const [name, def] of Object.entries(params)) opts[name] = q.get(name) ?? def.values[0].value;
+
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const search = () => new URLSearchParams(Object.fromEntries(Object.keys(params).map((n) => [n, opts[n]])));
+  const urlOf = (mock) => `${mock.key}/index.html?${search()}`;
+  const label = (mock) => `案 ${mock.key.toUpperCase()}「${esc(mock.name)}」`;
+
+  const groups = [
+    ...Object.entries(params).map(([name, def]) => ({ name, label: def.label, values: def.values })),
+    { name: "width", label: "幅", values: widths.map((w) => ({ value: String(w), label: `${w}px` })) },
+  ];
+  const controls = document.getElementById("controls");
+  controls.innerHTML = groups.map((g) => `<fieldset data-key="${esc(g.name)}"><legend>${esc(g.label)}</legend>${g.values.map((v) => `<button value="${esc(v.value)}">${esc(v.label)}</button>`).join("")}</fieldset>`).join("");
+  controls.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    opts[b.closest("fieldset").dataset.key] = b.value;
+    render();
+  });
+
+  // 選んだ幅の案が、枠の線と間を含めて全部横に収まるか
+  const fits = () => mocks.length * (Number(opts.width) + 2) + (mocks.length - 1) * 16 <= stage.clientWidth;
+  let mode = "";
+
+  function render() {
+    for (const fs of controls.querySelectorAll("fieldset")) {
+      for (const b of fs.querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.value === opts[fs.dataset.key]));
+    }
+    history.replaceState(null, "", "?" + new URLSearchParams(opts));
+    const w = Number(opts.width) + 2;
+    mode = fits() ? "cols" : "tabs";
+    if (mode === "cols") {
+      stage.innerHTML = `<div class="row">${mocks.map((mk) => `
+        <section class="col"><div class="head"><span>${label(mk)}</span><a href="${urlOf(mk)}" target="_blank" rel="noopener">単独で開く</a></div>
+        <iframe title="${label(mk)}" src="${urlOf(mk)}" style="width:${w}px"></iframe></section>`).join("")}</div>`;
+      return;
+    }
+    stage.innerHTML = `<div class="wide">
+      <div class="head" role="tablist" aria-label="案">${mocks.map((mk) => `<button role="tab" id="tab-${mk.key}" aria-controls="frame-${mk.key}" aria-selected="${opts.tab === mk.key}" tabindex="${opts.tab === mk.key ? 0 : -1}" data-tab="${mk.key}">${label(mk)}</button>`).join("")}
+        <span class="hint">数字のキーでも切り替えます。スクロールの位置は揃えます</span>
+        <a id="solo" href="${urlOf(mocks.find((mk) => mk.key === opts.tab) ?? mocks[0])}" target="_blank" rel="noopener">単独で開く</a></div>
+      ${mocks.map((mk) => `<iframe id="frame-${mk.key}" role="tabpanel" aria-labelledby="tab-${mk.key}" title="${label(mk)}" src="${urlOf(mk)}" style="width:${w}px" ${opts.tab === mk.key ? "" : "hidden"}></iframe>`).join("")}
+    </div>`;
+  }
+
+  // 3つとも読み込んだまま出し入れするので、入力の途中も消えない
+  function selectTab(key) {
+    if (mode !== "tabs" || key === opts.tab || !mocks.some((mk) => mk.key === key)) return;
+    let y = 0;
+    try { y = document.getElementById(`frame-${opts.tab}`).contentWindow.scrollY; } catch {}
+    opts.tab = key;
+    for (const mk of mocks) {
+      const on = mk.key === key;
+      document.getElementById(`frame-${mk.key}`).hidden = !on;
+      const t = document.getElementById(`tab-${mk.key}`);
+      t.setAttribute("aria-selected", String(on));
+      t.tabIndex = on ? 0 : -1;
+    }
+    document.getElementById("solo").href = urlOf(mocks.find((mk) => mk.key === key));
+    try { document.getElementById(`frame-${key}`).contentWindow.scrollTo(0, y); } catch {}
+    history.replaceState(null, "", "?" + new URLSearchParams(opts));
+  }
+
+  stage.addEventListener("click", (e) => {
+    const t = e.target.closest("[data-tab]");
+    if (t) selectTab(t.dataset.tab);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.target.closest?.("input, textarea, select")) return;
+    const n = Number(e.key);
+    if (n >= 1 && n <= mocks.length) { selectTab(mocks[n - 1].key); return; }
+    if (e.target.getAttribute?.("role") === "tab" && (e.key === "ArrowRight" || e.key === "ArrowLeft")) {
+      const i = mocks.findIndex((mk) => mk.key === opts.tab);
+      const next = mocks[(i + (e.key === "ArrowRight" ? 1 : mocks.length - 1)) % mocks.length].key;
+      selectTab(next);
+      document.getElementById(`tab-${next}`).focus();
+    }
+  });
+  // 窓の幅が変わって、列とタブのどちらが収まるかが変わったときだけ組み直す
+  new ResizeObserver(() => { if ((fits() ? "cols" : "tabs") !== mode) render(); }).observe(stage);
+  render();
+})();
+</script>
+</body>
+</html>
