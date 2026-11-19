@@ -29,6 +29,10 @@ describe('parseManifest', () => {
     ['params が0個でもよい', { ...base, params: {} }, { ...base, params: {} }],
     ['params を省くと0個', { title: base.title, mocks: base.mocks }, { title: base.title, mocks: base.mocks, params: {}, widths: [390, 1280] }],
     ['幅 1 は正の整数', { ...base, widths: [1] }, { ...base, widths: [1] }],
+    ['案の軸、ブリーフの要点、違いの表を返す',
+      { ...base, mocks: [{ key: 'a', name: 'x', axis: '報告が主役' }, { key: 'b', name: 'y' }], brief: { summary: ['優先する人: 本人'], file: 'BRIEF.md' }, compare: [{ label: '構成', values: { a: '紙', b: '行' } }] },
+      { ...base, mocks: [{ key: 'a', name: 'x', axis: '報告が主役' }, { key: 'b', name: 'y' }], brief: { summary: ['優先する人: 本人'], file: 'BRIEF.md' }, compare: [{ label: '構成', values: { a: '紙', b: '行' } }] }],
+    ['違いの表は一部の案だけでもよい', { ...base, compare: [{ label: '構成', values: { a: '紙' } }] }, { ...base, compare: [{ label: '構成', values: { a: '紙' } }] }],
   ])('%s', (_, input, expected) => {
     const r = parseManifest(JSON.parse(JSON.stringify(input)))
     expect(r).toEqual({ ok: true, manifest: expected as Manifest })
@@ -63,6 +67,13 @@ describe('parseManifest', () => {
     ['case の値が values に無い', { ...base, cases: [{ screen: 'weekly' }] }, 1, ['cases[0].screen', '"weekly"']],
     ['cases が空', { ...base, cases: [] }, 1, ['manifest.cases', '[]']],
     ['既定で埋めると重なる case', { ...base, cases: [{ screen: 'daily' }, { screen: 'daily', state: 'morning' }] }, 1, ['cases[1]']],
+    ['案の軸が空', { ...base, mocks: [{ key: 'a', name: 'x', axis: '' }] }, 1, ['mocks[0].axis', '""']],
+    ['ブリーフの要点が空', { ...base, brief: { summary: [] } }, 1, ['brief.summary', '[]']],
+    ['ブリーフに知らないキー', { ...base, brief: { summary: ['x'], text: 'y' } }, 1, ['brief.text', '"text"']],
+    ['違いの表が空', { ...base, compare: [] }, 1, ['manifest.compare', '[]']],
+    ['違いの表に無い案', { ...base, compare: [{ label: '構成', values: { z: '紙' } }] }, 1, ['compare[0].values.z', '"z"']],
+    ['違いの表の見出しが空', { ...base, compare: [{ label: '', values: { a: '紙' } }] }, 1, ['compare[0].label', '""']],
+    ['違いの表の値が文字列でない', { ...base, compare: [{ label: '構成', values: { a: 1 } }] }, 1, ['compare[0].values.a', '1']],
   ])('%s は誤り', (_, input, count, parts) => {
     const r = parseManifest(input)
     expect(r.ok).toBe(false)

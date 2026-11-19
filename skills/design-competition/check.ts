@@ -14,7 +14,10 @@ import { join, resolve } from 'node:path'
 export type ParamDef = { label: string; values: { value: string; label: string }[] }
 export type Manifest = {
   title: string
-  mocks: { key: string; name: string }[]
+  mocks: { key: string; name: string; axis?: string }[]
+  // 比較ページの上に出す、ブリーフの要点と案ごとの違い。どんな条件からどんな違いが出たかを、比較ページ1枚で読めるようにする
+  brief?: { summary: string[]; file?: string }
+  compare?: { label: string; values: Record<string, string> }[]
   params: Record<string, ParamDef>
   widths: number[]
   cases?: Record<string, string>[]
@@ -34,7 +37,7 @@ const unknownKeys = (obj: Record<string, unknown>, allowed: string[], path: stri
 // 誤りは最初の1つで止めずに全部集める。直す人が1回で全部直せるように、場所と値と許される形を書く
 export const parseManifest = (json: unknown): { ok: true; manifest: Manifest } | { ok: false; errors: string[] } => {
   if (!isObject(json)) return { ok: false, errors: [`manifest: オブジェクトではありません（${show(json)}）。{ "title", "mocks", "params", "widths", "cases" } の形で書いてください`] }
-  const errors: string[] = unknownKeys(json, ['title', 'mocks', 'params', 'widths', 'cases'], 'manifest')
+  const errors: string[] = unknownKeys(json, ['title', 'mocks', 'params', 'widths', 'cases', 'brief', 'compare'], 'manifest')
 
   const title = json.title
   if (typeof title !== 'string' || title.trim() === '') errors.push(`manifest.title: 空でない文字列にしてください（${show(title)}）`)
@@ -47,13 +50,14 @@ export const parseManifest = (json: unknown): { ok: true; manifest: Manifest } |
     json.mocks.forEach((m, i) => {
       const path = `mocks[${i}]`
       if (!isObject(m)) return errors.push(`${path}: { "key", "name" } の形にしてください（${show(m)}）`)
-      errors.push(...unknownKeys(m, ['key', 'name'], path))
+      errors.push(...unknownKeys(m, ['key', 'name', 'axis'], path))
       const key = m.key
       if (typeof key !== 'string' || !NAME.test(key)) errors.push(`${path}.key: 小文字の英数字とハイフンにしてください（${show(key)}）。案のディレクトリ名になります`)
       else if (seen.has(key)) errors.push(`${path}.key: ほかの案と重なっています（${show(key)}）。案ごとに違う key にしてください`)
       else seen.add(key)
       if (typeof m.name !== 'string' || m.name.trim() === '') errors.push(`${path}.name: 空でない文字列にしてください（${show(m.name)}）`)
-      if (typeof key === 'string' && typeof m.name === 'string') mocks.push({ key, name: m.name })
+      if (m.axis !== undefined && (typeof m.axis !== 'string' || m.axis.trim() === '')) errors.push(`${path}.axis: 空でない文字列にしてください（${show(m.axis)}）。その案の構造の軸です`)
+      if (typeof key === 'string' && typeof m.name === 'string') mocks.push(typeof m.axis === 'string' ? { key, name: m.name, axis: m.axis } : { key, name: m.name })
     })
   }
 
@@ -128,8 +132,44 @@ export const parseManifest = (json: unknown): { ok: true; manifest: Manifest } |
     }
   }
 
+  let brief: Manifest['brief']
+  if (json.brief !== undefined) {
+    const b = json.brief
+    if (!isObject(b)) errors.push(`manifest.brief: { "summary": ["<要点>", …], "file": "BRIEF.md" } の形にしてください（${show(b)}）`)
+    else {
+      errors.push(...unknownKeys(b, ['summary', 'file'], 'brief'))
+      const ok = Array.isArray(b.summary) && b.summary.length > 0 && b.summary.every((x) => typeof x === 'string' && x.trim() !== '')
+      if (!ok) errors.push(`brief.summary: 空でない文字列を1件以上の配列で書いてください（${show(b.summary)}）`)
+      if (b.file !== undefined && (typeof b.file !== 'string' || b.file.trim() === '')) errors.push(`brief.file: ブリーフのファイルの道を文字列で書いてください（${show(b.file)}）`)
+      if (ok) brief = typeof b.file === 'string' ? { summary: b.summary as string[], file: b.file } : { summary: b.summary as string[] }
+    }
+  }
+
+  let compare: Manifest['compare']
+  if (json.compare !== undefined) {
+    if (!Array.isArray(json.compare) || json.compare.length === 0) errors.push(`manifest.compare: 違いの行を1件以上の配列で書いてください（${show(json.compare)}）`)
+    else {
+      compare = []
+      const keys = mocks.map((mk) => mk.key)
+      json.compare.forEach((r, i) => {
+        const path = `compare[${i}]`
+        if (!isObject(r)) return errors.push(`${path}: { "label", "values": { "<案の key>": "<その案での中身>" } } の形にしてください（${show(r)}）`)
+        errors.push(...unknownKeys(r, ['label', 'values'], path))
+        if (typeof r.label !== 'string' || r.label.trim() === '') errors.push(`${path}.label: 空でない文字列にしてください（${show(r.label)}）`)
+        if (!isObject(r.values)) return errors.push(`${path}.values: { "<案の key>": "<中身>" } の形にしてください（${show(r.values)}）`)
+        for (const [k, v] of Object.entries(r.values)) {
+          if (!keys.includes(k)) errors.push(`${path}.values.${k}: mocks に無い案です（${show(k)}）。使えるのは ${keys.join('、')} です`)
+          else if (typeof v !== 'string') errors.push(`${path}.values.${k}: 文字列にしてください（${show(v)}）`)
+        }
+        if (typeof r.label === 'string') compare?.push({ label: r.label, values: r.values as Record<string, string> })
+      })
+    }
+  }
+
   if (errors.length > 0) return { ok: false, errors }
   const manifest: Manifest = { title: title as string, mocks, params, widths }
+  if (brief) manifest.brief = brief
+  if (compare) manifest.compare = compare
   if (cases) manifest.cases = cases
   return { ok: true, manifest }
 }
