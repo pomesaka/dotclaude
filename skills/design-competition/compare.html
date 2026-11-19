@@ -1,113 +1,399 @@
 <!doctype html>
-<html lang="ja">
+<html lang="ja" data-theme="light">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>デザインコンペの比較</title>
+<script>
+  // OS の明暗に合わせる。body の描画より前に決め、最初の描画から合ったテーマにする
+  (() => {
+    const dark = matchMedia("(prefers-color-scheme: dark)");
+    const apply = () => { document.documentElement.dataset.theme = dark.matches ? "dark" : "light"; };
+    apply();
+    dark.addEventListener("change", apply);
+  })();
+</script>
 <!--
   デザインコンペの比較ページ。init.ts がコンペのフォルダへ index.html として写す。
   同じフォルダの manifest.json（案、切り替える引数、幅）を読んで組み立てるので、ここは直さない。
 
-  案は縮めずに実寸で出す。縮めると字も操作も読めず、比べる意味が無くなるため。
+  案は縮めずに実寸で出す。縮めると字も操作も読めず、比べる意味が無くなるため（pomesaka の判断）。
   選んだ幅の案が横に全部収まるなら列で並べ、収まらなければタブで1案ずつ出す。
   タブを切り替えても、スクロールの位置を揃える（同じ場所を見比べるため）。
+
+  組み立て: 上の帯（状態と幅の切り替え）は常に見え、その下の「舞台」だけが縦横にスクロールする。
+  舞台の中は、案の数の列を持つ1つの格子で、ブリーフと違いの表、案の見出し（タブ）、案の枠が
+  同じ列を共有する。表の列と案の列が揃い、表を開いても案の枠の丈は変わらない（表の分だけ下へ押す）。
+  案の見出しは舞台の上に貼り付くので、表を読み終えて下へ送ると、案の枠が舞台いっぱいに戻る。
+
+  値は ui-design の themes/template.css の token の写し。暗いテーマは template の基本の色を
+  明暗で入れ替え、混ぜる割合を暗い地に合わせて直したもの。外のフォントは読まない。
 -->
 <style>
+  /* 色以外の token。template.css の値をそのまま写す */
   :root {
-    --bg: #f4f3ef; --surface: #fff; --fg: #1f1e1b; --muted: #6a6760; --line: #d9d6cd; --accent: #2f4f63; --on-accent: #fff;
-    font-family: system-ui, "Hiragino Sans", "Noto Sans JP", sans-serif; color-scheme: light;
+    --font-sans: ui-sans-serif, system-ui, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    --font-body: var(--font-sans); --font-heading: var(--font-sans); --font-control: var(--font-sans);
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    --text-body: 0.9375rem; --text-body-line-height: 1.6;
+    --text-caption: 0.8125rem; --text-caption-line-height: 1.25rem;
+    --text-action: 0.875rem; --text-action-line-height: 1.25rem;
+    --text-section: 1.125rem; --text-section-line-height: 1.5;
+    --weight-body: 400; --weight-heading: 600; --weight-control: 500;
+    --space-1: 0.25rem; --space-2: 0.5rem; --space-3: 0.75rem; --space-4: 1rem; --space-6: 1.5rem; --space-8: 2rem; --space-12: 3rem;
+    --control-height: 2.75rem; --control-hit-size: 2.75rem; --icon-size-action: 1.125rem;
+    --radius: 0.5rem; --radius-field: calc(var(--radius) * 0.75); --radius-card: var(--radius);
+    --disabled-opacity: 0.5; --focus-outline-width: 2px; --focus-outline-offset: 2px;
+    --duration-standard: 150ms; --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
   }
+  [data-theme="light"] {
+    color-scheme: light;
+    --background: #fafafa; --foreground: #18181b;
+    --primary: #18181b; --primary-foreground: #fafafa;
+    --destructive: #b42318; --ring: #175cd3; --selected-border: #175cd3;
+    --card: color-mix(in srgb, var(--background) 40%, white); --card-foreground: var(--foreground);
+    --secondary: color-mix(in srgb, var(--primary) 8%, var(--background)); --secondary-foreground: var(--foreground);
+    --secondary-hover: color-mix(in srgb, var(--secondary) 92%, var(--secondary-foreground));
+    --secondary-pressed: color-mix(in srgb, var(--secondary) 86%, var(--secondary-foreground));
+    --muted-foreground: color-mix(in srgb, var(--foreground) 72%, var(--background));
+    --border: color-mix(in srgb, var(--foreground) 16%, var(--background));
+    --input: color-mix(in srgb, var(--foreground) 48%, var(--background));
+    --reading-secondary: color-mix(in srgb, var(--foreground) 70%, var(--background));
+    --control-foreground: color-mix(in srgb, var(--primary) 85%, var(--foreground));
+    --selected: color-mix(in srgb, var(--selected-border) 8%, transparent); --selected-foreground: var(--foreground);
+    --destructive-subtle: color-mix(in srgb, var(--destructive) 10%, var(--background));
+    --destructive-subtle-foreground: color-mix(in srgb, var(--destructive) 85%, var(--foreground));
+    --header: var(--card); --header-foreground: var(--card-foreground);
+    --header-muted-foreground: var(--reading-secondary); --header-border: var(--border);
+    /* 効いている切り替えは、状態と幅が「いまどれか」をいちばんに伝えるので、template の accent（8%）より濃くする */
+    --header-accent: color-mix(in srgb, var(--primary) 14%, var(--background)); --header-accent-foreground: var(--foreground);
+  }
+  [data-theme="dark"] {
+    color-scheme: dark;
+    --background: #18181b; --foreground: #f4f4f5;
+    --primary: #f4f4f5; --primary-foreground: #18181b;
+    --destructive: #f97066; --ring: #84adff; --selected-border: #84adff;
+    --card: color-mix(in srgb, var(--background) 94%, white); --card-foreground: var(--foreground);
+    --secondary: color-mix(in srgb, var(--primary) 12%, var(--background)); --secondary-foreground: var(--foreground);
+    --secondary-hover: color-mix(in srgb, var(--secondary) 90%, var(--secondary-foreground));
+    --secondary-pressed: color-mix(in srgb, var(--secondary) 84%, var(--secondary-foreground));
+    --muted-foreground: color-mix(in srgb, var(--foreground) 72%, var(--background));
+    --border: color-mix(in srgb, var(--foreground) 18%, var(--background));
+    --input: color-mix(in srgb, var(--foreground) 50%, var(--background));
+    --reading-secondary: color-mix(in srgb, var(--foreground) 70%, var(--background));
+    --control-foreground: color-mix(in srgb, var(--primary) 85%, var(--foreground));
+    --selected: color-mix(in srgb, var(--selected-border) 14%, transparent); --selected-foreground: var(--foreground);
+    --destructive-subtle: color-mix(in srgb, var(--destructive) 16%, var(--background));
+    --destructive-subtle-foreground: color-mix(in srgb, var(--destructive) 80%, var(--foreground));
+    --header: var(--card); --header-foreground: var(--card-foreground);
+    --header-muted-foreground: var(--reading-secondary); --header-border: var(--border);
+    --header-accent: color-mix(in srgb, var(--primary) 20%, var(--background)); --header-accent-foreground: var(--foreground);
+  }
+
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
-  body { display: flex; flex-direction: column; padding: 12px 16px 0; background: var(--bg); color: var(--fg); font-size: 14px; line-height: 1.6; }
-  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 24px; margin-bottom: 8px; }
-  header h1 { font-size: 17px; margin: 0; }
-  .note { font-size: 12px; color: var(--muted); }
-  .controls { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-bottom: 10px; }
-  .controls fieldset { border: 0; padding: 0; margin: 0; display: flex; gap: 4px; align-items: center; }
-  .controls legend { float: left; margin-right: 6px; color: var(--muted); }
-  .controls button { font: inherit; border: 1px solid var(--line); background: var(--surface); border-radius: 3px; padding: 2px 10px; cursor: pointer; }
-  .controls button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
-  .stage { flex: 1; min-height: 0; overflow: auto; }
-  .row { display: flex; gap: 16px; height: 100%; width: max-content; margin: 0 auto; }
-  .col, .wide { display: flex; flex-direction: column; height: 100%; }
-  .wide { width: max-content; margin: 0 auto; }
-  .head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; font-weight: 600; }
-  .head a { margin-left: auto; font-weight: 400; font-size: 12px; color: var(--accent); }
-  .head .hint { font-weight: 400; font-size: 12px; color: var(--muted); margin-left: 12px; }
-  [role="tab"] { font: inherit; font-weight: 600; border: 1px solid var(--line); border-bottom: 0; background: transparent; padding: 4px 16px; border-radius: 3px 3px 0 0; color: var(--muted); cursor: pointer; }
-  [role="tab"][aria-selected="true"] { background: var(--surface); color: var(--fg); border-color: var(--fg); }
-  iframe { border: 1px solid var(--line); background: var(--surface); display: block; flex: 1; min-height: 0; }
-  iframe[hidden] { display: none; }
-  .error { color: #a8412a; white-space: pre-wrap; }
+  body {
+    display: flex; flex-direction: column; background: var(--background); color: var(--foreground);
+    font-family: var(--font-body); font-size: var(--text-body); line-height: var(--text-body-line-height); font-weight: var(--weight-body);
+  }
+  h1, h2, p, ul { margin: 0; }
+  a { color: var(--control-foreground); text-underline-offset: 0.2em; }
+  :focus-visible { outline: var(--focus-outline-width) solid var(--ring); outline-offset: var(--focus-outline-offset); }
+  .t-section { font-family: var(--font-heading); font-size: var(--text-section); line-height: var(--text-section-line-height); font-weight: var(--weight-heading); }
+  .t-caption { font-family: var(--font-control); font-size: var(--text-caption); line-height: var(--text-caption-line-height); color: var(--reading-secondary); }
+  .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .icon { width: var(--icon-size-action); height: var(--icon-size-action); flex: none; }
+  [hidden] { display: none !important; }
+
+  /* 上の帯。状態と幅の切り替えを持ち、舞台をどこまで送っても見える */
+  .bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-6);
+    padding: var(--space-3) var(--space-4); background: var(--header); color: var(--header-foreground);
+    border-bottom: 1px solid var(--header-border);
+  }
+  .bar-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--space-4); min-width: 0; flex: 1 1 12em; }
+  .controls { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-6); }
+  .group { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); border: 0; padding: 0; margin: 0; min-width: 0; }
+  .group legend { float: left; padding: 0; white-space: nowrap; color: var(--header-muted-foreground); font-size: var(--text-caption); line-height: var(--text-caption-line-height); font-family: var(--font-control); }
+  .seg { display: flex; flex-wrap: wrap; border: 1px solid var(--input); border-radius: var(--radius-field); padding: 1px; gap: 1px; }
+  .seg button, .btn {
+    font-family: var(--font-control); font-size: var(--text-action); line-height: var(--text-action-line-height); font-weight: var(--weight-control);
+    min-height: var(--space-8); padding: 0 var(--space-3); border: 0; border-radius: calc(var(--radius-field) - 1px);
+    background: transparent; color: var(--header-muted-foreground); cursor: pointer;
+    transition: background-color var(--duration-standard) var(--ease-standard);
+  }
+  .seg button:hover { color: var(--header-foreground); }
+  .seg button[aria-pressed="true"] { background: var(--header-accent); color: var(--header-accent-foreground); font-weight: var(--weight-heading); }
+  .btn { display: inline-flex; align-items: center; gap: var(--space-2); background: var(--secondary); color: var(--secondary-foreground); border-radius: var(--radius-field); }
+  .btn:hover { background: var(--secondary-hover); }
+  .btn:active { background: var(--secondary-pressed); }
+  .btn .icon { transition: transform var(--duration-standard) var(--ease-standard); }
+  .btn[aria-expanded="true"] .icon { transform: rotate(180deg); }
+  @media (pointer: coarse) { .seg button, .btn { min-height: var(--control-hit-size); } }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+  /* 舞台。縦横にスクロールし、案の見出しはこの上端に貼り付く */
+  .stage { flex: 1; min-height: 0; overflow: auto; padding: 0 var(--space-4); }
+  .board { display: grid; grid-template-columns: var(--cols); column-gap: var(--space-4); width: max-content; margin-inline: auto; }
+  .board > * { grid-column: 1 / -1; }
+
+  /* ブリーフと違い。案の列と同じ列で表を組む */
+  .about { position: sticky; left: 0; max-width: var(--view-w, none); display: flex; flex-direction: column; gap: var(--space-6); padding: var(--space-6) 0; border-bottom: 1px solid var(--border); }
+  .brief { display: flex; flex-direction: column; gap: var(--space-3); max-width: 65ch; }
+  .brief-head { display: flex; align-items: baseline; gap: var(--space-4); }
+  .brief ul { padding-left: var(--space-6); display: flex; flex-direction: column; gap: var(--space-1); }
+  .diff { table-layout: fixed; border-collapse: separate; border-spacing: var(--space-4) 0; width: calc(100% + 2 * var(--space-4)); margin-inline: calc(-1 * var(--space-4)); }
+  .diff caption { text-align: left; padding: 0 var(--space-4) var(--space-3); }
+  .diff thead th { text-align: left; vertical-align: bottom; padding-bottom: var(--space-2); border-bottom: 1px solid var(--border); font-weight: var(--weight-heading); }
+  .diff .row-label th { text-align: left; padding: var(--space-3) 0 var(--space-1); font-family: var(--font-control); font-size: var(--text-caption); line-height: var(--text-caption-line-height); font-weight: var(--weight-body); color: var(--reading-secondary); }
+  .diff td { vertical-align: top; padding-bottom: var(--space-3); border-bottom: 1px solid var(--border); }
+  .diff .cell-mark { display: none; }
+
+  /* 案の印。見出し、タブ、表の列見出しで同じ形にし、どの枠がどの案かを形で結ぶ */
+  .mark {
+    display: inline-grid; place-items: center; flex: none; min-width: var(--space-6); height: var(--space-6); padding: 0 var(--space-1);
+    border: 1px solid var(--foreground); border-radius: var(--radius-field);
+    font-family: var(--font-control); font-size: var(--text-caption); line-height: 1; font-weight: var(--weight-heading);
+  }
+  .who { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+
+  /* 案の見出し（列）とタブ。舞台の上端に貼り付き、下の枠の名前を見え続けさせる */
+  .heads { display: grid; grid-template-columns: subgrid; position: sticky; top: 0; z-index: 1; background: var(--background); padding: var(--space-3) 0 var(--space-2); }
+  .heads [role="tablist"] { display: contents; }
+  /* 列の見出しは、名前と軸の横に「単独で開く」を並べる。タブの中にはリンクを入れられないので、タブの右上に重ねる */
+  .head { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--space-1) var(--space-2); min-width: 0; }
+  .head-text, .tab { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+  .head-text { flex: 1 1 12em; }
+  .tab { grid-row: 1; padding-right: calc(var(--space-8) + var(--space-4)); }
+  .tab {
+    text-align: left; font: inherit; color: var(--reading-secondary); cursor: pointer;
+    background: transparent; border: 1px solid var(--border); border-radius: var(--radius-field); padding-block: var(--space-2); padding-left: var(--space-3);
+  }
+  .tab:hover { background: var(--secondary); }
+  .tab[aria-selected="true"] { background: var(--selected); color: var(--selected-foreground); border-color: var(--selected-border); }
+  .tab .who { color: var(--reading-secondary); }
+  .tab[aria-selected="true"] .who { color: var(--foreground); }
+  .tab:not([aria-selected="true"]) .mark { border-color: var(--reading-secondary); }
+  .name { font-weight: var(--weight-heading); overflow-wrap: anywhere; }
+  .head .axis, .tab .axis { overflow-wrap: anywhere; }
+  kbd {
+    font-family: var(--font-mono); font-size: var(--text-caption); line-height: 1; margin-left: auto;
+    padding: var(--space-1); border: 1px solid var(--border); border-radius: calc(var(--radius-field) / 2); color: var(--reading-secondary);
+  }
+  .solo {
+    flex: none; grid-row: 1; justify-self: end; align-self: start; z-index: 1; display: inline-flex; align-items: center; gap: var(--space-1);
+    min-height: var(--space-8); padding: 0 var(--space-2); margin-top: var(--space-1); margin-right: var(--space-1);
+    font-family: var(--font-control); font-size: var(--text-action); line-height: var(--text-action-line-height); border-radius: var(--radius-field);
+  }
+  .solo:hover { background: var(--secondary); }
+  .tabs-mode .solo-text { display: none; }
+  /* タブは実寸の案より舞台が狭くても全部見えるよう、見えている幅に収めて左に貼り付ける。表も同じ幅なので列は揃う */
+  .tabs-mode .heads { grid-template-columns: var(--cols); column-gap: var(--space-4); max-width: var(--view-w, none); left: 0; }
+
+  /* 案の枠。実寸の幅で、高さは舞台から見出しを引いた分 */
+  .frames { display: grid; grid-template-columns: subgrid; padding-bottom: var(--space-4); }
+  iframe { display: block; height: var(--frame-h, 70vh); border: 0; outline: 1px solid var(--border); background: var(--card); }
+  .tabs-mode iframe { grid-column: 1 / -1; justify-self: center; }
+
+  /* 失敗の知らせ。原因と直し方を、消えない面で出す */
+  .alert {
+    display: flex; flex-direction: column; gap: var(--space-2); max-width: 65ch; margin: var(--space-6) auto;
+    padding: var(--space-4); border: 1px solid var(--destructive); border-radius: var(--radius-card);
+    background: var(--destructive-subtle); color: var(--destructive-subtle-foreground);
+  }
+  .alert code { font-family: var(--font-mono); }
+  .alert .btn { align-self: flex-start; }
+
+  /* 狭い幅。表は案ごとに縦へ積み、各値に案の印を付ける */
+  .sel-axis { display: none; }
+  .stage.tight { padding-inline: 0; }
+  .stage.tight .about, .stage.tight .heads { padding-inline: var(--space-4); }
+
+  @media (max-width: 40rem) {
+    /* 狭い幅では帯ごと送り、案の枠に縦の場所を譲る。案の見出しは画面の上端に貼り付く */
+    html, body { height: auto; }
+    body { display: block; }
+    .bar { padding: var(--space-3); position: sticky; left: 0; }
+    .stage { overflow: visible; padding: 0; }
+    .tab .axis { display: none; }
+    .sel-axis { display: block; grid-row: 2; grid-column: 1 / -1; padding: var(--space-2) var(--space-3) 0; position: sticky; left: 0; max-width: var(--view-w, none); }
+    .about { padding-inline: var(--space-3); }
+    .diff, .diff tbody, .diff tr, .diff td, .diff th { display: block; width: auto; margin: 0; }
+    .diff thead { display: none; }
+    .diff caption { display: block; padding: 0 0 var(--space-3); }
+    .diff td { display: flex; gap: var(--space-2); padding: var(--space-2) 0; }
+    .diff .cell-mark { display: inline-grid; }
+    .tab { padding-right: var(--space-3); padding-bottom: var(--space-8); }
+    .tabs-mode .solo { align-self: end; margin-bottom: var(--space-1); }
+    kbd { display: none; }
+    .solo-text { display: none; }
+  }
 </style>
 </head>
 <body>
-<header><h1 id="title">デザインコンペの比較</h1><span class="note">架空のデータで動くモックです。保存も送信もしません。</span></header>
-<div class="controls" id="controls"></div>
-<div class="stage" id="stage"></div>
+<header class="bar" id="bar">
+  <div class="bar-title">
+    <h1 id="title" class="t-section">デザインコンペの比較</h1>
+    <p class="t-caption">架空のデータで動くモック。保存も送信もしない</p>
+  </div>
+  <button type="button" class="btn" id="about-toggle" aria-expanded="false" aria-controls="about" hidden>
+    <span id="about-toggle-label">ブリーフと違い</span>
+    <svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M5 8l5 5 5-5" /></svg>
+  </button>
+  <div class="controls" id="controls"></div>
+</header>
+<main class="stage" id="stage" aria-busy="true">
+  <div class="board" id="board">
+    <section class="about" id="about" aria-labelledby="about-toggle-label" hidden></section>
+    <div class="heads" id="heads"></div>
+    <div class="frames" id="frames"></div>
+  </div>
+</main>
 <script>
 (async () => {
   const stage = document.getElementById("stage");
+  const board = document.getElementById("board");
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+  // 読めない理由ごとに、直し方を変える。ページを開いた人がその場で直せるように
+  const fail = (title, detail) => {
+    stage.removeAttribute("aria-busy");
+    board.style.width = "100%";
+    board.innerHTML = `<div class="alert" role="alert"><p><strong>${esc(title)}</strong></p><p>${detail}</p>
+      <button type="button" class="btn" id="reload">読み直す</button></div>`;
+    document.getElementById("reload").addEventListener("click", () => location.reload());
+  };
   let m;
   try {
-    m = await (await fetch("manifest.json", { cache: "no-store" })).json();
+    const res = await fetch("manifest.json", { cache: "no-store" });
+    if (!res.ok) return fail(`manifest.json を読めませんでした（HTTP ${res.status}）`, "この index.html と同じフォルダに manifest.json を置いてください。");
+    const text = await res.text();
+    try { m = JSON.parse(text); } catch (e) {
+      return fail("manifest.json を JSON として読めませんでした", `${esc(e.message)}<br><code>bun check.ts &lt;フォルダ&gt;</code> で、誤りの場所と直し方を確かめてください。`);
+    }
   } catch (e) {
-    stage.innerHTML = `<p class="error">manifest.json を読めませんでした: ${e}\n同じフォルダに置いて、check.ts で形を確かめてください。</p>`;
-    return;
+    return fail("manifest.json を取りに行けませんでした", `${esc(e.message)}<br>ファイルを直に開くと読めません。<code>serve.ts</code> で配った URL から開いてください。`);
   }
   const params = m.params ?? {};
   const widths = m.widths ?? [390, 1280];
   const mocks = m.mocks ?? [];
-  document.getElementById("title").textContent = `${m.title ?? "デザインコンペ"} の比較`;
-  document.title = `${m.title ?? "デザインコンペ"} の比較`;
+  if (mocks.length === 0) return fail("manifest.json に案がありません", "<code>mocks</code> に案を1件以上書いてください。");
+  const title = `${m.title ?? "デザインコンペ"} の比較`;
+  document.getElementById("title").textContent = title;
+  document.title = title;
 
   const q = new URLSearchParams(location.search);
-  const opts = { width: q.get("width") ?? String(widths[0]), tab: q.get("tab") ?? mocks[0]?.key };
-  for (const [name, def] of Object.entries(params)) opts[name] = q.get(name) ?? def.values[0].value;
+  const opts = { width: q.get("width") ?? String(widths[0]), tab: q.get("tab") ?? mocks[0].key };
+  if (!widths.map(String).includes(opts.width)) opts.width = String(widths[0]);
+  if (!mocks.some((mk) => mk.key === opts.tab)) opts.tab = mocks[0].key;
+  for (const [name, def] of Object.entries(params)) {
+    const v = q.get(name);
+    opts[name] = def.values.some((x) => x.value === v) ? v : def.values[0].value;
+  }
 
-  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   const search = () => new URLSearchParams(Object.fromEntries(Object.keys(params).map((n) => [n, opts[n]])));
-  const urlOf = (mock) => `${mock.key}/index.html?${search()}`;
-  const label = (mock) => `案 ${mock.key.toUpperCase()}「${esc(mock.name)}」`;
+  const urlOf = (mk) => `${encodeURIComponent(mk.key)}/index.html?${search()}`;
+  const letter = (mk) => mk.key.toUpperCase();
+  const label = (mk) => `案${letter(mk)}「${mk.name}」`;
+  const mark = (mk, cls = "") => `<span class="mark ${cls}" aria-hidden="true">${esc(letter(mk))}</span>`;
+  const openIcon = `<svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M11 4h5v5M16 4l-7 7M14 12v4H4V6h4" /></svg>`;
+
+  // ブリーフの要点と違いの表。manifest.json に書いたものだけを出す。構造の軸は案の見出しに常に出すので、表には入れない
+  const about = document.getElementById("about");
+  const toggle = document.getElementById("about-toggle");
+  if (m.brief || m.compare) {
+    toggle.hidden = false;
+    const brief = m.brief ? `<div class="brief"><div class="brief-head"><h2 class="t-section">ブリーフの要点</h2>${m.brief.file ? `<a href="${esc(m.brief.file)}" target="_blank" rel="noopener">全文を開く</a>` : ""}</div>
+      <ul>${m.brief.summary.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>` : "";
+    const rows = m.compare ?? [];
+    const table = rows.length ? `<table class="diff"><caption class="t-section">${mocks.length}案の違い</caption>
+      <colgroup>${mocks.map(() => "<col>").join("")}</colgroup>
+      <thead><tr>${mocks.map((mk) => `<th scope="col" id="col-${esc(mk.key)}"><span class="who">${mark(mk)}<span><span class="vh">案${esc(letter(mk))}</span>${esc(mk.name)}</span></span></th>`).join("")}</tr></thead>
+      <tbody>${rows.map((r, i) => `<tr class="row-label"><th colspan="${mocks.length}" id="row-${i}" scope="colgroup">${esc(r.label)}</th></tr>
+        <tr>${mocks.map((mk) => `<td headers="row-${i} col-${esc(mk.key)}">${mark(mk, "cell-mark")}<span>${esc(r.values[mk.key] ?? "")}</span></td>`).join("")}</tr>`).join("")}</tbody></table>` : "";
+    about.innerHTML = brief + table;
+  }
+  toggle.addEventListener("click", () => {
+    const open = about.hidden;
+    about.hidden = !open;
+    toggle.setAttribute("aria-expanded", String(open));
+    if (open) stage.scrollTo({ top: 0 });
+  });
 
   const groups = [
     ...Object.entries(params).map(([name, def]) => ({ name, label: def.label, values: def.values })),
     { name: "width", label: "幅", values: widths.map((w) => ({ value: String(w), label: `${w}px` })) },
   ];
   const controls = document.getElementById("controls");
-  controls.innerHTML = groups.map((g) => `<fieldset data-key="${esc(g.name)}"><legend>${esc(g.label)}</legend>${g.values.map((v) => `<button value="${esc(v.value)}">${esc(v.label)}</button>`).join("")}</fieldset>`).join("");
+  controls.innerHTML = groups.map((g) => `<fieldset class="group" data-key="${esc(g.name)}"><legend>${esc(g.label)}</legend><div class="seg">${g.values.map((v) => `<button type="button" value="${esc(v.value)}">${esc(v.label)}</button>`).join("")}</div></fieldset>`).join("");
   controls.addEventListener("click", (e) => {
     const b = e.target.closest("button");
     if (!b) return;
-    opts[b.closest("fieldset").dataset.key] = b.value;
+    const key = b.closest("fieldset").dataset.key;
+    if (opts[key] === b.value) return;
+    opts[key] = b.value;
     render();
   });
 
-  // 選んだ幅の案が、枠の線と間を含めて全部横に収まるか
-  const fits = () => mocks.length * (Number(opts.width) + 2) + (mocks.length - 1) * 16 <= stage.clientWidth;
+  const heads = document.getElementById("heads");
+  const frames = document.getElementById("frames");
+  const gap = () => parseFloat(getComputedStyle(board).columnGap) || 0;
+  const avail = () => { const cs = getComputedStyle(stage); return stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight); };
+  // 選んだ幅の案が、間を含めて全部横に収まるか
+  const fits = () => mocks.length * Number(opts.width) + (mocks.length - 1) * gap() <= avail();
   let mode = "";
+
+  // 案の枠の高さを、舞台から貼り付いた見出しを引いた分にする。表を開いても変わらない
+  const sizeFrames = () => {
+    const padBottom = parseFloat(getComputedStyle(frames).paddingBottom) || 0;
+    const scrolls = getComputedStyle(stage).overflowY !== "visible";
+    const h = Math.max(320, (scrolls ? stage.clientHeight : window.innerHeight) - heads.offsetHeight - padBottom);
+    board.style.setProperty("--frame-h", `${h}px`);
+    board.style.setProperty("--view-w", `${Math.min(avail(), document.documentElement.clientWidth)}px`);
+  };
 
   function render() {
     for (const fs of controls.querySelectorAll("fieldset")) {
       for (const b of fs.querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.value === opts[fs.dataset.key]));
     }
     history.replaceState(null, "", "?" + new URLSearchParams(opts));
-    const w = Number(opts.width) + 2;
+    const w = Number(opts.width);
+    const top = stage.scrollTop;
+    stage.classList.remove("tight");
     mode = fits() ? "cols" : "tabs";
+    board.classList.toggle("tabs-mode", mode === "tabs");
+    // 実寸の案が舞台の内側に収まらないときは、左右の余白を外して横のスクロールを減らす
+    if (mode === "tabs" && w > avail()) stage.classList.add("tight");
+    const solo = (mk, i) => `<a class="solo" style="grid-column:${i + 1}" href="${esc(urlOf(mk))}" target="_blank" rel="noopener" aria-label="${esc(label(mk))}を単独で開く">${openIcon}<span class="solo-text" aria-hidden="true">単独で開く</span></a>`;
+    const who = (mk) => `<span class="who">${mark(mk)}<span class="name"><span class="vh">案${esc(letter(mk))}</span>${esc(mk.name)}</span>`;
+    const axis = (mk) => (mk.axis ? `<span class="axis t-caption">${esc(mk.axis)}</span>` : "");
     if (mode === "cols") {
-      stage.innerHTML = `<div class="row">${mocks.map((mk) => `
-        <section class="col"><div class="head"><span>${label(mk)}</span><a href="${urlOf(mk)}" target="_blank" rel="noopener">単独で開く</a></div>
-        <iframe title="${label(mk)}" src="${urlOf(mk)}" style="width:${w}px"></iframe></section>`).join("")}</div>`;
-      return;
+      board.style.setProperty("--cols", `repeat(${mocks.length}, ${w}px)`);
+      board.style.width = "";
+      heads.innerHTML = mocks.map((mk, i) => `<div class="head" style="grid-column:${i + 1}"><div class="head-text">${who(mk)}</span>${axis(mk)}</div>${solo(mk, i)}</div>`).join("");
+      frames.innerHTML = mocks.map((mk) => `<iframe title="${esc(label(mk))}" src="${esc(urlOf(mk))}" style="width:${w}px"></iframe>`).join("");
+    } else {
+      board.style.setProperty("--cols", `repeat(${mocks.length}, minmax(0, 1fr))`);
+      // タブが詰まらないよう、案より狭くないかぎり舞台の幅まで広げる（1案あたり 24rem まで）。案の枠は中央に置く
+      const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      board.style.width = `${Math.max(w, Math.min(avail(), mocks.length * 24 * rem))}px`;
+      heads.innerHTML = `<div role="tablist" aria-label="案">${mocks.map((mk, i) => {
+        const on = opts.tab === mk.key;
+        return `<button type="button" role="tab" class="tab" style="grid-column:${i + 1}" id="tab-${esc(mk.key)}" aria-controls="frame-${esc(mk.key)}" aria-selected="${on}" tabindex="${on ? 0 : -1}" aria-keyshortcuts="${i + 1}" data-tab="${esc(mk.key)}">${who(mk)}<kbd aria-hidden="true">${i + 1}</kbd></span>${axis(mk)}</button>`;
+      }).join("")}</div>${mocks.map(solo).join("")}<p class="sel-axis t-caption" id="sel-axis" aria-hidden="true"></p>`;
+      frames.innerHTML = mocks.map((mk) => `<iframe id="frame-${esc(mk.key)}" role="tabpanel" aria-labelledby="tab-${esc(mk.key)}" title="${esc(label(mk))}" src="${esc(urlOf(mk))}" style="width:${w}px" ${opts.tab === mk.key ? "" : "hidden"}></iframe>`).join("");
     }
-    stage.innerHTML = `<div class="wide">
-      <div class="head" role="tablist" aria-label="案">${mocks.map((mk) => `<button role="tab" id="tab-${mk.key}" aria-controls="frame-${mk.key}" aria-selected="${opts.tab === mk.key}" tabindex="${opts.tab === mk.key ? 0 : -1}" data-tab="${mk.key}">${label(mk)}</button>`).join("")}
-        <span class="hint">数字のキーでも切り替えます。スクロールの位置は揃えます</span>
-        <a id="solo" href="${urlOf(mocks.find((mk) => mk.key === opts.tab) ?? mocks[0])}" target="_blank" rel="noopener">単独で開く</a></div>
-      ${mocks.map((mk) => `<iframe id="frame-${mk.key}" role="tabpanel" aria-labelledby="tab-${mk.key}" title="${label(mk)}" src="${urlOf(mk)}" style="width:${w}px" ${opts.tab === mk.key ? "" : "hidden"}></iframe>`).join("")}
-    </div>`;
+    showAxis();
+    sizeFrames();
+    stage.scrollTop = top;
+    stage.removeAttribute("aria-busy");
   }
+
+  // 狭い幅ではタブに軸が入らないので、選んだ案の軸をタブの下に出す
+  const showAxis = () => {
+    const el = document.getElementById("sel-axis");
+    if (el) el.textContent = mocks.find((mk) => mk.key === opts.tab)?.axis ?? "";
+  };
 
   // 3つとも読み込んだまま出し入れするので、入力の途中も消えない
   function selectTab(key) {
@@ -122,28 +408,33 @@
       t.setAttribute("aria-selected", String(on));
       t.tabIndex = on ? 0 : -1;
     }
-    document.getElementById("solo").href = urlOf(mocks.find((mk) => mk.key === key));
     try { document.getElementById(`frame-${key}`).contentWindow.scrollTo(0, y); } catch {}
+    showAxis();
     history.replaceState(null, "", "?" + new URLSearchParams(opts));
   }
 
-  stage.addEventListener("click", (e) => {
+  heads.addEventListener("click", (e) => {
     const t = e.target.closest("[data-tab]");
     if (t) selectTab(t.dataset.tab);
   });
   document.addEventListener("keydown", (e) => {
-    if (e.target.closest?.("input, textarea, select")) return;
+    if (e.target.closest?.("input, textarea, select, [contenteditable]") || e.metaKey || e.ctrlKey || e.altKey) return;
     const n = Number(e.key);
     if (n >= 1 && n <= mocks.length) { selectTab(mocks[n - 1].key); return; }
-    if (e.target.getAttribute?.("role") === "tab" && (e.key === "ArrowRight" || e.key === "ArrowLeft")) {
-      const i = mocks.findIndex((mk) => mk.key === opts.tab);
-      const next = mocks[(i + (e.key === "ArrowRight" ? 1 : mocks.length - 1)) % mocks.length].key;
-      selectTab(next);
-      document.getElementById(`tab-${next}`).focus();
-    }
+    if (e.target.getAttribute?.("role") !== "tab") return;
+    const i = mocks.findIndex((mk) => mk.key === opts.tab);
+    const to = { ArrowRight: (i + 1) % mocks.length, ArrowLeft: (i + mocks.length - 1) % mocks.length, Home: 0, End: mocks.length - 1 }[e.key];
+    if (to === undefined) return;
+    e.preventDefault();
+    const next = mocks[to].key;
+    selectTab(next);
+    document.getElementById(`tab-${next}`).focus();
   });
-  // 窓の幅が変わって、列とタブのどちらが収まるかが変わったときだけ組み直す
-  new ResizeObserver(() => { if ((fits() ? "cols" : "tabs") !== mode) render(); }).observe(stage);
+  // 窓の幅が変わって列とタブのどちらが収まるかが変わったときだけ組み直し、高さはいつも合わせる
+  const ro = new ResizeObserver(() => { if ((fits() ? "cols" : "tabs") !== mode) render(); else sizeFrames(); });
+  ro.observe(stage);
+  ro.observe(heads);
+  addEventListener("resize", sizeFrames);
   render();
 })();
 </script>
