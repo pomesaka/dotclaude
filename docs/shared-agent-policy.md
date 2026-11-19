@@ -55,7 +55,7 @@ Claude CodeとCodexの両方が読む、利用者の決めごと。Claude Code�
 | 名前を付ける、用語集を直す | `glossary-policy.md` |
 | 文書、コメント、commit、PRのどこに書くかを決める | `what-goes-where.md`、`documentation-practices.md` |
 | PRの本文、リリースノート、CHANGELOGに変更を書く | `change-notes.md` |
-| `CLAUDE.md`、スキル、エージェント、プロンプトを書く | `prompt-engineering.md`。スクリプトや検査にするかは`agent-environment.md` |
+| `CLAUDE.md`、`docs/`の決めごと、スキル、エージェント、プロンプトを書く、直す | `prompt-engineering.md`。スクリプトや検査にするかは`agent-environment.md` |
 | インフラ、CI、外部のAPIを書く | `pulumi.md`、`github-actions.md`、`anthropic-api.md` |
 | Scalaのdoobieで、TXを保ったまま外部の処理を呼ぶ | `doobie-weakasync.md` |
 | PRやREADMEに貼る画面の画像を作る（devサーバーなしのWebの画面、端末の画面） | `pr-evidence-capture.md` |
