@@ -179,7 +179,7 @@ jj bookmark set <name> -r @   # 正しい revision に向ける
 
 jj は各ワークスペースが独立して `@` をスナップショットするため、複数ワークスペースが同一 change ID を同時に操作するか、`update-stale` が中途半端な状態で走ると change ID が分岐する。
 
-`The working copy is stale` と出たら、`jj workspace update-stale` の前に、編集中のファイルを scratchpad へ写す。`update-stale` は、まだスナップショットされていない編集を分岐した片方のコミットに取り込み、作業コピーを空のほうへ切り替えて、ディスク上のファイルを親の内容に戻すことがある。出力が `Working copy now at: <change>/2 … (divergent) (empty)` なら、これが起きている。親で変わったファイルが自分の編集と重ならなくても起きた（jj 0.37.0、2026-11に確認）。実行の後は `jj log` で `(divergent)` を探し、編集の入ったほうへ `jj edit <commit hash>` で移り、写しと `cmp` で一致を確かめる。
+`The working copy is stale` と出たら、`jj workspace update-stale` の前に、自分が編集したファイルだけを scratchpad へ写す。`update-stale` は、まだスナップショットされていない編集を分岐した片方のコミットに取り込み、作業コピーを空のほうへ切り替えて、ディスク上のファイルを親の内容に戻すことがある。出力が `Working copy now at: <change>/2 … (divergent) (empty)` なら、これが起きている。親で変わったファイルが自分の編集と重ならなくても起きた（jj 0.37.0、2026-11に確認）。編集はjjの中で取り戻す。`jj log` で `(divergent)` を探し、編集の入ったほうへ `jj edit <commit hash>` で移り、載せ直された親へ `jj rebase` する。写しは `cmp` で一致を確かめるためだけに使い、作業コピーへ丸ごと書き戻さない。ほかのセッションが親で更新したファイルを古い版で上書きするうえ、macOSの `tar` などで写すと日本語のファイル名の正規化が変わり、同じ文書が2つになる。
 
 `update-stale` で古い operation log の状態に飛ぶと、`jj log` で main が古い revision を指しているように見える。`jj op log` を辿るより、目的の change hash へ `jj edit <hash>` で移り、`jj rebase -r @ -d main` で正しい親に乗せ直す方が早い。bookmark に `(ahead by N commits, behind by N commits)` と出たら、通常の `jj git push` でリモートを合わせる（`--allow-backwards` は要らない）。
 
