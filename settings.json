@@ -64,7 +64,7 @@
       "/Users/pomesaka/github.com/pomesaka/dotclaude"
     ]
   },
-  "model": "fable",
+  "model": "opus",
   "worktree": {
     "bgIsolation": "none"
   },
@@ -90,7 +90,9 @@
     "quiet-prompts@dotclaude": true,
     "claude-security@claude-plugins-official": true,
     "ui-design@pomesaka-ui-design": true,
-    "verify-guide@dotclaude": true
+    "verify-guide@dotclaude": true,
+    "write-guard@dotclaude": true,
+    "check-streak@dotclaude": true
   },
   "extraKnownMarketplaces": {
     "claude-deck": {

@@ -1,0 +1,8 @@
+{
+  "name": "write-guard",
+  "version": "0.1.0",
+  "description": "When the agent's Write lands outside the working directory and creates a new folder to do so, tells the agent in the tool result to check the path for a copying mistake",
+  "author": {
+    "name": "pomesaka"
+  }
+}

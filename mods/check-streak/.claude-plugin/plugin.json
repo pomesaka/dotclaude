@@ -1,0 +1,8 @@
+{
+  "name": "check-streak",
+  "version": "0.1.0",
+  "description": "Counts how many times in a row the same check (tests, type check, lint) fails for the agent; on the third failure without a pass, tells the agent in the tool result to stop fixing and call the user with its diagnosis",
+  "author": {
+    "name": "pomesaka"
+  }
+}
