@@ -119,17 +119,21 @@ const two = (value: number): string => String(value).padStart(2, '0')
 export const stampOf = (date: Date): string =>
   `${date.getFullYear()}-${two(date.getMonth() + 1)}-${two(date.getDate())} ${two(date.getHours())}:${two(date.getMinutes())}`
 
+export type Action = { name: 'run' | 'on' | 'off' | 'log' | 'candidates' } | { name: 'drop'; id: string }
+
 // /retro の引数を読む。null は、読めない引数
-export const actionOf = (args: string): 'run' | 'on' | 'off' | 'log' | null => {
-  switch (args.trim().toLowerCase()) {
+export const actionOf = (args: string): Action | null => {
+  const [head = '', ...rest] = args.trim().toLowerCase().split(/\s+/)
+  if (head === 'drop') return rest.length === 1 && rest[0] !== undefined ? { name: 'drop', id: rest[0] } : null
+  if (rest.length > 0) return null
+  switch (head) {
     case '':
-      return 'run'
+      return { name: 'run' }
     case 'on':
-      return 'on'
     case 'off':
-      return 'off'
     case 'log':
-      return 'log'
+    case 'candidates':
+      return { name: head }
     default:
       return null
   }

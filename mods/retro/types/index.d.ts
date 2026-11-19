@@ -1,4 +1,7 @@
-// 会話を分岐させて見つけさせた、次に活かせる発見。書き手のエージェントに渡す
+// 発見をどう防ぐか。doc は文書に書く。mechanism は hook、lint、スクリプト、Mod、環境の直しで防げるので、文書に書かずに作る候補にする
+export type Kind = 'doc' | 'mechanism'
+
+// 会話を分岐させて見つけさせた、次に活かせる発見
 export type Finding = {
   // 1 行の見出し。前に見つけたものと重ならないかを比べるのにも使う
   title: string
@@ -6,7 +9,31 @@ export type Finding = {
   detail: string
   // 根拠にした会話の発言や出来事
   evidence: string
+  kind: Kind
+  // 1 回でも害が大きい（データを失う、公開してはいけないものを出す、外へ送る、お金に響く）。2 回目を待たずに文書に上げる
+  isSevere: boolean
+  // 控えにある同じ発見の id。null は新しい発見
+  same: string | null
 }
+
+// 控えの 1 件。セッションをまたいで、同じ発見が何回出たかを数える
+export type Candidate = {
+  id: string
+  title: string
+  detail: string
+  kind: Kind
+  // 最後に文書に上げた後に出た回数
+  count: number
+  // 根拠。新しいものから
+  evidence: string[]
+  // 最後に出た時刻
+  lastAt: number
+  // 最後に文書に上げた時刻。null はまだ上げていない
+  writtenAt: number | null
+}
+
+// 控えの全体。next は、次に付ける id の番号
+export type Candidates = { next: number; list: Candidate[] }
 
 // 振り返りを始めたきっかけ。
 // turn は一定のターン数と出来事、completion はコミットや PR の作成、compact は compact の直前、manual は /retro

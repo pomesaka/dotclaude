@@ -6,8 +6,12 @@ type Engine = Parameters<TestBody>[0]
 const START = { cwd: '/repo', surface: 'terminal', isInteractive: true } as const
 const END = { turnId: 't1', answer: '直しました。', durationMs: 0, isAborted: false, reason: 'answer' } as const
 const USAGE = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
-const FINDING = { title: '公開の前に名前を確かめる', detail: '公開リポジトリに案件名を書かない', evidence: '2026-11-13 に指摘された' }
+const FINDING = { title: '公開の前に名前を確かめる', detail: '公開リポジトリに案件名を書かない', evidence: '2026-11-13 に指摘された', kind: 'doc', isSevere: false, same: null }
 const REPLY = JSON.stringify({ findings: [FINDING] })
+// 控えに 1 回ある発見と、それと同じだと答える返事。2 回目なので文書に上げる
+const COUNTED = { id: 'c1', title: FINDING.title, detail: FINDING.detail, kind: 'doc', count: 1, evidence: ['前の回'], lastAt: 1, writtenAt: null }
+const AGAIN = JSON.stringify({ findings: [{ ...FINDING, same: 'c1' }] })
+const counted = { candidates: { next: 2, list: [COUNTED] } }
 const WRITER = 'w1'
 // compact する会話。エンジンは空の会話の compact を拒む
 const MESSAGES = [{ role: 'user' as const, text: '直して', toolUses: [] }]
@@ -18,6 +22,8 @@ type Given = {
   stored?: { [key: string]: unknown }
   // 分岐して聞いたモデルの返事。null は、モデルが文を返さなかった
   reply?: string | null
+  // エージェントを立てるのを断る
+  isSpawnDenied?: boolean
 }
 
 const world = (on: On, given: Given = {}) => {
@@ -62,6 +68,7 @@ const world = (on: On, given: Given = {}) => {
   })
   // WHY ID を一覧で答える: 土台は、spawn の答えの agentId を捨てる（docs/claude-code-mods.md）
   on('agent.spawn', (_$, e) => {
+    if (given.isSpawnDenied === true) return { deny: 'denied' }
     // WHY subagent_type を読む: 土台は、エンジンの Agent ツールへ渡す形（subagent_type）で届ける（v2.1.323 の claude plugin test で確認）
     const subagentType = Reflect.get(e, 'subagent_type')
     seen.spawned.push({ prompt: e.prompt, subagentType: typeof subagentType === 'string' ? subagentType : undefined, model: e.model })
@@ -93,18 +100,73 @@ const stored = (turns: number, corrections: number, stops: number, rest: { [key:
   'session:s1': { isOn: true, turns, corrections, stops, found: [], log: [], ...rest },
 })
 
-test('20 ターンたち、そのあいだに直されていたら、分岐に聞いて、会話を持たない書き手をメインと同じモデルで立てる', async ($, on) => {
+test('20 ターンたち、そのあいだに直されていたら、分岐に聞いて控えに数える。1 回目は文書に書かない', async ($, on) => {
   const seen = world(on, { stored: stored(19, 1, 0) })
   await $.session.start(START)
 
   await turns($, 1)
   expect(seen.asked.length).toBe(1)
-  expect(seen.spawned.map(one => ({ subagentType: one.subagentType, model: one.model }))).toEqual([{ subagentType: 'general-purpose', model: undefined }])
-  expect(seen.spawned[0]?.prompt.includes('公開の前に名前を確かめる')).toBe(true)
+  expect(seen.spawned).toEqual([])
   expect(seen.store.get('session:s1')).toEqual({ isOn: true, turns: 0, corrections: 0, stops: 0, found: ['公開の前に名前を確かめる'], log: [] })
-  expect(seen.toasts).toEqual(['retro: 1 件の発見を文書に書いています'])
+  expect(seen.store.get('candidates')).toEqual({
+    next: 2,
+    list: [{ id: 'c1', title: FINDING.title, detail: FINDING.detail, kind: 'doc', count: 1, evidence: [FINDING.evidence], lastAt: 1_000_000_000, writtenAt: null }],
+  })
+  expect(seen.toasts).toEqual(['retro: 1 件を控えに数えました'])
   // メインには何も送らない
   expect(seen.submitted).toEqual([])
+})
+
+test('分岐には、ほかのセッションも含めた控えの見出しを渡す', async ($, on) => {
+  const seen = world(on, { stored: { ...stored(19, 1, 0), ...counted } })
+  await $.session.start(START)
+
+  await turns($, 1)
+  expect(seen.asked[0]?.includes('<candidates>\n- c1（文書）公開の前に名前を確かめる\n</candidates>')).toBe(true)
+})
+
+test('控えと同じ発見が 2 回目に出たら、会話を持たない書き手をメインと同じモデルで立て、回数を 0 に戻す', async ($, on) => {
+  const seen = world(on, { stored: { ...stored(19, 1, 0), ...counted }, reply: AGAIN })
+  await $.session.start(START)
+
+  await turns($, 1)
+  expect(seen.spawned.map(one => ({ subagentType: one.subagentType, model: one.model }))).toEqual([{ subagentType: 'general-purpose', model: undefined }])
+  expect(seen.spawned[0]?.prompt.includes('"count": 2')).toBe(true)
+  expect(seen.store.get('candidates')).toEqual({
+    next: 2,
+    list: [{ ...COUNTED, count: 0, evidence: [FINDING.evidence, '前の回'], lastAt: 1_000_000_000, writtenAt: 1_000_000_000 }],
+  })
+  expect(seen.toasts).toEqual(['retro: 1 件を控えに数えました。くり返し出た 1 件を文書に書いています'])
+})
+
+// 1 回目でも、どう扱うかが決まる発見
+const FIRSTS: { name: string; finding: object; spawned: number; toast: string }[] = [
+  { name: '害の大きい発見は、1 回目でも文書に書く', finding: { ...FINDING, isSevere: true }, spawned: 1, toast: 'retro: 1 件を控えに数えました。くり返し出た 1 件を文書に書いています' },
+  {
+    name: '仕組みで防げる発見は、害が大きくても文書に書かず、候補として知らせる',
+    finding: { ...FINDING, kind: 'mechanism', isSevere: true },
+    spawned: 0,
+    toast: 'retro: 1 件を控えに数えました（仕組みの候補 1 件。/retro candidates で読めます）',
+  },
+]
+
+for (const one of FIRSTS) {
+  test(one.name, async ($, on) => {
+    const seen = world(on, { stored: stored(19, 1, 0), reply: JSON.stringify({ findings: [one.finding] }) })
+    await $.session.start(START)
+
+    await turns($, 1)
+    expect(seen.spawned.length).toBe(one.spawned)
+    expect(seen.toasts).toEqual([one.toast])
+  })
+}
+
+test('書き手を立てられなかったら、回数を残して次に上げ直す', async ($, on) => {
+  const seen = world(on, { stored: { ...stored(19, 1, 0), ...counted }, reply: AGAIN, isSpawnDenied: true })
+  await $.session.start(START)
+
+  await turns($, 1)
+  expect(seen.store.get('candidates')).toEqual({ next: 2, list: [{ ...COUNTED, count: 2, evidence: [FINDING.evidence, '前の回'], lastAt: 1_000_000_000 }] })
 })
 
 test('発見が無ければ、書き手を立てず、数だけ戻す', async ($, on) => {
@@ -175,7 +237,7 @@ test('コミットしたターンは、10 ターンたっていれば、直さ�
 })
 
 test('compact の直前に、3 ターンたっていれば聞いてから compact に進む', async ($, on) => {
-  const seen = world(on, { stored: stored(3, 0, 0) })
+  const seen = world(on, { stored: { ...stored(3, 0, 0), ...counted }, reply: AGAIN })
   await $.session.start(START)
 
   await $.session.compact({ trigger: 'manual', messages: MESSAGES })
@@ -184,7 +246,7 @@ test('compact の直前に、3 ターンたっていれば聞いてから compac
 })
 
 test('書き手が終わったら、報告を残して知らせる。終わった知らせはメインに届けない', async ($, on) => {
-  const seen = world(on, { stored: stored(19, 1, 0) })
+  const seen = world(on, { stored: { ...stored(19, 1, 0), ...counted }, reply: AGAIN })
   await $.session.start(START)
   await turns($, 1)
 
@@ -210,7 +272,7 @@ const handBack = (from: string) =>
   `<agent-message from="${from}">\n[Subagent hand-back] The text below is the final report. The report follows:\n  - docs/b.md: 出典を分けて書く（新規）\n  既にあった原則は無かった。\n</agent-message>`
 
 test('書き手が報告用のツールで送った報告はメインに届けず、本文を記録に残す。最後の答えが短くても本文を残す', async ($, on) => {
-  const seen = world(on, { stored: stored(19, 1, 0) })
+  const seen = world(on, { stored: { ...stored(19, 1, 0), ...counted }, reply: AGAIN })
   await $.session.start(START)
   await turns($, 1)
 
@@ -269,5 +331,18 @@ test('/retro に読めない引数を渡すと、使い方を返す', async ($, 
   world(on)
   await $.session.start(START)
 
-  expect(await $.command.run(command('now'))).toEqual({ text: 'Usage: /retro [on|off|log]' })
+  expect(await $.command.run(command('now'))).toEqual({ text: 'Usage: /retro [on|off|log|candidates|drop <id>]' })
+})
+
+test('/retro candidates は控えを回数の多い順に返し、/retro drop で 1 件を外す', async ($, on) => {
+  const other = { ...COUNTED, id: 'c2', title: '書いたファイルが差分に出るかを見る', detail: 'Write の後に hook で知らせる', kind: 'mechanism', count: 3 }
+  const seen = world(on, { stored: { candidates: { next: 3, list: [COUNTED, other] } } })
+  await $.session.start(START)
+
+  expect(await $.command.run(command('candidates'))).toEqual({
+    text: 'c2  3 回  仕組み  書いたファイルが差分に出るかを見る\n    Write の後に hook で知らせる\nc1  1 回  文書  公開の前に名前を確かめる\n    公開リポジトリに案件名を書かない',
+  })
+  expect(await $.command.run(command('drop c2'))).toEqual({ text: 'retro: dropped c2.' })
+  expect(seen.store.get('candidates')).toEqual({ next: 3, list: [COUNTED] })
+  expect(await $.command.run(command('drop c9'))).toEqual({ text: 'retro: no counted finding has the id c9. /retro candidates lists them.' })
 })

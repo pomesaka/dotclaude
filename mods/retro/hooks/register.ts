@@ -1,6 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
-import type { SessionRecord, Trigger } from '../types'
+import type { Candidates, SessionRecord, Trigger } from '../types'
+import { candidatesForJudge, candidatesOf, candidatesText, markWritten, tally } from './candidates'
 import { judgePrompt, parseJudgeReply, writerPrompt } from './prompt'
 import { actionOf, FOUND_MAX, TOOL_CALLS_FOR_BUSY, isCompletion, isCorrection, isStop, recordOf, reportBodyOf, reporterOf, shouldJudge, stampOf, withReport } from './record'
 
@@ -14,6 +15,8 @@ const WRITER_NOTICE_DROPPED = 'retro の書き手の報告（/retro log で読�
 // $.store には、セッションごとに記録を持つ。キーは session:<セッションID>
 const SESSION_PREFIX = 'session:'
 const SESSIONS_MAX = 30
+// 控えは、セッションをまたいで 1 つを持つ
+const CANDIDATES_KEY = 'candidates'
 
 const isJudging = atom({ plugin: 'retro', key: 'isJudging' } as const, false)
 
@@ -45,6 +48,14 @@ const change = async ($: EngineInterface, fn: (current: SessionRecord) => Sessio
   return written
 }
 
+const loadCandidates = async ($: EngineInterface): Promise<Candidates> => candidatesOf(await $.store.get(CANDIDATES_KEY))
+
+const changeCandidates = async <T>($: EngineInterface, fn: (current: Candidates) => { candidates: Candidates; result: T }): Promise<T> => {
+  const { candidates, result } = fn(await loadCandidates($))
+  await $.store.set(CANDIDATES_KEY, candidates)
+  return result
+}
+
 // そのエージェントが、この Mod の立てた書き手か
 const isWriter = async ($: EngineInterface, agentId: string | undefined): Promise<boolean> => {
   if (agentId === undefined) return false
@@ -55,7 +66,8 @@ const isWriter = async ($: EngineInterface, agentId: string | undefined): Promis
   return true
 }
 
-// 振り返る。会話を分岐させて発見を聞き、発見があれば、書き手のエージェントを立てて文書に書かせる。
+// 振り返る。会話を分岐させて発見を聞き、控えに数える。文書に上げる発見があれば、書き手のエージェントを立てて文書に書かせる。
+// WHY 控えを挟む: 1 回きりの発見をそのまま文書に書くと、文書が速く増えて大事な文が埋もれる。仕組みで防げる発見は、文書に書かずに作る候補として残す（2026-11-19 に pomesaka と決めた）
 // WHY 2 段に分ける: 文書を書くには、ファイルを読んで探すツールの往復が要る。会話を引き継いだエージェントだと、
 //   往復のたびに会話の全部を送り直す。発見を聞くのは分岐の 1 回で済ませ、書き手には発見だけを渡して会話を持たせない（2026-11-13 に利用者と決めた）。
 // WHY 発見が無ければ立てない: 何も書かないエージェントに、文書を読む分を使わせない。
@@ -69,7 +81,7 @@ const judge = async ($: EngineInterface, trigger: Trigger, toolCalls: number | n
   await update($, isJudging, () => true)
   try {
     const before = await load($)
-    const reply = await $.model.fork({ prompt: judgePrompt(before.found, lastAnswer, toolCalls) })
+    const reply = await $.model.fork({ prompt: judgePrompt(before.found, candidatesForJudge((await loadCandidates($)).list), lastAnswer, toolCalls) })
     const findings = reply.isAnswered ? parseJudgeReply(reply.text) : reply.reason
     if (typeof findings === 'string') {
       if (isAsked) $.ui.toast(`retro: 振り返れませんでした（${findings}）`, { timeoutMs: 8_000 })
@@ -80,17 +92,30 @@ const judge = async ($: EngineInterface, trigger: Trigger, toolCalls: number | n
       if (isAsked) $.ui.toast('retro: 残す発見はありませんでした')
       return
     }
+    const at = await $.clock.now()
+    const promoted = await changeCandidates($, current => {
+      const counted = tally(current, findings, at)
+      return { candidates: counted.candidates, result: counted.promoted }
+    })
+    await change($, current => ({ ...current, found: [...findings.map(one => one.title), ...current.found].slice(0, FOUND_MAX) }))
+    const mechanisms = findings.filter(one => one.kind === 'mechanism').length
+    const kept = `retro: ${findings.length} 件を控えに数えました${mechanisms === 0 ? '' : `（仕組みの候補 ${mechanisms} 件。/retro candidates で読めます）`}`
+    if (promoted.length === 0) {
+      $.ui.toast(kept)
+      return
+    }
     // WHY model を渡さない: メインと同じモデルで書かせる。書き先の選び方と文の規則の守り方を、メインより粗くしない（2026-11-13 に利用者が決めた）
     const started = await $.agent
-      .spawn({ prompt: writerPrompt(findings, await $.session.cwd()), description: WRITER_DESCRIPTION, subagentType: 'general-purpose' })
+      .spawn({ prompt: writerPrompt(promoted, await $.session.cwd()), description: WRITER_DESCRIPTION, subagentType: 'general-purpose' })
       .catch(() => null)
     if (started === null || started.deny !== undefined) {
       $.ui.toast('retro: 書き手のエージェントを立てられませんでした', { timeoutMs: 8_000 })
       return
     }
     if (started.agentId !== undefined) writers.add(started.agentId)
-    await change($, current => ({ ...current, found: [...findings.map(one => one.title), ...current.found].slice(0, FOUND_MAX) }))
-    $.ui.toast(`retro: ${findings.length} 件の発見を文書に書いています`)
+    const ids = promoted.map(one => one.id)
+    await changeCandidates($, current => ({ candidates: markWritten(current, ids, at), result: undefined }))
+    $.ui.toast(`${kept}。くり返し出た ${promoted.length} 件を文書に書いています`)
   } finally {
     await update($, isJudging, () => false)
   }
@@ -100,7 +125,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: COMMAND,
-      description: 'Look back on this session now and write what is worth keeping into the docs. "/retro on" and "/retro off" switch the automatic look-backs, "/retro log" shows what was written',
+      description: 'Look back on this session now and count what is worth keeping; findings seen twice go into the docs. "/retro on|off" switch the automatic look-backs, "/retro log" shows what was written, "/retro candidates" lists the counted findings, "/retro drop <id>" removes one',
     })
     return next(e)
   })
@@ -185,9 +210,8 @@ export const register: Register = on => {
 
   on('command.run', { command: COMMAND }, async ($, e) => {
     const action = actionOf(e.args)
-    switch (action) {
-      case null:
-        return { text: `Usage: /${COMMAND} [on|off|log]` }
+    if (action === null) return { text: `Usage: /${COMMAND} [on|off|log|candidates|drop <id>]` }
+    switch (action.name) {
       case 'on':
         await change($, current => ({ ...current, isOn: true }))
         return { text: 'retro: automatic look-backs are on.' }
@@ -198,6 +222,19 @@ export const register: Register = on => {
         const { log } = await load($)
         if (log.length === 0) return { text: 'retro: nothing has been written in this session yet.' }
         return { text: log.map(one => `${stampOf(new Date(one.at))}\n${one.text}`).join('\n\n') }
+      }
+      case 'candidates': {
+        const { list } = await loadCandidates($)
+        if (list.length === 0) return { text: 'retro: no findings have been counted yet.' }
+        return { text: candidatesText(list) }
+      }
+      case 'drop': {
+        const { id } = action
+        const isDropped = await changeCandidates($, current => {
+          const list = current.list.filter(one => one.id !== id)
+          return { candidates: { ...current, list }, result: list.length < current.list.length }
+        })
+        return { text: isDropped ? `retro: dropped ${id}.` : `retro: no counted finding has the id ${id}. /retro candidates lists them.` }
       }
       case 'run':
         void judge($, 'manual').catch(() => undefined)

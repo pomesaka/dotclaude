@@ -125,16 +125,21 @@ for (const one of STORED) {
   })
 }
 
-const ACTIONS: { args: string; action: string | null }[] = [
-  { args: '', action: 'run' },
-  { args: ' ON ', action: 'on' },
-  { args: 'off', action: 'off' },
-  { args: 'log', action: 'log' },
+const ACTIONS: { args: string; action: object | null }[] = [
+  { args: '', action: { name: 'run' } },
+  { args: ' ON ', action: { name: 'on' } },
+  { args: 'off', action: { name: 'off' } },
+  { args: 'log', action: { name: 'log' } },
+  { args: 'candidates', action: { name: 'candidates' } },
+  { args: 'drop C3', action: { name: 'drop', id: 'c3' } },
+  { args: 'drop', action: null },
+  { args: 'drop c1 c2', action: null },
+  { args: 'log now', action: null },
   { args: 'now', action: null },
 ]
 
 for (const one of ACTIONS) {
   test(`actionOf: "${one.args}"`, async () => {
-    expect(actionOf(one.args)).toBe(one.action)
+    expect(actionOf(one.args)).toEqual(one.action)
   })
 }
