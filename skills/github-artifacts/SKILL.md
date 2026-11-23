@@ -21,7 +21,7 @@ issue の artifact は、issue にぶら下げる文書・HTML・リンク。iss
    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --disable-gpu --hide-scrollbars --window-size=760,2400 --screenshot=<ページと同じ場所>/<名前>.png file://<ページの絶対パス>
    ```
 
-3. **上げる**: `gh issue artifact create <issue> '<HTML の絶対パス>#<名前>'`。`#<名前>` が pane の見出しになる。省くとファイル名になる
+3. **上げる**: ページに悪用できる弱点か、作った相手への評価が書かれていれば、先に利用者へ聞く（`~/.claude/docs/working-rules.md`の「そのほか」）。`gh issue artifact create <issue> '<HTML の絶対パス>#<名前>'`。`#<名前>` が pane の見出しになる。省くとファイル名になる
 4. **確かめる**: `gh issue artifact list <issue>` で番号と型（`embedded_html`）を見る。利用者に、issue のページの「Artifacts」から開けることを伝える
 5. **直す**: `gh issue artifact edit <issue> <番号> --body-file <HTML のパス>`。番号は list で見る。create をやり直すと、別の artifact が増える
 
