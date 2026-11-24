@@ -1,12 +1,21 @@
-# 画面の画像の撮り方（PR の証跡、端末の画面）
+---
+name: pr-evidence-capture
+description: PRやREADMEに貼る画面の画像を作る。devサーバーを起動せずにWebの画面を撮る方法と、端末の画面を画像にする方法を持つ。
+when_to_use: PRの「動作確認」やREADMEに貼るスクショを作るとき。PDFの重ね描き、canvas、hoverやfocusの状態を持つ画面を撮るとき。端末やClaude Codeの画面を画像にするとき。撮った画像を上げるのは upload-screenshots を使う。
+allowed-tools: Read, Write, Bash
+---
 
-PR や README に貼る画面の画像を作るときの決めごと。最初の手順は、dev サーバーを起動せずに、PR の「動作確認」に貼るスクショを作るもの。PDF オーバーレイ・canvas 描画・複雑な CSS 状態（hover/focus 等）を持つ UI で使う。整理する前の版は `archive/2026-11-16/docs/pr-evidence-capture.md` にある。
+# 画面の画像の撮り方
 
-1. 実データ（実 PDF 等）を、リポジトリの実装の関数（座標計算・抽出処理など）に通して、本物の出力値を得る
-2. 実装が使う CSS の定数（`MARK_KIND_CLASS` のようなスタイル定義オブジェクト）を import して HTML を書く。Tailwind のクラスを手で並べない。import できないときは、どの定数の値を写したかをコメントに書く
-3. puppeteer-core と、システムに入っている Chrome（`executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`）で撮る。Chromium を新しくダウンロードしない
+## devサーバーを起動せずにWebの画面を撮る
 
-`:hover` や `:focus-visible` は、クラスの付け替えでなく `page.mouse.move(x, y)` や `page.keyboard` で本物の状態を起こして撮る。`.js-hover` のようなクラスで見た目だけを作ると、実装のセレクタが正しく書かれているかを確かめられない。
+PDFの重ね描き、canvasの描画、込み入ったCSSの状態（hover、focusなど）を持つ画面で使う。
+
+1. 実データ（実際のPDFなど）を、リポジトリの実装の関数（座標の計算、抽出の処理など）に通して、本物の出力値を得る
+2. 実装が使うCSSの定数（`MARK_KIND_CLASS`のようなスタイルの定義のオブジェクト）をimportしてHTMLを書く。Tailwindのクラスを手で並べない。importできないときは、どの定数の値を写したかをコメントに書く
+3. puppeteer-coreと、システムに入っているChrome（`executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"`）で撮る。Chromiumを新しくダウンロードしない
+
+`:hover`や`:focus-visible`は、クラスの付け替えでなく`page.mouse.move(x, y)`や`page.keyboard`で本物の状態を起こして撮る。`.js-hover`のようなクラスで見た目だけを作ると、実装のセレクタが正しく書かれているかを確かめられない。
 
 ## 撮る前に、写したい状態になっているかを同じスクリプトの中で確かめる
 
