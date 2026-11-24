@@ -2,7 +2,7 @@
 name: figure-docs
 description: 人（利用者本人を含む）に読ませる資料を、図を中心に組み立てる。言いたいことごとに1文を決め、図の形を選んで先に描き、文章は図ごとの要点1行にする。事業の図112種と開発の図38種の見本を持つ。
 when_to_use: 報告、比較や判断の資料、事業の資料（企画、市場調査、計画）、開発の説明（設計、PRの説明、障害の報告、移行の計画）を作るとき。explainの説明やxwbのボードで、図の形と資料の組み立てを決めるとき。1〜2文で済む答えには使わない。
-allowed-tools: Read, Grep
+allowed-tools: Read, Grep, Bash(bun ~/.claude/skills/figure-docs/scripts/check-layout.ts:*)
 ---
 
 # 図を中心にした資料の作り方
@@ -113,5 +113,5 @@ allowed-tools: Read, Grep
 
 - 図の中の数の合計を、題、要点、ほかのページの同じ数と突き合わせる。同じ量は1つの計算から出し、古い計算を資料に残さない
 - 要点の1行は、その図から読めることだけにする。図から読めない主張は、図に足すか要点から外す
-- 画面に出して見る。HTMLはheadlessのChromeで画像に撮り（`explain`の`references/html.md`）、xwbは`xwb shot`で見る。文字の重なり、はみ出し、札と線の対応、文字の大きさを確かめる
+- 画面に出して見る。HTMLは`bun ~/.claude/skills/figure-docs/scripts/check-layout.ts <ページ>`で、狭い列での折り返し、はみ出し、文字の重なり、小さい文字、コントラストを検査して0件にしてから、headlessのChromeで画像に撮る（`explain`の`references/html.md`）。xwbは`xwb shot`で見る。画像では、札と線の対応と図の読み取りやすさを確かめる
 - 既にある資料に足すときは、同じ話の章を書き換える。ページを足すのは新しい話のときだけにする。足し続けると、読み手が今の結論を探せなくなる

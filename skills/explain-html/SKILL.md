@@ -3,7 +3,7 @@ name: explain-html
 description: explainの説明を、出す先を「ブラウザのページ」に決めて作る。中身の決め方はexplainと同じ。
 when_to_use: 「HTMLで説明して」「ブラウザで見せて」「ページにまとめて」と言われたとき。出す先を決めずに頼まれたときは explain を使う。
 argument-hint: "[説明してほしいこと]"
-allowed-tools: Read, Grep, Glob, Write, Edit, Skill, Bash(jj *), Bash(gh *), Bash(rg *), Bash(fd *), Bash(open *), Bash("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" *)
+allowed-tools: Read, Grep, Glob, Write, Edit, Skill, Bash(jj *), Bash(gh *), Bash(rg *), Bash(fd *), Bash(open *), Bash("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" *), Bash(bun ~/.claude/skills/figure-docs/scripts/check-layout.ts:*)
 ---
 
 # explain-html

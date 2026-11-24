@@ -3,6 +3,7 @@
   "private": true,
   "devDependencies": {
     "@types/bun": "1.4.4",
+    "playwright-core": "1.65.0",
     "typescript": "7.0.2"
   }
 }

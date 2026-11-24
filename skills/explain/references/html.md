@@ -17,11 +17,14 @@
 
 - `<!doctype html>`から`</html>`までの骨組みは自分で書く（公開時に足される骨組みが無いため）
 - Artifactツールでは公開しない。ページの中身をclaude.aiに保存しないためのスキルなので、利用者が明示的に頼んだときだけ公開する
-- `artifact-design`の「公開前に1回見る」は、headlessのChromeのスクリーンショットで行う。ブラウザが無い環境なら行わず、チャットの返答に「描画は未確認」と書く
+- `artifact-design`の「公開前に1回見る」は、検査のスクリプトとheadlessのChromeのスクリーンショットで行う。先に検査を走らせ、挙がった所を直して0件にしてから撮る。検査は、狭い列での折り返し、はみ出し、SVGの文字の重なり、小さい文字、コントラスト、横に並んだ`<details>`を、幅1100pxと390pxの明暗の両テーマで数えて見る。これらは撮った画像を見ても気づけず、人に言われるまで残った。誤検知と判断して直さない項目は、理由を返答に書く。画像では、検査が見ない、札と線の対応と図の読み取りやすさを見る。ブラウザが無い環境なら行わず、チャットの返答に「描画は未確認」と書く
 
   ```bash
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --disable-gpu --hide-scrollbars --window-size=1280,1600 --screenshot=<ページと同じ場所>/<名前>.png file://<ページの絶対パス>
+  bun ~/.claude/skills/figure-docs/scripts/check-layout.ts <ページの絶対パス>
+  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --disable-gpu --hide-scrollbars --virtual-time-budget=5000 --window-size=1280,1600 --screenshot=<ページと同じ場所>/<名前>.png file://<ページの絶対パス>
   ```
+
+  `--virtual-time-budget`は、Webフォントが読み込まれるまで撮るのを待たせる。無いと代わりのフォントで撮られ、幅の違いで文字が切れて見える
 
 - `~/.claude/tmp/explain/<内容を表す短い英数字とハイフン>.html`に書き、`open`で開く
 
