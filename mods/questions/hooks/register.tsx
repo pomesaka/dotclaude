@@ -79,11 +79,11 @@ const QUESTION_LAST_PREFIX = 'qlast:'
 // 1 つのセッションで覚える保留の数。古いものから落とす
 const QUESTIONS_MAX = 100
 
-// Claude が、仮に決めて先へ進んだことを一覧に残すためのツールと、決まった保留を外すためのツール
+// Claude が、利用者の決めることを一覧に残すためのツールと、決まった保留を外すためのツール
 const QUESTION_TOOL_NAME = 'add_question'
 const QUESTION_TOOL = 'mcp__questions__add_question'
-const QUESTION_TOOL_DESCRIPTION = `Record a decision you made provisionally so work could continue, in the user's open questions pane, for the user to settle later by clicking one of the choices.
-Call it when you go ahead on an assumption the user has not confirmed: a name, a default, a threshold, a behaviour you picked between options. Not for things you can verify yourself, and not when you need the answer before continuing (ask instead).
+const QUESTION_TOOL_DESCRIPTION = `Record a decision that is the user's to make, in the user's open questions pane, for the user to settle by clicking one of the choices.
+Call it for every such decision: a name, a default, a threshold, a behaviour to pick between options, what to keep. Put the option you recommend in assumed. If you cannot continue that piece of work without the answer, record it anyway and hold that piece until the answer arrives; do not ask it in your reply text instead. Not for things you can verify yourself. Use AskUserQuestion instead only when you need the answer within this turn and the user is there to answer it.
 Calling it again with the same question replaces it. The result gives the number (Q3) the user will refer to it by.`
 const QUESTION_TOOL_SCHEMA = {
   type: 'object',
