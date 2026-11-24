@@ -83,7 +83,7 @@ const QUESTIONS_MAX = 100
 const QUESTION_TOOL_NAME = 'add_question'
 const QUESTION_TOOL = 'mcp__questions__add_question'
 const QUESTION_TOOL_DESCRIPTION = `Record a decision that is the user's to make, in the user's open questions pane, for the user to settle by clicking one of the choices.
-Call it for every such decision: a name, a default, a threshold, a behaviour to pick between options, what to keep. Put the option you recommend in assumed. If you cannot continue that piece of work without the answer, record it anyway and hold that piece until the answer arrives; do not ask it in your reply text instead. Not for things you can verify yourself. Use AskUserQuestion instead only when you need the answer within this turn and the user is there to answer it.
+Call it for decisions you can assume provisionally and cheaply redo if the user picks otherwise: a name, a default, a threshold, a behaviour picked between options. Put the option you recommend in assumed and keep working. Decisions that are irreversible or costly to redo go to AskUserQuestion before the work instead. Never ask a decision only in your reply text. Not for things you can verify yourself.
 Calling it again with the same question replaces it. The result gives the number (Q3) the user will refer to it by.`
 const QUESTION_TOOL_SCHEMA = {
   type: 'object',
