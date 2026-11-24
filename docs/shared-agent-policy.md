@@ -49,7 +49,7 @@ Claude CodeとCodexの両方が読む、利用者の決めごと。Claude Code�
 | 設計を決める、責務を分ける | `code-design.md`、`domain-design-practices.md` |
 | テストを設計する、書く、レビューする | `testing-policy.md` |
 | 削除、置き換え、複数の箇所にまたがる変更、PRの準備 | `working-rules.md` |
-| 画面を作る、直す | ui-design（`~/github.com/pomesaka/ui-design/`）の`DESIGN.md`と`docs/composition.md`。画面の案を作るときは、`ui-design:ui-designer`のサブエージェントに任せる。実装と確かめのときのブラウザの癖は`browser-quirks.md`、Tailwindの色とレイアウトは`tailwind-layout.md`、チャートは`charts.md` |
+| 画面を作る、直す | ui-design（`~/github.com/pomesaka/ui-design/`）の`DESIGN.md`と`docs/composition.md`。画面の案を作るときは、`ui-design:ui-designer`のサブエージェントに任せる。プロジェクトにui-designのtokenと部品が入っていなければ、`ui-design:setup`で入れてから作る。実装と確かめのときのブラウザの癖は`browser-quirks.md`、Tailwindの色とレイアウトは`tailwind-layout.md`、チャートは`charts.md` |
 | 利用者ごとのデータを返すAPIを書く | `web-security.md` |
 | 例外を扱う、エラーログを書く | `error-logging.md` |
 | 名前を付ける、用語集を直す | `glossary-policy.md` |
