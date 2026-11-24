@@ -10,7 +10,14 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Skill, Bash(jj *), Bash(gh *), Bas
 
 `explain`の入口の1つ。出す先を「ブラウザのページ」に決めてある。
 
-1. `~/.claude/skills/explain/SKILL.md`を読む。何を説明するか、読み手の前提、説明の順番は、そこに書いてある手順で決める。「出す先を選ぶ」の節は飛ばす
-2. `~/.claude/skills/explain/references/html.md`を読み、その描き方で出す
+何を説明するか、読み手の前提、説明の順番は、下の`explain`の手順で決める。「出す先を選ぶ」の節は飛ばす。描き方は、その下の`html.md`に従う。
 
 このファイルに説明の決まりは書かない。直すときは`explain`の側を直す。
+
+## explainの手順（スキルを読み込んだ時点で取得した）
+
+!`cat ~/.claude/skills/explain/SKILL.md`
+
+## ブラウザのページの描き方（スキルを読み込んだ時点で取得した）
+
+!`cat ~/.claude/skills/explain/references/html.md`

@@ -10,9 +10,14 @@ allowed-tools: Read, Grep, Glob, mcp__rich__show, Bash(jj *), Bash(gh *), Bash(r
 
 `explain`の入口の1つ。出す先を「pane」に決めてある。
 
-1. `~/.claude/skills/explain/SKILL.md`を読む。何を説明するか、読み手の前提、説明の順番は、そこに書いてある手順で決める。「出す先を選ぶ」の節は飛ばす
-2. `~/.claude/skills/explain/references/rich.md`を読み、その描き方で出す
-
-`mcp__rich__show`は`where: "pane"`で呼ぶ。
+何を説明するか、読み手の前提、説明の順番は、下の`explain`の手順で決める。「出す先を選ぶ」の節は飛ばす。描き方は、その下の`rich.md`に従い、`mcp__rich__show`は`where: "pane"`で呼ぶ。
 
 このファイルに説明の決まりは書かない。直すときは`explain`の側を直す。
+
+## explainの手順（スキルを読み込んだ時点で取得した）
+
+!`cat ~/.claude/skills/explain/SKILL.md`
+
+## richでの描き方（スキルを読み込んだ時点で取得した）
+
+!`cat ~/.claude/skills/explain/references/rich.md`

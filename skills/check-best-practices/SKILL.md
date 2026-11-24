@@ -17,6 +17,10 @@ agent: general-purpose
 
 !`bash ~/.claude/skills/check-best-practices/env.sh`
 
+## 比べる基準の文書 prompt-engineering.md（スキルを読み込んだ時点で取得した）
+
+!`cat ~/.claude/docs/prompt-engineering.md`
+
 ---
 
 ## 目的
@@ -25,7 +29,7 @@ agent: general-purpose
 
 ## 比べる基準
 
-基準にするのは、Anthropicの公式の文書だ。`~/.claude/docs/prompt-engineering.md`を読み、末尾の「出典」に挙げてある4つ（プロンプトの全般の指針、モデルごとの指針、Claude Codeのベストプラクティス、`CLAUDE.md`と`rules/`の読み込まれ方）を`WebFetch`で取って読む。`prompt-engineering.md`は、この出典を利用者の環境に当てはめてまとめた文書なので、出典が`prompt-engineering.md`より新しくなっていれば、その差も報告する。
+基準にするのは、Anthropicの公式の文書だ。下に取得した`prompt-engineering.md`の末尾の「出典」に挙げてある4つ（プロンプトの全般の指針、モデルごとの指針、Claude Codeのベストプラクティス、`CLAUDE.md`と`rules/`の読み込まれ方）を`WebFetch`で取って読む。`prompt-engineering.md`は、この出典を利用者の環境に当てはめてまとめた文書なので、出典が`prompt-engineering.md`より新しくなっていれば、その差も報告する。
 
 Claude Codeのチームのブログ（https://claude.dev/blog/）も基準に入れる。一覧を読み、前回の確認の後に出た記事の本文を読む。前回がいつか分からなければ、利用者に聞く。本文を読んだ記事と、一覧の題しか見ていない記事は、報告で分けて書く。
 
