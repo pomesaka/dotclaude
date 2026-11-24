@@ -1,7 +1,7 @@
 ---
 name: model-domain
-description: DDDのドメインモデリングを実施し、ユビキタス言語・集約設計・層構造を確定し、型と構造、コードコメント、用語集に記録する。
-when_to_use: 「ドメインモデリングしよう」「業務概念を整理したい」「DDD設計したい」「用語を整理してモデルに落としたい」「新規ドメイン設計 / 既存の大幅再設計を確定して記録まで一気にやりたい」と言われたとき。複雑さ起点の診断は diagnose-complexity を使う。このスキルは**設計を確定して記録するところまで**をスコープにする。
+description: DDDのドメインモデリングを実施し、ユビキタス言語・集約設計・層構造と、状態遷移を確定する。状態を持つものは、状態ごとの型（判別できるunion）と出来事の関数のシグネチャまで決め、型と構造、コードコメント、用語集に記録する。
+when_to_use: 「ドメインモデリングしよう」「業務概念を整理したい」「DDD設計したい」「用語を整理してモデルに落としたい」「新規ドメイン設計 / 既存の大幅再設計を確定して記録まで一気にやりたい」「状態遷移を整理したい」と言われたとき。状態を持つもの（提出、承認、予約のように出来事で移り変わるもの）を足す、変える実装に入る前。複雑さ起点の診断は diagnose-complexity を使う。このスキルは**設計を確定して記録するところまで**をスコープにする。
 argument-hint: "[対象ドメイン/機能領域]"
 allowed-tools: Read, Write, Edit, Grep, Glob, Bash(cat *), Bash(fd *), Bash(find *), Bash(rg *), Bash(jj diffu *), Bash(ls *), AskUserQuestion
 ---
@@ -12,10 +12,15 @@ allowed-tools: Read, Write, Edit, Grep, Glob, Bash(cat *), Bash(fd *), Bash(find
 
 - **diagnose-complexity（診断）**: 複雑さホットスポットから逆算してモデルのズレを特定する。diagnose で根本原因が判明した後、このスキルで再設計を確定・記録する流れも有効
 - **このスキル（設計・確定・記録）**: ゼロベースまたは大幅改訂でドメインモデルを**構築して確定し、型と構造、コードコメント、用語集に書き下ろす**
+- **design-doc**: このスキルで決めた状態遷移、型、シグネチャを、Design Docの「状態と出来事」に書いてレビューに出す
+
+状態を持つものは、`code-design.md`の「モデル、型、純粋関数、外側の順」で作る。このスキルが受け持つのは、その1（モデルと状態遷移）、2（状態ごとの型）、3のうち出来事の関数のシグネチャまでだ。関数の中身と外側の層は、実装の作業で書く。
 
 ## 参考資料
 
 !`cat ~/.claude/docs/domain-design-practices.md 2>/dev/null`
+
+!`cat ~/.claude/docs/code-design.md 2>/dev/null`
 
 ---
 
@@ -130,6 +135,29 @@ Phase 2 で集めた語を評価し、最終的な用語を選択する。
 | 金額 | Value Object | 値で等価判定、不変 |
 | 照合処理 | Domain Service | 複数 Entity をまたぐロジック |
 
+#### 3-E. 状態遷移、型、出来事のシグネチャ
+
+状態を持つ「もの」ごとに、次の3つを書く。状態を持つものが無ければ飛ばす。
+
+1. **状態遷移の表**: どの出来事で、どの状態からどこへ移るか、取り消せるか、誰が起こすか。行き止まりの状態と、どこからも届かない状態が無いかを見る
+2. **状態ごとの型**: 状態ごとに、その状態で必ずある欄だけを持つ判別できるunion。欄のnullやoptionalの組み合わせで状態を表さない（`typescript.md`）
+
+   ```ts
+   type Request =
+     | { status: 'draft'; id: RequestId; body: Body }
+     | { status: 'submitted'; id: RequestId; body: Body; submittedAt: Date; approverId: UserId }
+     | { status: 'approved'; id: RequestId; body: Body; submittedAt: Date; approvedAt: Date; approverId: UserId }
+   ```
+
+3. **出来事の関数のシグネチャ**: 今の状態と入力を受け取り、新しい状態と書くものを返す。できない状態では理由を返す。呼び出し側から渡す真偽のフラグで決まりを切り替えない
+
+   ```ts
+   function submit(req: Extract<Request, { status: 'draft' }>, input: { approverId: UserId; now: Date }):
+     Result<{ next: Extract<Request, { status: 'submitted' }>; notify: Notification }, SubmitError>
+   ```
+
+TypeScript以外の言語でも、状態ごとの型と、出来事ごとの関数に分ける形は同じにする。
+
 ### Phase 4: ユーザーとのモデル検証
 
 Phase 3 全体を確定する前に `AskUserQuestion` でユーザーに検証を求める。Claudeは実際の業務を知らないので、モデルが業務に合うかはユーザーにしか判定できない。抽象的に聞かない。
@@ -138,6 +166,8 @@ Phase 3 全体を確定する前に `AskUserQuestion` でユーザーに検証�
 - 良い:「`VendorMatching`を集約ルートにして、その配下に`LineItemMatch`を持つ設計を考えています。これは『取引先単位でまとめて照合を確認する』という業務フローと合っていますか？それとも請求書単位でしか見ないですか？」
 
 モデルに暗黙の前提がある場合はそれを明示して検証する（`diagnose-complexity` の Phase 4-D と同じパターン）。
+
+状態遷移の表は、具体的な流れで確かめる（「下書きを出した後、承認者が休みだったら、取り下げて別の人に出し直せますか？」）。型と出来事のシグネチャも、実装に入る前にここで合わせる。実装を別のセッションやサブエージェントに任せるときは、合わせた型とシグネチャをそのまま依頼に入れる。
 
 ### Phase 5: 記録
 
@@ -185,8 +215,9 @@ Issue への分割とコードの修正は、モデルを確定して記録し�
 2. **層構造の定義**: 採用した層とその根拠
 3. **集約設計**: 集約ルート、境界、Entity/VO 一覧、ID 参照の構造
 4. **ユビキタス言語確定表**: 採用語・廃止語・理由（廃止語は commit と PR に書き、用語集には残さない）
-5. **記録の差分**: 5-A の置き場所ごとに書いたもの
-6. **用語集の差分**: 追記・変更した語と定義
+5. **状態遷移の表、状態ごとの型、出来事の関数のシグネチャ**（3-E。状態を持つものがあるとき）。Design Docを書くなら、その「状態と出来事」にも同じものを書く
+6. **記録の差分**: 5-A の置き場所ごとに書いたもの
+7. **用語集の差分**: 追記・変更した語と定義
 
 $ARGUMENTS
 
