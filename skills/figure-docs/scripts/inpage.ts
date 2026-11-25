@@ -3,7 +3,7 @@
 // Playwright は関数を文字列にしてページへ送るので、関数の外の変数や import を参照しない。
 // 参照すると、ページの中で未定義になる。型は消えるので使ってよい
 
-export type Check = "折り返し" | "はみ出し" | "重なり" | "小さい文字" | "コントラスト" | "横に並んだdetails";
+export type Check = "折り返し" | "はみ出し" | "重なり" | "小さい文字" | "コントラスト" | "横に並んだdetails" | "幅が狭い";
 export type Finding = { check: Check; where: string; text: string; detail: string };
 export type Limits = {
   /** 文の入った箱の幅が、この字数（font-size で割った幅）より狭いと折り返しを疑う */
@@ -287,9 +287,10 @@ export function collect(limits: Limits): Finding[] {
       const cx = (tr.left + tr.right) / 2;
       const cy = (tr.top + tr.bottom) / 2;
       // 文字の箱は、文字の中心を含むいちばん小さい四角。帯や期間の網掛けのような、
-      // 箱の後ろに敷いた大きい四角の縁は、枠線があるときだけ重なりとして数える
+      // 箱の後ろに敷いた大きい四角の縁は、枠線があるときだけ重なりとして数える。
+      // 中心がちょうど縁に乗る文字（帯の境目に置いた注記）は、その四角の中と数えない。図を広げると縁の判定が1px単位で揺れるため
       const own = boxes
-        .filter(({ box }) => hasPoint(box, cx, cy))
+        .filter(({ box }) => hasPoint(inset(box, 2), cx, cy))
         .sort((a, b) => a.box.width * a.box.height - b.box.width * b.box.height)[0];
       if (own && !contains(own.box, tr, 1)) add("はみ出し", t, "文字が自分の箱（rect）からはみ出す");
       for (const { el, box } of boxes) {

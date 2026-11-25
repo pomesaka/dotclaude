@@ -3,7 +3,10 @@
 //
 //   bun ~/.claude/skills/figure-docs/scripts/check-layout.ts <ページ.html>...
 //
-// 画面の幅1100pxと390px、明るいテーマと暗いテーマの4通りで描き、次を見る。
+// 画面の幅1440pxと1920px、明るいテーマと暗いテーマの4通りで描き、次を見る。
+// WHY 広い画面だけ: 説明のページはpomesakaがデスクトップのブラウザで見て、スマホではほとんど見ない（pomesakaと確認）。
+//   狭い画面に合わせて組むと、広い画面で本文の幅に縮んだ図になっていた
+// - 幅が狭い: 1920pxで、いちばん広い文や図が画面の幅の7割に届かない（max-widthで本文を狭く囲んでいる）
 // - 折り返し: 狭い箱で文が何行も折り返す（横に並べたカード、3列の表の列）
 // - はみ出し: 横のスクロール、親の箱から出る要素、箱で切れる文字、SVGの枠や自分の四角から出る文字
 // - 重なり: SVGの文字どうし、文字と線、文字と四角の縁
@@ -21,16 +24,24 @@ import { collect, type Finding, type Limits, settle } from "./inpage";
 
 export type View = { width: number; scheme: "light" | "dark" };
 export const views: View[] = [
-  { width: 1100, scheme: "light" },
-  { width: 1100, scheme: "dark" },
-  { width: 390, scheme: "light" },
-  { width: 390, scheme: "dark" },
+  { width: 1440, scheme: "light" },
+  { width: 1440, scheme: "dark" },
+  { width: 1920, scheme: "light" },
+  { width: 1920, scheme: "dark" },
 ];
 
-// WHY 幅で変える: 390pxの画面では本文でも1行が20字に届かないので、狭い画面では列に分けた所だけを落とす
-export function limitsFor(width: number): Limits {
-  return { minLineEm: width < 600 ? 14 : 20, minLines: 3, minFontPx: 11 };
+export function limitsFor(_width: number): Limits {
+  return { minLineEm: 20, minLines: 3, minFontPx: 11 };
 }
+
+// body の中でいちばん広い要素の幅。本文を max-width で囲むと、これが画面の幅より大きく下回る
+const widestContent = (): { width: number; viewport: number } => {
+  const els = [...document.querySelectorAll("body *")];
+  const width = Math.max(0, ...els.map((el) => el.getBoundingClientRect().width));
+  return { width: Math.round(width), viewport: document.documentElement.clientWidth };
+};
+const NARROW_FROM = 1800;
+const NARROW_RATIO = 0.7;
 
 export type Report = { finding: Finding; views: View[] };
 
@@ -44,7 +55,14 @@ export async function checkPage(browser: Browser, file: string): Promise<Report[
       await page.setViewportSize({ width: view.width, height: 900 });
       await page.emulateMedia({ colorScheme: view.scheme });
       await page.evaluate(settle);
-      for (const finding of await page.evaluate(collect, limitsFor(view.width))) {
+      const findings = await page.evaluate(collect, limitsFor(view.width));
+      if (view.width >= NARROW_FROM) {
+        const { width, viewport } = await page.evaluate(widestContent);
+        if (width < viewport * NARROW_RATIO) {
+          findings.push({ check: "幅が狭い", where: "body", text: "", detail: `いちばん広い文や図が${width}pxで、画面の幅${viewport}pxの${Math.round((width / viewport) * 100)}%しか使っていない。本文を囲むmax-widthを外すか広げる` });
+        }
+      }
+      for (const finding of findings) {
         const key = `${finding.check}\u0000${finding.where}`;
         const seen = reports.get(key);
         if (seen) seen.views.push(view);

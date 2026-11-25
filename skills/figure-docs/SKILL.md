@@ -41,7 +41,7 @@ allowed-tools: Read, Grep, Bash(bun ~/.claude/skills/figure-docs/scripts/check-l
 - claude.aiのArtifactには出さない。社外の情報をclaude.aiに置かないためで、利用者が頼んだときだけ使う
 - HTMLの日本語は、図やグラフの中も含めてゴシック体にする。Google FontsのNoto Sans JPを読み込み、`font-family: "Noto Sans JP", "Hiragino Sans", "Yu Gothic", Meiryo, sans-serif`を指定する。指定しないと明朝体で出る環境があり、読み込まないと端末ごとに字体が変わる
 - 図の中の文字は、部品の名前と値と数語の注記にする。文を四角に詰めると図の形をした文章になる。文は図の下の要点1行か、畳んだ詳細に置く
-- 図は本文の幅に収め、表示したときの文字を11pxより小さくしない。部品が多くて収まらないときは、全体の図と部分の図に分ける
+- 図は出す先の幅に収め、表示したときの文字を11pxより小さくしない。ブラウザのページでは画面の幅いっぱいが出す先の幅になる（`explain`の`references/html.md`）。部品が多くて収まらないときは、全体の図と部分の図に分ける
 - 位置の計算が要る図（Sankey、Chord、Network、Treemapなど）は、作る側でd3などを動かして位置を計算し、結果をsvgに書き出して埋め込む。地図は、境界のデータ（npmのjpn-atlasなど）を簡略化したpathにして埋め込む
 
 ## 形を選ぶ順

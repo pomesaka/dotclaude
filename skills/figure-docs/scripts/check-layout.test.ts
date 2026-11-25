@@ -29,6 +29,7 @@ const cases: [string, Check[]][] = [
   ["hscroll.html", ["はみ出し"]],
   ["clip.html", ["はみ出し"]],
   ["tall.html", ["はみ出し"]],
+  ["narrow.html", ["幅が狭い"]], // clean.html の本文を max-width: 960px で囲んだ
 ];
 
 test.each(cases)(
