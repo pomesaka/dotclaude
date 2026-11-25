@@ -21,6 +21,10 @@ describe('commandKey', () => {
   test.each([
     ['サブコマンドまで', 'jj git fetch', 'jj git'],
     ['cd を飛ばす', 'cd /repo && bun test src', 'bun test'],
+    ['複合コマンドは並べる', 'cd /repo; jj st >/dev/null 2>&1; bun run check', '複合（jj st、bun run）'],
+    ['ヒアドキュメントの中身は数えない', "python3 - <<'EOF'\nimport os\nos.remove(p)\nEOF", 'python3'],
+    ['ヒアドキュメントの後ろのコマンドは数える', "python3 - <<'EOF'\nprint(1)\nEOF\nbun test", '複合（python3、bun test）'],
+    ['パイプの後ろは同じコマンドの一部', 'jj log | head -3', 'jj log'],
     ['環境変数の代入を飛ばす', 'CI=1 bun run build', 'bun run'],
     ['パスを外す', '/usr/bin/python3 -c "print(1)"', 'python3'],
     ['2 語目が値なら 1 語', 'rg -n foo', 'rg'],

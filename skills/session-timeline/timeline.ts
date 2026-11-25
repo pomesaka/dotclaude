@@ -179,23 +179,29 @@ const readSubagents = (dir: string): Subagent[] => {
 type Block = { start: number; end: number; tools: Map<string, number>; usage: Usage }
 type Mark = { at: number; text: string; turnStart: boolean }
 
-// Bash のコマンドを、先頭の環境変数の代入と cd を除いた最初の 2 語にならす（`bun test`、`jj git`）
-export const commandKey = (command: string): string => {
-  const words = command
+// Bash の 1 つのコマンドを、先頭の環境変数の代入を除いた最初の 2 語にならす（`bun test`、`jj git`）。cd は null
+const partKey = (part: string): string | null => {
+  const words = part
     .trim()
-    .split(/\s*(?:&&|;)\s*/)
-    .map(part =>
-      part
-        .trim()
-        .replace(/^\(+/, '')
-        .split(/\s+/)
-        .filter(word => word !== '' && !/^[A-Z_][A-Z0-9_]*=/.test(word)),
-    )
-    .find(part => part.length > 0 && part[0] !== 'cd')
-  if (words === undefined) return '?'
-  const [head = '?', second] = words
+    .replace(/^\(+/, '')
+    .split(/\s+/)
+    .filter(word => word !== '' && !/^[A-Z_][A-Z0-9_]*=/.test(word))
+  const [head, second] = words
+  if (head === undefined || head === 'cd') return null
   const name = head.split('/').pop() ?? head
   return second !== undefined && /^[a-z][a-z0-9:_-]*$/.test(second) ? `${name} ${second}` : name
+}
+
+// Bash の呼び出しを、まとめて数える名前にする。&&、;、改行でつないだ複合コマンドは「複合（jj st、bun run）」にする。
+// 先頭のコマンドだけで数えると、後ろにつないだテストの時間が先頭の速いコマンド（jj st）に付くため。
+// ヒアドキュメントの中身はコマンドでないので外す。終わりの印より後ろのコマンドは数える
+const HEREDOC = /<<-?\s*['"]?(\w+)['"]?[^\n]*\n[\s\S]*?\n\s*\1\s*(?:\n|$)/g
+export const commandKey = (command: string): string => {
+  const head = command.replace(HEREDOC, '\n')
+  const keys = [...new Set(head.split(/\s*(?:&&|\|\||;|\n)\s*/).map(partKey).filter((key): key is string => key !== null))]
+  if (keys.length === 0) return '?'
+  if (keys.length === 1) return keys[0] ?? '?'
+  return `複合（${keys.slice(0, 3).join('、')}${keys.length > 3 ? '、…' : ''}）`
 }
 
 const findTranscript = (sessionId: string): string | undefined => {
@@ -371,7 +377,7 @@ const main = (): void => {
   for (const [skill, n] of [...skillCount].sort((a, b) => b[1] - a[1])) console.log(`  ${skill.padEnd(28)} ${String(n).padStart(3)}回`)
   console.log('\n本体のツール（時間は呼び出しから結果までの合計）')
   for (const [name, t] of [...toolTotals].sort((a, b) => b[1].ms - a[1].ms).slice(0, 15)) console.log(`  ${name.padEnd(28)} ${String(t.count).padStart(4)}回  ${duration(t.ms).padStart(7)}`)
-  console.log('\n本体の Bash（最初の 2 語ごと。時間の長い順）')
+  console.log('\n本体の Bash（コマンドの最初の 2 語ごと。つないだ複合コマンドは「複合」にまとめる。時間の長い順）')
   for (const [key, t] of [...bashTotals].sort((a, b) => b[1].ms - a[1].ms).slice(0, 15)) console.log(`  ${key.padEnd(28)} ${String(t.count).padStart(4)}回  ${duration(t.ms).padStart(7)}`)
 }
 
