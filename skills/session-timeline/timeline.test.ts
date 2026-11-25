@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { classifyArrival, commandKey, duration, sumUsage } from './timeline'
+import { childrenOf, classifyArrival, commandKey, duration, type Subagent, sumUsage } from './timeline'
 
 describe('classifyArrival', () => {
   test.each([
@@ -48,5 +48,18 @@ describe('duration', () => {
     [3_660_000, '1h01m'],
   ])('%d ms', (ms, expected) => {
     expect(duration(ms)).toBe(expected)
+  })
+})
+
+describe('childrenOf', () => {
+  const agent = (id: string, parentAgentId?: string): Subagent => ({ id, parentAgentId, label: id, type: 'general-purpose', description: '', background: true, start: 0, end: 1, usage: { newIn: 0, cacheRead: 0, out: 0 } })
+  test.each([
+    ['親の下に子を持つ', [agent('a'), agent('b', 'a')], { a: ['b'] }],
+    ['孫は子の下に持つ', [agent('a'), agent('b', 'a'), agent('c', 'b')], { a: ['b'], b: ['c'] }],
+    ['親が記録に無い子は持たない', [agent('b', 'x')], {}],
+    ['親の無いものだけなら空', [agent('a'), agent('b')], {}],
+  ])('%s', (_, agents, expected) => {
+    const children = childrenOf(agents)
+    expect(Object.fromEntries([...children].map(([id, list]) => [id, list.map(child => child.id)]))).toEqual(expected)
   })
 })

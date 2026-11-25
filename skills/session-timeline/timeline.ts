@@ -117,7 +117,33 @@ export const sumUsage = (entries: Json[]): Usage => {
   return total
 }
 
-type Subagent = { label: string; type: string; description: string; toolUseId?: string; background: boolean; start: number; end: number; usage: Usage }
+// skill は context: fork のスキルが立てたときのスキルの名前。parentAgentId はサブエージェントの中で立ったときの親の id
+export type Subagent = {
+  id: string
+  parentAgentId?: string
+  skill?: string
+  label: string
+  type: string
+  description: string
+  toolUseId?: string
+  background: boolean
+  start: number
+  end: number
+  usage: Usage
+}
+
+// サブエージェントの中で立ったサブエージェント（general-purpose の中で context: fork のスキルを呼んだ、など）を、
+// 親の子として持つ。別の呼び出しとして並べると、同じ作業を 2 回したように見えるため
+export const childrenOf = (agents: Subagent[]): Map<string, Subagent[]> => {
+  const ids = new Set(agents.map(agent => agent.id))
+  const children = new Map<string, Subagent[]>()
+  for (const agent of agents) {
+    if (agent.parentAgentId === undefined || !ids.has(agent.parentAgentId)) continue
+    children.set(agent.parentAgentId, [...(children.get(agent.parentAgentId) ?? []), agent])
+  }
+  return children
+}
+
 const readSubagents = (dir: string): Subagent[] => {
   if (!existsSync(dir)) return []
   return readdirSync(dir)
@@ -130,9 +156,13 @@ const readSubagents = (dir: string): Subagent[] => {
       const meta: unknown = existsSync(metaPath) ? JSON.parse(readFileSync(metaPath, 'utf8')) : {}
       const type = isObject(meta) ? (str(meta.agentType) ?? '?') : '?'
       const description = isObject(meta) ? (str(meta.description) ?? '') : ''
+      const skill = isObject(meta) ? str(meta.name) : undefined
       return [
         {
-          label: `${type} "${oneLine(description, 40)}"`,
+          id: name.replace(/^agent-/, '').replace(/\.jsonl$/, ''),
+          parentAgentId: isObject(meta) ? str(meta.parentAgentId) : undefined,
+          skill,
+          label: `${skill === undefined ? type : `${type}（スキル ${skill}）`} "${oneLine(description, 40)}"`,
           type,
           description,
           toolUseId: isObject(meta) ? str(meta.toolUseId) : undefined,
@@ -190,6 +220,16 @@ const main = (): void => {
   const entries = readLines(path)
   const subagents = readSubagents(join(path.replace(/\.jsonl$/, ''), 'subagents'))
   const byToolUse = new Map(subagents.flatMap(agent => (agent.toolUseId === undefined ? [] : [[agent.toolUseId, agent] as const])))
+  const children = childrenOf(subagents)
+  const nested = new Set([...children.values()].flat().map(agent => agent.id))
+  // 子のサブエージェントを、親の行の下に字下げして並べる
+  const childLines = (agent: Subagent, depth: number): string[] =>
+    (children.get(agent.id) ?? [])
+      .sort((a, b) => a.start - b.start)
+      .flatMap(child => [
+        `${' '.repeat(10 + depth * 4)}└ 中で ${child.label}  ${duration(child.end - child.start)}  ${usageText(child.usage)}`,
+        ...childLines(child, depth + 1),
+      ])
 
   const lines: string[] = []
   const skillCount = new Map<string, number>()
@@ -266,6 +306,7 @@ const main = (): void => {
         const type = str(input.subagent_type) ?? 'general-purpose'
         const detail = agent === undefined ? '' : `  ${agent.background ? '裏' : '前'} ${duration(agent.end - agent.start)}  ${usageText(agent.usage)}`
         mark({ at, text: `  Agent ${type} "${oneLine(str(input.description) ?? '', 40)}"${detail}`, turnStart: false })
+        if (agent !== undefined) lines.push(...childLines(agent, 0))
       } else {
         state.block ??= { start: at, end: at, tools: new Map(), usage: zero() }
         state.block.tools.set(name, (state.block.tools.get(name) ?? 0) + 1)
@@ -286,7 +327,7 @@ const main = (): void => {
   closeTurn()
 
   // Agent の呼び出しに結び付かないサブエージェント（context: fork のスキル、Mod が立てたもの）は、始まった時刻で別に並べる
-  const unlinked = subagents.filter(agent => agent.toolUseId === undefined || !toolStart.has(agent.toolUseId))
+  const unlinked = subagents.filter(agent => !nested.has(agent.id) && (agent.toolUseId === undefined || !toolStart.has(agent.toolUseId)))
 
   if (process.argv.includes('--json')) {
     const counts = (map: Map<string, { count: number; ms: number }>) => [...map].map(([name, t]) => ({ name, ...t })).sort((a, b) => b.ms - a.ms)
@@ -296,7 +337,7 @@ const main = (): void => {
       mainUsage,
       turns,
       skills,
-      subagents: subagents.map(({ label: _, ...agent }) => agent),
+      subagents: subagents.map(({ label: _, ...agent }) => ({ ...agent, nested: nested.has(agent.id) })),
       tools: counts(toolTotals),
       bash: counts(bashTotals),
     }
@@ -309,15 +350,18 @@ const main = (): void => {
   for (const line of lines) console.log(line)
   if (unlinked.length > 0) {
     console.log('\n## Agent の呼び出しに結び付かないサブエージェント（forkのスキル、Modが立てたもの）\n')
-    for (const agent of unlinked.sort((a, b) => a.start - b.start)) console.log(`${clock(agent.start)}  ${agent.label}  ${duration(agent.end - agent.start)}  ${usageText(agent.usage)}`)
+    for (const agent of unlinked.sort((a, b) => a.start - b.start)) {
+      console.log(`${clock(agent.start)}  ${agent.label}  ${duration(agent.end - agent.start)}  ${usageText(agent.usage)}`)
+      for (const line of childLines(agent, 0)) console.log(line)
+    }
   }
 
   console.log('\n## まとめ\n')
   console.log(`本体: 動いていた時間 ${duration(activeMs)}（ターンの始まりから最後の応答まで、の合計）  ${usageText(mainUsage)}`)
   const byType = new Map<string, { count: number; ms: number; usage: Usage }>()
   for (const agent of subagents) {
-    const type = agent.label.split(' ')[0] ?? '?'
-    const key = type === 'general-purpose' && agent.label.includes('"/') ? `${type}（forkのスキル）` : type
+    const type = agent.skill === undefined ? agent.type : `${agent.type}（スキル ${agent.skill}）`
+    const key = nested.has(agent.id) ? `${type}（入れ子）` : type
     const total = byType.get(key) ?? { count: 0, ms: 0, usage: zero() }
     byType.set(key, { count: total.count + 1, ms: total.ms + (agent.end - agent.start), usage: add(total.usage, agent.usage) })
   }
