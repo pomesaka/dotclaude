@@ -24,6 +24,7 @@ describe('commandKey', () => {
     ['環境変数の代入を飛ばす', 'CI=1 bun run build', 'bun run'],
     ['パスを外す', '/usr/bin/python3 -c "print(1)"', 'python3'],
     ['2 語目が値なら 1 語', 'rg -n foo', 'rg'],
+    ['サブシェルの括弧を外す', '(bun run dev &) ', 'bun run'],
   ])('%s', (_, command, expected) => {
     expect(commandKey(command)).toBe(expected)
   })

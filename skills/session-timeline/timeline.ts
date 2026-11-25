@@ -117,7 +117,7 @@ export const sumUsage = (entries: Json[]): Usage => {
   return total
 }
 
-type Subagent = { label: string; toolUseId?: string; background: boolean; start: number; end: number; usage: Usage }
+type Subagent = { label: string; type: string; description: string; toolUseId?: string; background: boolean; start: number; end: number; usage: Usage }
 const readSubagents = (dir: string): Subagent[] => {
   if (!existsSync(dir)) return []
   return readdirSync(dir)
@@ -133,6 +133,8 @@ const readSubagents = (dir: string): Subagent[] => {
       return [
         {
           label: `${type} "${oneLine(description, 40)}"`,
+          type,
+          description,
           toolUseId: isObject(meta) ? str(meta.toolUseId) : undefined,
           background: isObject(meta) && meta.requestShape === 'background',
           start: Math.min(...stamps),
@@ -152,7 +154,13 @@ export const commandKey = (command: string): string => {
   const words = command
     .trim()
     .split(/\s*(?:&&|;)\s*/)
-    .map(part => part.trim().split(/\s+/).filter(word => !/^[A-Z_][A-Z0-9_]*=/.test(word)))
+    .map(part =>
+      part
+        .trim()
+        .replace(/^\(+/, '')
+        .split(/\s+/)
+        .filter(word => word !== '' && !/^[A-Z_][A-Z0-9_]*=/.test(word)),
+    )
     .find(part => part.length > 0 && part[0] !== 'cd')
   if (words === undefined) return '?'
   const [head = '?', second] = words
@@ -160,7 +168,7 @@ export const commandKey = (command: string): string => {
   return second !== undefined && /^[a-z][a-z0-9:_-]*$/.test(second) ? `${name} ${second}` : name
 }
 
-const findTranscript =(sessionId: string): string | undefined => {
+const findTranscript = (sessionId: string): string | undefined => {
   for (const project of readdirSync(PROJECTS)) {
     const path = join(PROJECTS, project, `${sessionId}.jsonl`)
     if (existsSync(path)) return path
@@ -171,7 +179,7 @@ const findTranscript =(sessionId: string): string | undefined => {
 const main = (): void => {
   const sessionId = process.argv[2]
   if (sessionId === undefined) {
-    console.error('使い方: bun timeline.ts <セッションID>')
+    console.error('使い方: bun timeline.ts <セッションID> [--json]')
     process.exit(2)
   }
   const path = findTranscript(sessionId)
@@ -190,7 +198,10 @@ const main = (): void => {
   const bashTotals = new Map<string, { count: number; ms: number }>()
   const seenMessages = new Set<string>()
   // 閉じた関数の中で書き換えるので、変数でなく入れ物に持つ（変数だと、外の分岐で型が null に絞られる）
-  const state: { block: Block | null; turn: { start: number; last: number; line: number } | null } = { block: null, turn: null }
+  const state: { block: Block | null; turn: { start: number; last: number; line: number; kind: string; text: string; usage: Usage } | null } = { block: null, turn: null }
+  // --json で出す、図を描くための値
+  const turns: { start: number; end: number; kind: string; text: string; usage: Usage }[] = []
+  const skills: { at: number; name: string }[] = []
   let activeMs = 0
   let mainUsage = zero()
 
@@ -205,15 +216,16 @@ const main = (): void => {
     const turn = state.turn
     if (turn !== null) {
       activeMs += turn.last - turn.start
+      turns.push({ start: turn.start, end: turn.last, kind: turn.kind, text: turn.text, usage: turn.usage })
       lines[turn.line] += `  （ターン ${duration(turn.last - turn.start)}）`
     }
     state.turn = null
   }
-  const mark = (m: Mark) => {
+  const mark = (m: Mark, arrival?: Arrival) => {
     flush()
     if (m.turnStart) closeTurn()
     lines.push(`${clock(m.at)}  ${m.text}`)
-    if (m.turnStart) state.turn = { start: m.at, last: m.at, line: lines.length - 1 }
+    if (arrival !== undefined) state.turn = { start: m.at, last: m.at, line: lines.length - 1, kind: arrival.kind, text: arrival.text, usage: zero() }
   }
 
   for (const entry of entries) {
@@ -221,7 +233,7 @@ const main = (): void => {
     if (at === undefined) continue
     const arrival = classifyArrival(entry)
     if (arrival !== null) {
-      mark({ at, text: `[${arrival.kind}] ${arrival.text}`.trimEnd(), turnStart: true })
+      mark({ at, text: `[${arrival.kind}] ${arrival.text}`.trimEnd(), turnStart: true }, arrival)
       continue
     }
     for (const result of blocksOf(entry).filter(b => b.type === 'tool_result')) {
@@ -247,6 +259,7 @@ const main = (): void => {
       if (name === 'Skill') {
         const skill = str(input.skill) ?? '?'
         skillCount.set(skill, (skillCount.get(skill) ?? 0) + 1)
+        skills.push({ at, name: skill })
         mark({ at, text: `  Skill ${skill}`, turnStart: false })
       } else if (name === 'Agent') {
         const agent = byToolUse.get(id)
@@ -263,6 +276,7 @@ const main = (): void => {
       seenMessages.add(messageId)
       const usage = readUsage(entry.message.usage)
       mainUsage = add(mainUsage, usage)
+      if (state.turn !== null) state.turn.usage = add(state.turn.usage, usage)
       state.block ??= { start: at, end: at, tools: new Map(), usage: zero() }
       state.block.usage = add(state.block.usage, usage)
     }
@@ -273,6 +287,22 @@ const main = (): void => {
 
   // Agent の呼び出しに結び付かないサブエージェント（context: fork のスキル、Mod が立てたもの）は、始まった時刻で別に並べる
   const unlinked = subagents.filter(agent => agent.toolUseId === undefined || !toolStart.has(agent.toolUseId))
+
+  if (process.argv.includes('--json')) {
+    const counts = (map: Map<string, { count: number; ms: number }>) => [...map].map(([name, t]) => ({ name, ...t })).sort((a, b) => b.ms - a.ms)
+    const json = {
+      sessionId,
+      activeMs,
+      mainUsage,
+      turns,
+      skills,
+      subagents: subagents.map(({ label: _, ...agent }) => agent),
+      tools: counts(toolTotals),
+      bash: counts(bashTotals),
+    }
+    console.log(JSON.stringify(json, null, 2))
+    return
+  }
 
   console.log(`# ${sessionId}\n`)
   console.log('## 時系列（「作業」は区切りの間のツールの回数。裏はバックグラウンドのサブエージェントで、本体の時間と重なる）\n')
