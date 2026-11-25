@@ -90,6 +90,7 @@ Self-hosted application を手で設定したときに見落とした点（2026-
 - **ポリシーが 0 件だと誰も通れない**。Access は deny-by-default で、Allow に当たらない人は拒否される。認可を DB だけで管理する設計でも、Access に `Allow` + Include `Everyone` のポリシーが 1 つ要る（Access は本人確認だけを受け持つ）
 - **Path のワイルドカードは親のパスを含まない**。`/admin/*` は `/admin` を含まない。ワイルドカードの無いパスが前方一致になるかは公式に書かれていないので、`/admin` と `/admin/*` の両方を登録する
 - **One-time PIN は新しい組織の既定に入っていない**。既定の Cloudflare identity provider は Cloudflare のアカウントを持つ人しかログインできない。外部の利用者に使わせるなら、Identity providers に OTP を足す
+- **Access の後ろの API を手元から叩くには、`cloudflared access login <URL>` と `cloudflared access curl <URL>` を使う**（cloudflared 2026.5.0、2026-11 に確認）。`login` はブラウザで SSO を通し、トークンを手元に保存する。`curl` はそのトークンを付けて叩き、Worker には画面と同じ `Cf-Access-Jwt-Assertion` が届くので、サービストークンや Access の例外を足さずに本人として呼べる。`login` はトークンを標準出力に出すので、エージェントの会話の中で実行すると会話の記録に残る。`cf` に同じ機能があるかは確かめていない
 
 ## API トークンの Workers の権限とプラン
 
