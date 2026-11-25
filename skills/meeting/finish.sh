@@ -72,8 +72,16 @@ if board_hits=$(jq -r '.elements[] | [.id, (.title // ""), (.text // ""), (.ques
 fi
 
 # 宿題の件数。ボードと議事録で同じ宿題を書いているはず
+# 見出しは置き場によって「宿題」か「ToDo」。ボードの todo には前回からの持ち越しも入るので、
+# 「前回の宿題」の節の未完了の行（- [ ]）も数える
 board_todo=$("$xwb" summary "$board" | jq '.todo | length')
-minutes_todo=$(awk '/^## 宿題/{on=1; next} /^## /{on=0} on && /^\| *[0-9]+ *\|/' "$minutes" | wc -l | tr -d ' ')
+minutes_todo=$(awk '
+  /^## (宿題|ToDo)$/ {on="table"; next}
+  /^## 前回の宿題$/ {on="carried"; next}
+  /^## / {on=""}
+  on=="table" && /^\| *[0-9]+ *\|/ {n++}
+  on=="carried" && /^- \[ \]/ {n++}
+  END {print n+0}' "$minutes")
 if [ "$board_todo" != "$minutes_todo" ]; then
   report "宿題の数がボード（${board_todo} 件）と議事録（${minutes_todo} 件）で違う。片方に漏れがないかを見る"
 fi
