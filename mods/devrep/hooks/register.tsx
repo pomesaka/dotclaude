@@ -58,7 +58,7 @@ const refresh = async ($: EngineInterface, isAsked: boolean): Promise<void> => {
   try {
     const before = (await read($, record)).report
     // WHY 時刻とターンの数を渡さない: 書く中身ではない
-    const previous = before === null ? null : { now: before.now, next: before.next, todo: before.todo, sections: before.sections }
+    const previous = before === null ? null : { now: before.now, todo: before.todo }
     const reply = await $.model.fork({ prompt: forkPrompt(previous, lastAnswer) })
     const body = reply.isAnswered ? parseForkReply(reply.text) : reply.reason
     if (typeof body === 'string') {
@@ -202,7 +202,7 @@ export const register: Register = on => {
   }).catch((_$, e, next) => next(e))
 
   // WHY 表を使わない: pane の幅はターミナルの半分ほどで、Markdown の表は pane の幅に合わせて描かれない。
-  // 節ごとに項目を縦に並べ、自分で幅を渡して折り返す
+  // 項目を縦に並べ、自分で幅を渡して折り返す
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
     if (e.surface !== 'terminal') return next(e)
     const { Box, Button, Text } = $.ui.resolve(e)
@@ -221,15 +221,6 @@ export const register: Register = on => {
         <Box width={Math.max(10, width - 3)}>
           <Text wrap="wrap">{body}</Text>
         </Box>
-      </Box>
-    )
-    // at は、節の位置。見出しが同じ節が無いことは入力で確かめているが、key は位置で付ける
-    const section = (at: string, title: string, list: string[], markOf: (index: number) => string, color = ACCENT) => (
-      <Box key={`section-${at}`} flexDirection="column" width={width}>
-        <Text bold color={color}>
-          {title}
-        </Text>
-        {list.map((one, index) => row(`item-${at}-${index}`, markOf(index), one))}
       </Box>
     )
 
@@ -284,7 +275,14 @@ export const register: Register = on => {
         ) : (
           <Box flexDirection="column" gap={1} width={width}>
             {/* WHY いちばん上に置く: 戻ってきた利用者が最初に知りたいのは、自分が何をすれば作業が進むか */}
-            {report.todo.length > 0 && section('todo', 'あなたがすること', report.todo, () => '□', TODO)}
+            {report.todo.length > 0 && (
+              <Box flexDirection="column" width={width}>
+                <Text bold color={TODO}>
+                  あなたがすること
+                </Text>
+                {report.todo.map((one, index) => row(`todo-${index}`, '□', one))}
+              </Box>
+            )}
             <Box flexDirection="column" width={width}>
               {/* WHY 日時も出す: 「3時間前」だけでは、いつの時点の状況かを、ほかの記録（コミット、PR）と突き合わせられない
                   （2026-10-10 に利用者が決めた） */}
@@ -293,8 +291,6 @@ export const register: Register = on => {
               </Text>
               <Text wrap="wrap">{report.now}</Text>
             </Box>
-            {section('next', '次にすること', report.next, index => `${index + 1}.`)}
-            {report.sections.map((one, at) => section(String(at), one.title, one.items, () => '-'))}
           </Box>
         )}
       </Box>

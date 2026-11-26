@@ -2,14 +2,14 @@ import { expect, test } from 'claude-code/testing'
 
 import { forkPrompt, parseForkReply } from '../hooks/prompt'
 
-const BODY = { now: 'a', next: ['b'], todo: [], sections: [] }
+const BODY = { now: 'a', todo: [] }
 
 const REPLIES: { name: string; reply: string; parsed: unknown }[] = [
-  { name: 'JSON だけ', reply: '{"now":"a","next":["b"]}', parsed: BODY },
-  { name: 'コードの囲みと前置きが付いている', reply: '書きました。\n```json\n{"now":"a","next":["b"]}\n```', parsed: BODY },
+  { name: 'JSON だけ', reply: '{"now":"a","todo":[]}', parsed: BODY },
+  { name: 'コードの囲みと前置きが付いている', reply: '書きました。\n```json\n{"now":"a"}\n```', parsed: BODY },
   { name: 'JSON が無い', reply: '書けません', parsed: 'the reply has no JSON object' },
   { name: 'JSON が壊れている', reply: '{"now":"a",}', parsed: 'the reply is not valid JSON' },
-  { name: '中身が足りない', reply: '{"now":"a"}', parsed: 'next must be a list of at least one string' },
+  { name: '中身が足りない', reply: '{"todo":[]}', parsed: 'now must be a non-empty string' },
 ]
 
 for (const one of REPLIES) {

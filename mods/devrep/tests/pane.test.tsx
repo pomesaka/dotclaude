@@ -8,12 +8,7 @@ const END = { turnId: 't1', answer: '直しました。', durationMs: 0, isAbort
 const USAGE = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
 const REPORT = {
   now: '帯の幅の計算を直している',
-  next: ['テストを足す', 'READMEに反映する'],
   todo: ['/reload-plugins を打つ', 'Q3 に答える'],
-  sections: [
-    { title: '知っておいてほしいこと', items: ['幅のしきい値は仮に決めた'] },
-    { title: '決まったこと', items: ['表は使わない'] },
-  ],
 }
 const REPLY = `\`\`\`json\n${JSON.stringify(REPORT)}\n\`\`\``
 
@@ -171,12 +166,8 @@ test('「更新する」を押すと、会話を分岐させて書かせ、pane 
   expect(await ui.find({ type: 'Text', text: /^帯の幅の計算を直している$/ })).toBeDefined()
   // 日時はマシンのタイムゾーンで変わるので、形だけを見る。値は stampOf のテストで固定している
   expect(await ui.find({ type: 'Text', text: /^いま（\d{4}-\d{2}-\d{2} \d{2}:\d{2}）$/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /^次にすること$/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /^READMEに反映する$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^あなたがすること$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^\/reload-plugins を打つ$/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /^知っておいてほしいこと$/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /^幅のしきい値は仮に決めた$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^たったいま更新$/ })).toBeDefined()
   await ui.unmount()
 })
@@ -203,7 +194,7 @@ test('書いているあいだは「書いています…」と出し、もう�
 const FAILED: { name: string; reply: string | null; toast: string }[] = [
   { name: 'モデルが答えなかった', reply: null, toast: '作業の状況を書けませんでした（empty-reply）。もう一度押してください' },
   { name: '返事に JSON が無い', reply: '書けません', toast: '作業の状況を書けませんでした（the reply has no JSON object）。もう一度押してください' },
-  { name: '中身が足りない', reply: '{"now":"a"}', toast: '作業の状況を書けませんでした（next must be a list of at least one string）。もう一度押してください' },
+  { name: '中身が足りない', reply: '{"todo":[]}', toast: '作業の状況を書けませんでした（now must be a non-empty string）。もう一度押してください' },
 ]
 
 for (const one of FAILED) {

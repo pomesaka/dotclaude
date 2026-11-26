@@ -2,77 +2,28 @@ import { expect, test } from 'claude-code/testing'
 
 import { actionOf, ageOf, parseReport, recordOf, stampOf } from '../hooks/report'
 
-const REJECTED: { name: string; input: unknown; error: string }[] = [
-  { name: 'オブジェクトでない', input: 'report', error: 'now must be a non-empty string' },
-  { name: 'now が空白だけ', input: { now: '  ', next: ['a'] }, error: 'now must be a non-empty string' },
-  { name: 'next が無い', input: { now: 'a' }, error: 'next must be a list of at least one string' },
-  { name: 'next が空', input: { now: 'a', next: [] }, error: 'next must be a list of at least one string' },
-  { name: 'next に空の項目', input: { now: 'a', next: ['b', ' '] }, error: 'every item of next must be a non-empty string' },
-  {
-    name: 'next が 7 個',
-    input: { now: 'a', next: ['1', '2', '3', '4', '5', '6', '7'] },
-    error: 'next lists at most 6 items; keep the ones the user needs to pick the work back up',
-  },
-  { name: 'todo が配列でない', input: { now: 'a', next: ['b'], todo: 'c' }, error: 'todo must be a list of at least one string' },
-  { name: 'todo に空の項目', input: { now: 'a', next: ['b'], todo: ['c', ''] }, error: 'every item of todo must be a non-empty string' },
-  { name: 'sections が配列でない', input: { now: 'a', next: ['b'], sections: 'c' }, error: 'sections must be a list' },
-  {
-    name: 'sections が 7 つ',
-    input: { now: 'a', next: ['b'], sections: ['1', '2', '3', '4', '5', '6', '7'].map(title => ({ title, items: ['x'] })) },
-    error: 'sections lists at most 6 sections',
-  },
-  { name: '節に見出しが無い', input: { now: 'a', next: ['b'], sections: [{ items: ['x'] }] }, error: 'sections[0] needs a non-empty title' },
-  {
-    name: '節の項目が空',
-    input: { now: 'a', next: ['b'], sections: [{ title: 't', items: ['x'] }, { title: 'u', items: [] }] },
-    error: 'sections[1].items must be a list of at least one string',
-  },
-  {
-    name: '節の項目が文字列でない',
-    input: { now: 'a', next: ['b'], sections: [{ title: 't', items: [1] }] },
-    error: 'every item of sections[0].items must be a non-empty string',
-  },
-  {
-    name: '見出しが重複',
-    input: { now: 'a', next: ['b'], sections: [{ title: 't', items: ['x'] }, { title: 't', items: ['y'] }] },
-    error: 'section titles must be distinct',
-  },
+const PARSED: { name: string; input: unknown; parsed: unknown }[] = [
+  { name: 'オブジェクトでない', input: 'report', parsed: 'now must be a non-empty string' },
+  { name: 'now が空白だけ', input: { now: '  ' }, parsed: 'now must be a non-empty string' },
+  // 全角で数える。UTF-16 の length で数える実装を落とす
+  { name: 'now が全角 200 字', input: { now: 'あ'.repeat(200) }, parsed: { now: 'あ'.repeat(200), todo: [] } },
+  { name: 'now が全角 201 字', input: { now: 'あ'.repeat(201) }, parsed: 'now is at most 200 characters' },
+  { name: 'todo を省くと空', input: { now: ' 帯の幅を直している ' }, parsed: { now: '帯の幅を直している', todo: [] } },
+  { name: 'todo が配列でない', input: { now: 'a', todo: 'c' }, parsed: 'todo must be a list of strings' },
+  { name: 'todo に空の項目', input: { now: 'a', todo: ['c', ''] }, parsed: 'every item of todo must be a non-empty string' },
+  { name: 'todo が 3 個', input: { now: 'a', todo: [' 1 ', '2', '3'] }, parsed: { now: 'a', todo: ['1', '2', '3'] } },
+  { name: 'todo が 4 個', input: { now: 'a', todo: ['1', '2', '3', '4'] }, parsed: 'todo lists at most 3 items; keep only what blocks the work now' },
+  // 前の形の欄は読まずに捨てる
+  { name: 'next と sections は捨てる', input: { now: 'a', next: ['b'], sections: [{ title: 't', items: ['x'] }] }, parsed: { now: 'a', todo: [] } },
 ]
 
-for (const one of REJECTED) {
-  test(`parseReport は拒む: ${one.name}`, async () => {
-    expect(parseReport(one.input)).toBe(one.error)
+for (const one of PARSED) {
+  test(`parseReport: ${one.name}`, async () => {
+    expect(parseReport(one.input)).toEqual(one.parsed)
   })
 }
 
-test('parseReport は、省かれた todo と sections を空にし、前後の空白を落とす', async () => {
-  expect(parseReport({ now: ' 帯の幅を直している ', next: [' テストを足す '] })).toEqual({
-    now: '帯の幅を直している',
-    next: ['テストを足す'],
-    todo: [],
-    sections: [],
-  })
-})
-
-test('parseReport は、空の todo を空のまま読む', async () => {
-  expect(parseReport({ now: 'a', next: ['b'], todo: [] })).toEqual({ now: 'a', next: ['b'], todo: [], sections: [] })
-})
-
-test('parseReport は、利用者がすることと自由な節を並びのまま読む', async () => {
-  expect(
-    parseReport({ now: 'a', next: ['b'], todo: [' f '], sections: [{ title: ' 決まったこと ', items: ['c'] }, { title: '待っていること', items: ['d', 'e'] }] }),
-  ).toEqual({
-    now: 'a',
-    next: ['b'],
-    todo: ['f'],
-    sections: [
-      { title: '決まったこと', items: ['c'] },
-      { title: '待っていること', items: ['d', 'e'] },
-    ],
-  })
-})
-
-const REPORT = { now: 'a', next: ['b'], todo: ['c'], sections: [], updatedAt: 5, turns: 2 }
+const REPORT = { now: 'a', todo: ['c'], updatedAt: 5, turns: 2 }
 
 const STORED: { name: string; stored: unknown; record: unknown }[] = [
   { name: '何も無い', stored: undefined, record: { isOn: false, report: null, unchecked: 0 } },
@@ -80,18 +31,23 @@ const STORED: { name: string; stored: unknown; record: unknown }[] = [
   { name: '書かれた状況がある', stored: { isOn: true, report: REPORT, unchecked: 1 }, record: { isOn: true, report: REPORT, unchecked: 1 } },
   { name: 'OFF にした後も、状況は残る', stored: { isOn: false, report: REPORT, unchecked: 0 }, record: { isOn: false, report: REPORT, unchecked: 0 } },
   {
-    name: 'todo を足す前に書いた状況は、todo を空にして読む',
-    stored: { isOn: true, report: { now: 'a', next: ['b'], sections: [], updatedAt: 5, turns: 2 }, unchecked: 1 },
-    record: { isOn: true, report: { now: 'a', next: ['b'], todo: [], sections: [], updatedAt: 5, turns: 2 }, unchecked: 1 },
+    name: '前の形の状況は、now と todo だけを読む',
+    stored: { isOn: true, report: { now: 'a', next: ['b'], todo: ['c'], sections: [], updatedAt: 5, turns: 2 }, unchecked: 1 },
+    record: { isOn: true, report: REPORT, unchecked: 1 },
+  },
+  {
+    name: '前の形で todo が上限を超えた状況は、無いものとして読む',
+    stored: { isOn: true, report: { now: 'a', todo: ['1', '2', '3', '4'], updatedAt: 5, turns: 2 }, unchecked: 1 },
+    record: { isOn: true, report: null, unchecked: 1 },
   },
   {
     name: '状況に時刻が無い',
-    stored: { isOn: true, report: { now: 'a', next: ['b'], sections: [], turns: 0 }, unchecked: 0 },
+    stored: { isOn: true, report: { now: 'a', todo: [], turns: 0 }, unchecked: 0 },
     record: { isOn: true, report: null, unchecked: 0 },
   },
   {
     name: '状況の中身が読めない',
-    stored: { isOn: true, report: { now: 'a', next: [], updatedAt: 1, turns: 0 }, unchecked: 0 },
+    stored: { isOn: true, report: { now: '', updatedAt: 1, turns: 0 }, unchecked: 0 },
     record: { isOn: true, report: null, unchecked: 0 },
   },
   { name: 'isOn が真偽値でない', stored: { isOn: 'yes', report: null, unchecked: 'x' }, record: { isOn: false, report: null, unchecked: 0 } },

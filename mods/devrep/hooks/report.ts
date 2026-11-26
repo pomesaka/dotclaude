@@ -1,9 +1,9 @@
-import type { ReportBody, Section, SessionRecord } from '../types'
+import type { ReportBody, SessionRecord } from '../types'
 
-// 1 つの節に並べる項目と、自由な節の数の上限。
-// WHY 上限を持つ: 戻ってきた利用者が、pane の 1〜2 画面で読むもの。経過を全部並べると、会話を読み返すのと変わらなくなる
-export const ITEMS_MAX = 6
-export const SECTIONS_MAX = 6
+// 「いま」の文字数と、利用者がすることの件数の上限。
+// WHY 上限を持つ: 戻ってきた利用者が、pane を開いてすぐ読み終えるもの。頼みの文で「短く」と書いても、分岐は知っていることを全部書く
+export const NOW_MAX = 200
+export const TODO_MAX = 3
 
 // 自動更新が ON のとき、最後に書いてからこのターン数が終わったら、書き直す（2026-10-10 に利用者が決めた。2026-10-29 に、分岐で書く形でも同じ頻度にすると決めた）
 export const REFRESH_AFTER_TURNS = 5
@@ -15,51 +15,28 @@ const field = (value: unknown, key: string): unknown =>
 
 const text = (value: unknown): string => (typeof value === 'string' ? value.trim() : '')
 
-// 項目の並びを読む。name は、エラーの文に出す場所の名前。読めなければ、理由の文字列を返す
-const items = (value: unknown, name: string): string[] | string => {
-  if (!Array.isArray(value) || value.length === 0) return `${name} must be a list of at least one string`
+// 利用者がすることを読む。省かれているか空なら、空の並び。読めなければ、理由の文字列を返す
+const todoOf = (value: unknown): string[] | string => {
+  if (value === undefined) return []
+  if (!Array.isArray(value)) return 'todo must be a list of strings'
   const list = value.map((one: unknown) => text(one))
-  if (list.some(one => one === '')) return `every item of ${name} must be a non-empty string`
-  if (list.length > ITEMS_MAX) return `${name} lists at most ${ITEMS_MAX} items; keep the ones the user needs to pick the work back up`
+  if (list.some(one => one === '')) return 'every item of todo must be a non-empty string'
+  if (list.length > TODO_MAX) return `todo lists at most ${TODO_MAX} items; keep only what blocks the work now`
   return list
 }
 
-// 省いてよい項目の並びを読む。省かれているか空なら、空の並び
-const optionalItems = (value: unknown, name: string): string[] | string =>
-  value === undefined || (Array.isArray(value) && value.length === 0) ? [] : items(value, name)
-
-// 自由な節を読む。省かれていれば空。読めなければ、理由の文字列を返す
-const sectionsOf = (value: unknown): Section[] | string => {
-  if (value === undefined) return []
-  if (!Array.isArray(value)) return 'sections must be a list'
-  if (value.length > SECTIONS_MAX) return `sections lists at most ${SECTIONS_MAX} sections`
-  const parsed: Section[] = []
-  for (const [index, one] of value.entries()) {
-    const title = text(field(one, 'title'))
-    if (title === '') return `sections[${index}] needs a non-empty title`
-    const list = items(field(one, 'items'), `sections[${index}].items`)
-    if (typeof list === 'string') return list
-    parsed.push({ title, items: list })
-  }
-  if (new Set(parsed.map(one => one.title)).size !== parsed.length) return 'section titles must be distinct'
-  return parsed
-}
-
-// 分岐の返事の JSON から、状況の中身を読む。読めなければ、理由の文字列を返す。
-// WHY now と next は必須: 戻ってきた利用者が最低限知りたいのは、いま何をしていて、次に何をするか（2026-10-10 に利用者が決めた）
+// 分岐の返事の JSON から、状況の中身を読む。読めなければ、理由の文字列を返す
 export const parseReport = (input: unknown): ReportBody | string => {
   const now = text(field(input, 'now'))
   if (now === '') return 'now must be a non-empty string'
-  const next = items(field(input, 'next'), 'next')
-  if (typeof next === 'string') return next
-  const todo = optionalItems(field(input, 'todo'), 'todo')
+  if ([...now].length > NOW_MAX) return `now is at most ${NOW_MAX} characters`
+  const todo = todoOf(field(input, 'todo'))
   if (typeof todo === 'string') return todo
-  const sections = sectionsOf(field(input, 'sections'))
-  if (typeof sections === 'string') return sections
-  return { now, next, todo, sections }
+  return { now, todo }
 }
 
-// $.store から読んだ値を、セッションの記録として読む。形が合わない部分は、無いものとして扱う
+// $.store から読んだ値を、セッションの記録として読む。形が合わない部分は、無いものとして扱う。
+// 前の形の状況（next と sections があった）は、now と todo が上限に収まれば、その 2 つだけを読む
 export const recordOf = (stored: unknown): SessionRecord => {
   const saved = field(stored, 'report')
   const body = parseReport(saved)
