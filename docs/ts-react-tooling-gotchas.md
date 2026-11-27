@@ -18,6 +18,7 @@
 - **`noArrayIndexKey`は、JSXの中の`key={i}`を拒否する**。内容から作ったkeyを使う。静的な配列で全要素が一意なら、値をkeyにする。`key={item.key}`のようなプロパティは対象にならない。`// biome-ignore`は、`key={i}`が開始タグと別の行にあると効かないので、`.map()`をJSXの外の変数に出してからコメントを付ける。
 - **使わなくなった関数は、`_`を付けずに削除する**。Biomeの`noUnusedVariables`は`_`で通るが、`noUnusedLocals`のTS6133は残る。Biomeが`_`に書き換えたら、本当に使うつもりかを考え直す。
 - **EditのたびにBiomeのauto-fixを走らせるhookがある環境では、importを足すEditと、それを使うEditを分けない**。`noUnusedImports`が、使う箇所を書く前のimportを消す。
+- **`biome check --write`などの整形を流した後は、直す箇所を読み直してから`old_string`を書く**。整形は行の分け方とJSXの字下げを変えるので、整形の前に読んだ文字列では当たらず、直したつもりの型エラーやテストの失敗が残る。判断基準は「最後にそのファイルを読んだ後に、整形やauto-fixが走ったか」で、走ったなら覚えている本文は古い（Biome 2.5.14、2026-11に確認）。
 
 ## Next.jsの開発環境
 
