@@ -28,7 +28,7 @@ bun ${CLAUDE_SKILL_DIR}/timeline.ts <セッションID> > ~/.claude/tmp/<名前>
 
 工程の決まりは`~/.claude/CLAUDE.md`の「サブエージェント」の節にある。それと突き合わせる。
 
-- 同じ差分に、同じ種類のレビューを2回走らせていないか（`review-code`のスキルと、レビューを頼んだ`general-purpose`の両方など）
+- 同じ差分に、同じ種類のレビューを2回走らせていないか（`review-code`のスキルと、`code-review`のエージェントか、レビューを頼んだ`general-purpose`の両方など）
 - 振る舞いを変える区切りで、`test-designer`、`verifier`、`review-code`のどれかが抜けていないか。文言だけの直しで立てていないか
 - 本体のBashで長いもの。同じ確かめを何度も手で打っているなら、スクリプトにする候補になる
 
