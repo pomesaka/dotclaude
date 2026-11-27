@@ -2,7 +2,7 @@
 name: mutation-test
 description: 変更した行を1か所ずつ壊し、テストが落ちるかを確かめる（mutation test）。壊しても落ちない所を、テストが足りない、要らないコード、壊しても動きが同じ、に仕分ける。
 when_to_use: 条件の多いロジックを足すか変えて、テストが通った後、報告やレビューの前に確かめるとき。「壊して確かめて」「mutation test して」「テストが本当に守っているか見て」と言われたとき。test-reviewer が、条件の多いロジックの変更をレビューするとき。
-allowed-tools: Read, Bash(bun ~/.claude/skills/mutation-test/mutate.ts:*), Bash(npx mutator:*), Bash(bunx mutator:*)
+allowed-tools: Read, Bash(bun ~/.claude/skills/mutation-test/mutate.ts:*), Bash(npx mutator:*), Bash(bunx mutator:*), Bash(mutator4s scala:*)
 ---
 
 # 壊して確かめる（mutation test）
@@ -19,7 +19,8 @@ allowed-tools: Read, Bash(bun ~/.claude/skills/mutation-test/mutate.ts:*), Bash(
 | プロジェクト | 道具 |
 |---|---|
 | VitestかBunの`bun test`で動くTypeScript | `npx mutator --since <ベースのリビジョン> --reporter agent`（[mizchi/mutator](https://github.com/mizchi/mutator)）。ASTで壊し、テストごとのカバレッジで回すテストを絞るので、下の道具より速く正確だ。入っていなければ、入れるかを利用者に聞く。入れたら、結果を置く`.mutator/`を`.gitignore`に足す（数MBのJSONができ、jjが取り込めずに警告を出す）。`bun test`は試験的な対応で、Bun 1.4以降とESMのソースが要る。`mutator.config.ts`に`runner: 'bun'`、`bunfig.toml`に`[test]`の表で`root`を書く。CommonJSのモジュールとpreloadで読むモジュールは壊せない |
-| それ以外（Go、Scala、ほか） | 下の`mutate.ts` |
+| sbtのScala | `mutator4s scala [-r <revset> \| -f <rev> [-t <rev>]] [--project <sbtのプロジェクトID>] --json`（Stryker4sを包む道具。ソースは`~/github.com/pomesaka/mutator4s`、バイナリは`~/.local/bin`に置いてある）。全部の壊し方を1回のコンパイルに入れ、起動したままのJVMで回す。試しのプロジェクトでは、3つのファイルの22個の壊し方を10.5秒で回し、ほとんどがsbtの起動だった（2026-11-28）。壊すたびにsbtを起こす下の道具は、1個ごとにその起動がかかる。jjの差分の行に当たる生き残りとカバーされない壊し方だけを、外側のdefと直し方の種類つきで出す。対象のリポジトリのファイルは書き換えない。`-f/-t`の範囲の上に、作業コピーで同じファイルの変更が重なると、行がずれるので終了コード2で止まる。終了コードは0が生き残りなし、1があり、2〜5は出力の`next`に次に打つコマンドがある |
+| それ以外（Go、ほか） | 下の`mutate.ts` |
 
 ## mutate.ts
 
