@@ -57,5 +57,4 @@ Claude CodeとCodexの両方が読む、利用者の決めごと。Claude Code�
 | PRの本文、リリースノート、CHANGELOGに変更を書く | `change-notes.md` |
 | `CLAUDE.md`、`docs/`の決めごと、スキル、エージェント、プロンプトを書く、直す | `prompt-engineering.md`。スクリプトや検査にするかは`agent-environment.md` |
 | インフラ、CI、外部のAPIを書く | `pulumi.md`、`github-actions.md`、`anthropic-api.md` |
-| Scalaのdoobieで、TXを保ったまま外部の処理を呼ぶ | `doobie-weakasync.md` |
-| その言語や道具を触る | その名前の文書。TypeScriptは`typescript.md`と`ts-react-tooling-gotchas.md`（Bun、Biome、開発環境の癖）、Reactは`react.md`と`react-a11y.md`、Next.jsは`nextjs.md`、Goは`go.md`、jjは`jj.md`、Cloudflareは`cf.md`（Accessの設定とAPIトークンの権限も含む） |
+| その言語や道具を触る | その名前の文書。TypeScriptは`typescript.md`と`ts-react-tooling-gotchas.md`（Bun、Biome、開発環境の癖）、Reactは`react.md`と`react-a11y.md`、Next.jsは`nextjs.md`、Goは`go.md`、Scalaは`scala.md`（doobieは`doobie-weakasync.md`）、jjは`jj.md`、Cloudflareは`cf.md`（Accessの設定とAPIトークンの権限も含む） |
