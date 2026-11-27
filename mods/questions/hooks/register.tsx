@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Consult, OpenQuestion } from '../types'
+import type { Consult, FollowedSession, OpenQuestion, OthersQuestions } from '../types'
 import {
   CONSULT_ANSWER_TAKEN,
   askedCount,
@@ -25,6 +25,7 @@ import {
 import { SESSION_CONTEXT } from './context'
 import {
   addQuestion,
+  answerMessage,
   answerOpening,
   explainMessage,
   labelOf,
@@ -34,8 +35,23 @@ import {
   questionsOf,
   withAnswer,
 } from './questions'
+import {
+  QUEUED_PREFIX,
+  followedOf,
+  parseFollow,
+  parseUnfollow,
+  queuedAction,
+  queuedAnswerOf,
+  queuedIdOf,
+  queuedKey,
+  receivedAnswerOf,
+  withFollowed,
+  withoutFollowed,
+} from './sessions'
 
 const questions = atom({ plugin: 'questions', key: 'questions' } as const, [])
+// 束ねたセッションの保留。持ち主が $.store に書いた一覧の写し
+const others = atom({ plugin: 'questions', key: 'others' } as const, [])
 // $.store に覚えておくセッションの数。古いセッションから落とす
 const SESSIONS_MAX = 30
 
@@ -79,6 +95,33 @@ const QUESTION_LAST_PREFIX = 'qlast:'
 // 1 つのセッションで覚える保留の数。古いものから落とす
 const QUESTIONS_MAX = 100
 
+// 束ねたセッションの一覧。キーは follow:<束ねる側のセッションID>
+const FOLLOW_PREFIX = 'follow:'
+// 1 つのセッションが束ねるセッションの数。古いものから落とす
+const FOLLOWED_MAX = 20
+// 届け待ちの答えを覚える数（全部のセッションで）。古いものから落とす。
+// WHY 上限を持つ: 閉じたまま再開されないセッションあての答えは、受け取る側がいない
+const QUEUED_MAX = 100
+// $.store を読み直す間隔（ミリ秒）。束ねたセッションの保留の増減と、自分あての届け待ちを拾う。
+// WHY 見回る: ほかのセッションが $.store に書いても、この Mod に知らせる出来事が無い
+const REFRESH_MS = 5_000
+let refreshTimer: { cancel: () => void } | null = null
+// 受け取れずに $.store へ戻した届け待ちのキー。見回りでは受け取り直さない。
+// WHY: 止めた hook が同じ文を止め続けると、見回りのたびに送って toast を出し続ける。
+// モジュール変数なので、セッションを開き直すか Mod を読み直すと、もう一度受け取る
+const heldQueued = new Set<string>()
+// 自分あての届け待ちを受け取っている最中か。
+// WHY 1 本に絞る: セッションの開始と見回りが重なると、同じキーを 2 つが読んで、同じ答えを 2 度送る
+let isDraining = false
+const ANSWER_SENT = (session: FollowedSession, question: OpenQuestion): string => `${session.label} の ${labelOf(question)} に答えを送りました`
+const ANSWER_QUEUED = (session: FollowedSession, question: OpenQuestion): string =>
+  `${session.label} は止まっています。${labelOf(question)} の答えは、そのセッションが再開したときに届きます`
+const ANSWER_HELD = (question: OpenQuestion): string => `${labelOf(question)} の答えを受け取れませんでした。このセッションを開き直すと、もう一度受け取ります`
+// 届け待ちの保留に付ける印
+const QUEUED_MARK = '再開時に届ける'
+// ほかのセッションの保留の行で、右の印（再開時に届ける、送信済）に空けておく幅
+const MARK_COLUMNS = 16
+
 // Claude が、利用者の決めることを一覧に残すためのツールと、決まった保留を外すためのツール
 const QUESTION_TOOL_NAME = 'add_question'
 const QUESTION_TOOL = 'mcp__questions__add_question'
@@ -116,10 +159,33 @@ const RESOLVE_TOOL_SCHEMA = {
   },
   required: ['id'],
 }
+// 束ねる側（PM）が、ほかのセッション（担当）の保留を自分の pane に出すためのツール。
+// WHY 束ねる相手を Claude が名指す: エンジンの API にも claude-deck にも、セッションの親子が無い（2026-11-27 に型定義と claude-deck の DB で確認）。
+// 同じリポジトリで束ねると、同じリポジトリで並ぶ別の仕事の保留が混ざる。束ねる側は、相手を自分で立てたので ID を知っている
+const FOLLOW_TOOL_NAME = 'follow_session'
+const FOLLOW_TOOL = 'mcp__questions__follow_session'
+const FOLLOW_TOOL_DESCRIPTION = `Show another session's open questions on this session's open questions pane, under a heading, so the user can settle them here.
+Call it right after you start a session you will hand work to (a claude-deck session), with its Claude session id (claude_session_id in claude-deck list). The answer the user clicks goes to that session alone, as if clicked on its own pane; you are not told and need not relay it. Calling it again with the same id renames the heading.`
+const FOLLOW_TOOL_SCHEMA = {
+  type: 'object',
+  properties: {
+    session_id: { type: 'string', description: "The other session's Claude session id (what its $.session.id() answers; claude_session_id in claude-deck list)." },
+    label: { type: 'string', description: 'A short name for the heading: the alias you gave the session, or its job.' },
+  },
+  required: ['session_id', 'label'],
+}
+const UNFOLLOW_TOOL_NAME = 'unfollow_session'
+const UNFOLLOW_TOOL = 'mcp__questions__unfollow_session'
+const UNFOLLOW_TOOL_DESCRIPTION = `Stop showing a session's open questions on this session's pane, for example once you close that session. Its questions stay its own.`
+const UNFOLLOW_TOOL_SCHEMA = {
+  type: 'object',
+  properties: { session_id: { type: 'string', description: 'The Claude session id given to follow_session.' } },
+  required: ['session_id'],
+}
 
 // このセッションの値を $.store に書く。キーは <prefix><セッションID>。覚えておくセッションの数を超えたら、古いものから消す。
 // WHY 消してから書く: $.store.keys() の並びを「最後に書いた順」に保ち、古いセッションから落とせるようにする
-const saveForSession = async ($: EngineInterface, prefix: string, value: OpenQuestion[] | number): Promise<void> => {
+const saveForSession = async ($: EngineInterface, prefix: string, value: OpenQuestion[] | FollowedSession[] | number): Promise<void> => {
   const key = `${prefix}${await $.session.id()}`
   await $.store.delete(key)
   await $.store.set(key, value)
@@ -143,6 +209,100 @@ const dropQuestion = async ($: EngineInterface, id: number): Promise<OpenQuestio
   const rest = list.filter(one => one.id !== id)
   await saveQuestions($, rest)
   return rest
+}
+
+const loadFollowed = async ($: EngineInterface): Promise<FollowedSession[]> =>
+  followedOf(await $.store.get(`${FOLLOW_PREFIX}${await $.session.id()}`))
+
+// 届け待ちの答えを $.store に置く。覚える数を超えたら、古いものから消す。消してから書く理由は saveForSession と同じ
+const saveQueued = async ($: EngineInterface, key: string, option: string): Promise<void> => {
+  await $.store.delete(key)
+  await $.store.set(key, { option })
+  const keys = (await $.store.keys()).filter(stored => stored.startsWith(QUEUED_PREFIX))
+  for (const stale of keys.slice(0, Math.max(0, keys.length - QUEUED_MAX))) await $.store.delete(stale)
+}
+
+// ほかのセッションから届いた答えを、自分の保留に受け取る。答えの印を付け、Claude に送る。
+// WHY asUser で送らない: 答えは別のセッションの pane で押されたもので、このセッションの利用者が打った文と確かめられない。
+// Claude には「questions の Mod が送った文」として届く。SESSION_CONTEXT が、それも利用者の答えだと説明している。
+// 送れなかったら、印を戻し、key に届け待ちとして戻す
+const receiveQueued = async ($: EngineInterface, question: OpenQuestion, option: string, key: string): Promise<void> => {
+  await saveQuestions($, withAnswer(await loadQuestions($), question.id, option))
+  const hold = async (): Promise<void> => {
+    heldQueued.add(key)
+    await saveQuestions($, withAnswer(await loadQuestions($), question.id, question.answer))
+    await saveQueued($, key, option)
+    $.ui.toast(ANSWER_HELD(question), { timeoutMs: 8_000 })
+  }
+  void $.prompt.submit({ text: answerMessage(question, option) }).then(
+    result => (result.drop === undefined ? undefined : hold()),
+    () => hold(),
+  )
+}
+
+// 自分あての届け待ちを受け取る。外した保留あてと、選択肢に無い答えは、送らずに消す
+// 何をするかは queuedAction が決める。
+// WHY ツールの hook から呼ばない: Claude へ送る $.prompt.submit は、ターンを止めている tool.call の hook の中では拒まれる
+// （~/.claude/docs/claude-code-mods.md）。拒まれると、受け取れなかった答えとして、開き直すまで残る
+const drainQueued = async ($: EngineInterface): Promise<void> => {
+  if (isDraining) return
+  isDraining = true
+  try {
+    const me = await $.session.id()
+    const mine = (await $.store.keys()).flatMap(key => {
+      const id = queuedIdOf(key, me)
+      return id === null || heldQueued.has(key) ? [] : [{ key, id }]
+    })
+    for (const one of mine) {
+      const action = queuedAction(one.id, queuedAnswerOf(await $.store.get(one.key)), await loadQuestions($))
+      await $.store.delete(one.key)
+      if (action !== 'discard') await receiveQueued($, action.deliver, action.option, one.key)
+    }
+  } finally {
+    isDraining = false
+  }
+}
+
+// 束ねたセッションの保留の写しを、$.store から作り直す
+const refreshOthers = async ($: EngineInterface): Promise<void> => {
+  const keys = await $.store.keys()
+  const followed = await loadFollowed($)
+  const next: OthersQuestions[] = []
+  for (const session of followed) {
+    const queued = []
+    for (const key of keys) {
+      const id = queuedIdOf(key, session.sessionId)
+      const option = id === null ? null : queuedAnswerOf(await $.store.get(key))
+      if (id !== null && option !== null) queued.push({ id, option })
+    }
+    next.push({ session, questions: questionsOf(await $.store.get(`${QUESTIONS_PREFIX}${session.sessionId}`)), queued })
+  }
+  await update($, others, current => (JSON.stringify(current) === JSON.stringify(next) ? current : next))
+}
+
+// 見回り。自分あての届け待ちを受け取り、束ねたセッションの写しを作り直す
+const patrol = async ($: EngineInterface): Promise<void> => {
+  await drainQueued($)
+  await refreshOthers($)
+}
+
+// 束ねたセッションの保留に、利用者が pane で答えた。答えを、保留を足したセッションへ送る。
+// 束ねる側の Claude には送らず、持ち主の一覧も書かない（決まりは sessions.ts の頭）。
+// 届かなければ（止まっている、閉じている）、届け待ちとして $.store に置く。持ち主は、次に始まるか見回ったときに受け取る
+const answerOther = async ($: EngineInterface, session: FollowedSession, question: OpenQuestion, option: string): Promise<void> => {
+  const key = queuedKey(session.sessionId, question.id)
+  // WHY 例外を捨てる: 送れなかった理由は、どれでも届け待ちに回すことで扱いが同じ。toast で、届け待ちにしたことを知らせる
+  const sent = await $.session.send({ to: { sessionId: session.sessionId }, text: answerMessage(question, option) }).catch(() => null)
+  if (sent !== null && sent.isDelivered) {
+    // 前に届けられなかった答えが残っていれば、古い答えなので消す。残すと、持ち主の再開で古い答えも届く
+    await $.store.delete(key)
+    await refreshOthers($)
+    $.ui.toast(ANSWER_SENT(session, question))
+    return
+  }
+  await saveQueued($, key, option)
+  await refreshOthers($)
+  $.ui.toast(ANSWER_QUEUED(session, question), { timeoutMs: 8_000 })
 }
 
 // 利用者が pane のボタンで選んだ答えを、その場で Claude に送る。選んだ選択肢は、一覧に印で残す。
@@ -364,8 +524,15 @@ export const register: Register = on => {
     await $.tool.register({ name: QUESTION_TOOL_NAME, description: QUESTION_TOOL_DESCRIPTION, inputSchema: QUESTION_TOOL_SCHEMA, isDeferred: false })
     await $.tool.register({ name: LIST_TOOL_NAME, description: LIST_TOOL_DESCRIPTION, inputSchema: LIST_TOOL_SCHEMA, isDeferred: false })
     await $.tool.register({ name: RESOLVE_TOOL_NAME, description: RESOLVE_TOOL_DESCRIPTION, inputSchema: RESOLVE_TOOL_SCHEMA, isDeferred: false })
+    await $.tool.register({ name: FOLLOW_TOOL_NAME, description: FOLLOW_TOOL_DESCRIPTION, inputSchema: FOLLOW_TOOL_SCHEMA, isDeferred: false })
+    await $.tool.register({ name: UNFOLLOW_TOOL_NAME, description: UNFOLLOW_TOOL_DESCRIPTION, inputSchema: UNFOLLOW_TOOL_SCHEMA, isDeferred: false })
     // WHY catch: 一覧を戻せなくても、セッションは始める
     await restoreQuestions($).catch(() => undefined)
+    await patrol($).catch(() => undefined)
+    refreshTimer?.cancel()
+    refreshTimer = $.clock.every(REFRESH_MS, () => {
+      void patrol($).catch(() => undefined)
+    })
     return next(e)
   })
 
@@ -382,6 +549,38 @@ export const register: Register = on => {
     await $.ui.open({ id: QUESTIONS_PANE, title: QUESTIONS_PANE_TITLE, closeOnEscape: true })
     return { result: `Recorded as Q${added.id}. ${added.list.length} open.` }
   }).catch(($, e, next) => (next.called ? next(e) : { deny: `add_question failed: ${next.error.message}` }))
+
+  // 束ねる側の Claude が、ほかのセッションの保留を自分の pane に出す
+  on('tool.call', { tool: FOLLOW_TOOL }, async ($, e) => {
+    const parsed = parseFollow(e, await $.session.id())
+    if (typeof parsed === 'string') return { deny: `follow_session failed: ${parsed}` }
+    await saveForSession($, FOLLOW_PREFIX, withFollowed(await loadFollowed($), parsed, FOLLOWED_MAX))
+    await refreshOthers($)
+    const open = (await read($, others)).find(one => one.session.sessionId === parsed.sessionId)?.questions.length ?? 0
+    return { result: `Following ${parsed.label} (${parsed.sessionId}): ${open} open there.` }
+  }).catch(($, e, next) => (next.called ? next(e) : { deny: `follow_session failed: ${next.error.message}` }))
+
+  on('tool.call', { tool: UNFOLLOW_TOOL }, async ($, e) => {
+    const parsed = parseUnfollow(e)
+    if (typeof parsed === 'string') return { deny: `unfollow_session failed: ${parsed}` }
+    const list = await loadFollowed($)
+    if (!list.some(one => one.sessionId === parsed.sessionId)) return { deny: `unfollow_session failed: ${parsed.sessionId} is not followed` }
+    await saveForSession($, FOLLOW_PREFIX, withoutFollowed(list, parsed.sessionId))
+    await refreshOthers($)
+    return { result: `Stopped following ${parsed.sessionId}.` }
+  }).catch(($, e, next) => (next.called ? next(e) : { deny: `unfollow_session failed: ${next.error.message}` }))
+
+  // ほかのセッションの pane で押された答えが、配達で届いた。自分の保留に答えの印を付ける。配達は、そのまま Claude に渡す。
+  // WHY 配達を取り上げない: 束ねる側の Claude が、答えの文に指示を書き足して送ることもある。取り上げると、書き足した文が消える。
+  // 答えの文は配達の本文にそのまま入っているので、Claude は自分の pane で押されたときと同じ文を読む。
+  // WHY サブエージェントあては見ない: 保留を足して答えを受け取るのは、メインの会話
+  on('session.receive', async ($, e, next) => {
+    if (e.agentId !== undefined) return next(e)
+    const list = await loadQuestions($)
+    const found = receivedAnswerOf(e.text, list)
+    if (found !== null) await saveQuestions($, withAnswer(list, found.question.id, found.option))
+    return next(e)
+  }).catch((_$, e, next) => next(e))
 
   // Claude が、保留の中身を読み直す
   on('tool.call', { tool: LIST_TOOL }, async $ => ({ result: JSON.stringify(await loadQuestions($)) })).catch(($, e, next) =>
@@ -499,8 +698,8 @@ export const register: Register = on => {
   on('ui.render', { component: 'PromptHint' }, async ($, e, next) => {
     const inner = await next(e)
     if (e.surface !== 'terminal') return inner
-    const waiting = await read($, questions)
-    if (waiting.length === 0) return inner
+    const waiting = (await read($, questions)).length + (await read($, others)).reduce((sum, one) => sum + one.questions.length, 0)
+    if (waiting === 0) return inner
     const { Box, Button, Text } = $.ui.resolve(e)
     // WHY 直接開く: スラッシュコマンドを経由すると、ターンの途中に押したときに、ターンが終わるまで開かない
     const open = () => {
@@ -511,7 +710,7 @@ export const register: Register = on => {
         {inner}
         {/* WHY hotkey を付けない: plain の Button は hotkey があると「p: pending」と描かれ、札の見た目が崩れる */}
         <Button key="pending" plain onPress={open}>
-          <Text backgroundColor={SURFACE} color={SOFT}>{` pending ${waiting.length} `}</Text>
+          <Text backgroundColor={SURFACE} color={SOFT}>{` pending ${waiting} `}</Text>
         </Button>
       </Box>
     )
@@ -525,6 +724,7 @@ export const register: Register = on => {
     if (e.surface !== 'terminal') return next(e)
     const { Box, Button, Text } = $.ui.resolve(e)
     const list = await read($, questions)
+    const fromOthers = (await read($, others)).filter(one => one.questions.length > 0)
     const width = e.props.bodyColumns
     // 選択肢に無い答えを書く。書き出しを入力欄に入れて、pane を閉じる。
     // WHY 閉じる: pane がキーボードを持ったままだと、打った字が pane のキー（q で閉じる）として働く
@@ -546,9 +746,9 @@ export const register: Register = on => {
           >
             閉じる
           </Button>
-          {list.length > 0 && <Text dimColor>選択肢を押すと、その答えがClaudeに届く</Text>}
+          {(list.length > 0 || fromOthers.length > 0) && <Text dimColor>選択肢を押すと、その答えが保留を足したセッションのClaudeに届く</Text>}
         </Box>
-        {list.length === 0 ? (
+        {list.length === 0 && fromOthers.length === 0 ? (
           <Text dimColor>仮に決めて先へ進んだことは、いまありません</Text>
         ) : (
           list.map(one => (
@@ -590,6 +790,48 @@ export const register: Register = on => {
             </Box>
           ))
         )}
+        {/* 束ねたセッションの保留。答えは、そのセッションの Claude に届く。
+            WHY 選択肢だけを出す: 相談は会話を引き継いだエージェントで、書く答えは入力欄で、どちらもこのセッションの会話に結び付く。
+            外す（×）は持ち主の一覧を書くことになる。どれも、持ち主のセッションの pane でする */}
+        {fromOthers.map(group => (
+          <Box key={`session-${group.session.sessionId}`} flexDirection="column" gap={1} width={width}>
+            <Text bold color={SOFT}>{`${group.session.label} の保留（答えはそのセッションに届く）`}</Text>
+            {group.questions.map(one => {
+              const queued = group.queued.find(answer => answer.id === one.id)?.option ?? null
+              const chosen = queued ?? one.answer
+              return (
+                <Box key={`other-row-${group.session.sessionId}-${one.id}`} flexDirection="column" width={width}>
+                  <Box flexDirection="row" justifyContent="space-between" width={width}>
+                    <Box flexDirection="row" columnGap={1}>
+                      <Text bold color={ACCENT}>
+                        {labelOf(one)}
+                      </Text>
+                      <Box width={Math.max(1, width - labelOf(one).length - 1 - MARK_COLUMNS)}>
+                        <Text bold>{one.question}</Text>
+                      </Box>
+                    </Box>
+                    {queued !== null ? <Text dimColor>{QUEUED_MARK}</Text> : one.answer !== null && <Text dimColor>送信済</Text>}
+                  </Box>
+                  {one.detail !== '' && <Text dimColor>{one.detail}</Text>}
+                  {one.options.map((option, index) => (
+                    <Box key={`other-row-${group.session.sessionId}-${one.id}-${index}`} flexDirection="row" columnGap={1}>
+                      <Button
+                        key={`other-${group.session.sessionId}-${one.id}-${index}`}
+                        plain
+                        onPress={() => void answerOther($, group.session, one, option).catch(() => undefined)}
+                      >
+                        <Text color={option === chosen ? GREEN : undefined} bold={option === chosen}>
+                          {`${option === chosen ? '●' : '○'} ${option}`}
+                        </Text>
+                      </Button>
+                      {option === one.assumed && <Text dimColor>いまの仮置き</Text>}
+                    </Box>
+                  ))}
+                </Box>
+              )
+            })}
+          </Box>
+        ))}
       </Box>
     )
   })

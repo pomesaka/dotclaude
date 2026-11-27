@@ -14,6 +14,31 @@ export type OpenQuestion = {
   answer: string | null
 }
 
+// 保留を束ねて見る、ほかのセッション。束ねる側のセッションが、自分の pane に相手の保留を出す
+export type FollowedSession = {
+  // 相手の Claude のセッション ID（相手の $.session.id() の答え）
+  sessionId: string
+  // pane の見出しに出す名前
+  label: string
+}
+
+// 届けられなかった答え。持ち主のセッションが、次に始まるか見回ったときに受け取る
+export type QueuedAnswer = {
+  // 持ち主のセッションでの番号（Q3 の 3）
+  id: number
+  // 選んだ選択肢
+  option: string
+}
+
+// 束ねたセッション 1 つ分の保留。持ち主のセッションが $.store に書いた一覧を、読んで写したもの。
+// 写しなので、この Mod は書き換えない。答えは持ち主のセッションへ送り、持ち主が印を付ける
+export type OthersQuestions = {
+  session: FollowedSession
+  questions: OpenQuestion[]
+  // 持ち主が止まっていて、まだ届いていない答え
+  queued: QueuedAnswer[]
+}
+
 // 保留 1 件についての相談。メインの会話を引き継いだ別のエージェントと、そのエージェントの会話の画面でやりとりする
 export type Consult = {
   // 相談を始めた時点の保留
@@ -31,6 +56,8 @@ declare module 'claude-code' {
       questions: OpenQuestion[]
       // 開いている相談。null は、相談していない
       consult: Consult | null
+      // 束ねたセッションの保留。束ねた順
+      others: OthersQuestions[]
     }
   }
 }

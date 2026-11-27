@@ -3,7 +3,7 @@ name: pm
 description: このセッションをプロジェクトのPMにする。重い作業はサブエージェントかclaude-deckのセッションに任せ、報告の確かめ、レビュー、PR、CI、マージを回し、利用者には決めてもらうことだけを渡す。
 disable-model-invocation: true
 argument-hint: "[最初に取り組む目標]"
-allowed-tools: Read, Write, Edit, Agent, SendMessage, ListAgents, AskUserQuestion, Bash(jj *), Bash(gh pr *), Bash(gh run *), Bash(rg *), Bash(fd *), Bash(bash *wait-checks.sh *), mcp__rich__show, mcp__questions__add_question, mcp__questions__list_questions, mcp__questions__resolve_question
+allowed-tools: Read, Write, Edit, Agent, SendMessage, ListAgents, AskUserQuestion, Bash(jj *), Bash(gh pr *), Bash(gh run *), Bash(rg *), Bash(fd *), Bash(bash *wait-checks.sh *), mcp__rich__show, mcp__questions__add_question, mcp__questions__list_questions, mcp__questions__resolve_question, mcp__questions__follow_session, mcp__questions__unfollow_session
 ---
 
 # PM
@@ -40,6 +40,8 @@ WHY: PMが重い作業を自分でしないので、会話の文脈が軽いま�
 サブエージェントはPMの作業コピーで動く。ファイルを変える作業を並べて頼むなら、deckのセッションにする。
 
 相手はこちらの会話を知らない。目的、対象のファイル、もう分かっていること、守る決まり、報告の返し方を全部書く。
+
+deckのセッションを立てたら、`mcp__questions__follow_session`に、そのセッションの`claude_session_id`（`claude-deck list`）とエイリアスを渡す。担当の保留がPMの保留のpaneに並び、利用者はそこで答える。答えは担当に直に届き、PMには届かない。依頼文には「利用者に決めてもらうことは、自分の`add_question`で残す。PMに送らない」と書く。担当の判断待ちをPMの保留に写したり、答えを担当へ送り直したりしない。担当のセッションを閉じたら、`mcp__questions__unfollow_session`で外す。
 
 タスクの状態（issueの`status`など）は、PMが変えず、着手した実装のセッションに変えさせる。PMが変えると、実装のセッションが意図せず差し戻すか、上書きする。
 
@@ -82,7 +84,7 @@ WHY: PMが重い作業を自分でしないので、会話の文脈が軽いま�
 ### 利用者に伝える
 
 - 報告は結論から書く。セッションの名前より、何が直り、何が残ったかを先に書く
-- 利用者に決めてもらうことは、questionsの保留の一覧に足す（`mcp__questions__add_question`）。仮に置いた選択肢で先へ進め、答えが来たら直す
+- PMが決めてもらうことは、questionsの保留の一覧に足す（`mcp__questions__add_question`）。仮に置いた選択肢で先へ進め、答えが来たら直す。担当が決めてもらうことは、担当が自分の保留に足す（束ねてあれば、PMのpaneに出る）。利用者が同席して続けて指摘しているときは、保留に置かず`AskUserQuestion`で聞く
 - 監査やレビューの結果をまとめて出し、次の順番を選んでもらうときは、`mcp__rich__show`の質問にして番を終える
 
 ## 区切りのあとで

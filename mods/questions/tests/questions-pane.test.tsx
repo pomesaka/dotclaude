@@ -114,6 +114,8 @@ test('選択肢を押すと、その 1 件の答えを Claude に送り、選ん
   // Q1 の 1 つ目（50 件）
   await ui.press({ key: 'option-1-0' })
   expect(seen.submitted).toEqual(['【保留への回答】Q1 上限は何件か: 50 件'])
+  // 自分の pane で押した答えは、利用者の言葉として届く
+  expect(seen.asUser).toEqual(['【保留への回答】Q1 上限は何件か: 50 件'])
   expect(seen.store.get('qs:s1')).toEqual([{ ...Q1, answer: '50 件' }, Q2])
   expect(await ui.find({ type: 'Text', text: /^● 50 件$/ })).toBeDefined()
   expect((await ui.findAll({ type: 'Text', text: /^送信済$/ })).length).toBe(1)
@@ -223,7 +225,19 @@ for (const one of STARTS) {
   })
 }
 
-const NAMED = ['mcp__questions__add_question', 'mcp__questions__resolve_question', 'mcp__questions__list_questions', '【保留への回答】', '相談で決まったこと', 'について相談した結論']
+const NAMED = [
+  'mcp__questions__add_question',
+  'mcp__questions__resolve_question',
+  'mcp__questions__list_questions',
+  'mcp__questions__follow_session',
+  'mcp__questions__unfollow_session',
+  '【保留への回答】',
+  '相談で決まったこと',
+  'について相談した結論',
+  // 同席中は保留に置かずに聞く、という場面の分け方
+  '同席',
+  'AskUserQuestion',
+]
 
 for (const name of NAMED) {
   test(`説明は「${name}」に触れている`, async () => {

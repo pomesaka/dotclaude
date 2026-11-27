@@ -52,6 +52,12 @@ export type Given = {
   agentStatus?: 'running' | 'completed'
   // 相談用のエージェントの会話。無ければ、最初の依頼と説明だけ
   talk?: { role: 'user' | 'assistant'; text: string }[]
+  // 止まっているセッションの ID。そのセッションあての session.send は届かない
+  stopped?: string[]
+  // true は、ほかのセッションへの session.send が失敗する（reject）
+  failsSend?: boolean
+  // true は、Claude へ送る文を、ほかの hook が止める（drop）
+  dropsSubmit?: boolean
 }
 
 // world が立てるエージェントの ID
@@ -72,9 +78,26 @@ export const world = (on: On, given: Given = {}) => {
   const sent: string[] = []
   // 実行したスラッシュコマンド
   const commands: string[] = []
-  const seen = { store: new Map(Object.entries(given.stored ?? {})), opened, closed, toasts, filled, submitted, spawned, sent, commands }
+  // ほかのセッションへ送った文。to は、エンジンが綴り直した宛先
+  const sentTo: { to: string; text: string }[] = []
+  // $.session.id() の答え。be で切り替えると、同じ $.store を別のセッションから使う形になる
+  const me = { id: 's1' }
+  const be = (id: string): void => {
+    me.id = id
+  }
+  // Claude へ送った文のうち、利用者の言葉として送ったもの（asUser）
+  const asUser: string[] = []
+  // いま待っている見回りの周期を終わらせる関数。null は、待っている周期が無い
+  let release: (() => void) | null = null
+  // 時間を見回りの 1 周期ぶん進める。タイマーの関数が 1 回走る
+  const tick = (): void => {
+    const go = release
+    release = null
+    go?.()
+  }
+  const seen = { store: new Map(Object.entries(given.stored ?? {})), opened, closed, toasts, filled, submitted, asUser, spawned, sent, sentTo, commands }
 
-  on('session.id', () => ({ value: 's1' }))
+  on('session.id', () => ({ value: me.id }))
   on('session.start', () => ({ cwd: '/repo' }))
   on('env.get', (_$, e) => ({ value: given.env?.[e.name] }))
   on('fs.read', (_$, e) => {
@@ -85,6 +108,8 @@ export const world = (on: On, given: Given = {}) => {
   on('tool.register', (_$, e) => ({ value: { tool: e.name } }))
   on('classic.SessionStart', () => (given.otherContext === undefined ? {} : { additionalContext: given.otherContext }))
   on('turn.complete', () => ({ text: '' }))
+  // 届いた配達を、そのまま会話に入れる
+  on('session.receive', (_$, e) => ({ text: e.text }))
   on('tool.call', () => ({ result: '' }))
 
   on('store.get', (_$, e) => ({ value: seen.store.get(e.key) }))
@@ -116,7 +141,9 @@ export const world = (on: On, given: Given = {}) => {
     return { isFilled: true }
   })
   on('prompt.submit', (_$, e) => {
+    if (given.dropsSubmit === true) return { drop: 'held by another hook' }
     submitted.push(e.text)
+    if (e.origin.kind === 'plugin' && e.origin.asUser === true) asUser.push(e.text)
     return { text: e.text }
   })
 
@@ -148,15 +175,25 @@ export const world = (on: On, given: Given = {}) => {
   })
   on('session.send', (_$, e) => {
     sent.push(e.text)
+    sentTo.push({ to: e.to, text: e.text })
+    if (given.failsSend === true && e.to !== AGENT) throw new Error('socket closed')
+    if (given.stopped?.some(id => e.to.includes(id))) return { isDelivered: false as const, reason: 'not running' }
     return { isDelivered: true as const }
   })
-  // 待ち時間は、テストのあいだ終わらない
+  // 待ち時間と見回りは、テストのあいだ終わらない
   on('clock.after', () => new Promise<{ value: undefined }>(() => undefined))
+  on(
+    'clock.every',
+    () =>
+      new Promise<{ value: undefined }>(resolve => {
+        release = () => resolve({ value: undefined })
+      }),
+  )
 
   // テストの土台にはエンジンの描画が無い。下の層（エンジンの元の表示、ほかの Mod の帯）の代わりに、目印を返す
   on('ui.render', ($, e) => {
     const { Text } = $.ui.resolve(e)
     return <Text>BELOW</Text>
   })
-  return { ...seen, evict }
+  return { ...seen, evict, be, tick }
 }
