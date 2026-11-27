@@ -119,7 +119,7 @@ ${CLAUDE_SKILL_DIR}/pr-push.sh <name> '適切なタイトル' ~/.claude/tmp/pr-b
 
 出力の 1 行目の URL を利用者に示す。`jj git push` が出す `pull/new/...` の URL は使わない。
 
-作業を頼んだセッション（PM のセッションなど）に報告するときは、`pr-summary.sh <PR 番号>` の出力をそのまま貼り、その上に「何を変えたか」を数行で書く。URL、ブランチ、CI の結果を手で写さない。
+作業を頼んだセッション（PM のセッションなど）に報告するときは、`pr-summary.sh` の出力をそのまま貼り、その上に「何を変えたか」を数行で書く。URL、ブランチ、CI の結果を手で写さない。`pr-push.sh` の出力の末尾は `pr-summary.sh` の出力そのものなので、PR を作った直後はそれを貼る。`pr-summary.sh <PR 番号>` を呼ぶのは、後で CI の結果を取り直すときだけにする。
 
 ## Gotchas
 
