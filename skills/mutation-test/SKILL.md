@@ -19,7 +19,7 @@ allowed-tools: Read, Bash(bun ~/.claude/skills/mutation-test/mutate.ts:*), Bash(
 
 | プロジェクト | 道具 |
 |---|---|
-| VitestかBunの`bun test`で動くTypeScript | `npx mutator --since <ベースのリビジョン> --reporter agent`（[mizchi/mutator](https://github.com/mizchi/mutator)）。ASTで壊し、テストごとのカバレッジで回すテストを絞るので、下の道具より速く正確だ。入っていなければ、入れるかを利用者に聞く。`bun test`は試験的な対応で、Bun 1.4以降とESMのソースが要る。`mutator.config.ts`に`runner: 'bun'`、`bunfig.toml`に`[test]`の表で`root`を書く。CommonJSのモジュールとpreloadで読むモジュールは壊せない |
+| VitestかBunの`bun test`で動くTypeScript | `npx mutator --since <ベースのリビジョン> --reporter agent`（[mizchi/mutator](https://github.com/mizchi/mutator)）。ASTで壊し、テストごとのカバレッジで回すテストを絞るので、下の道具より速く正確だ。入っていなければ、入れるかを利用者に聞く。入れたら、結果を置く`.mutator/`を`.gitignore`に足す（数MBのJSONができ、jjが取り込めずに警告を出す）。`bun test`は試験的な対応で、Bun 1.4以降とESMのソースが要る。`mutator.config.ts`に`runner: 'bun'`、`bunfig.toml`に`[test]`の表で`root`を書く。CommonJSのモジュールとpreloadで読むモジュールは壊せない |
 | それ以外（Go、Scala、ほか） | 下の`mutate.ts` |
 
 ## mutate.ts
