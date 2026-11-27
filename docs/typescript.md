@@ -39,6 +39,10 @@
 | `test.each`の行ごとに型が違う | 行に`execute: () => 結果`のクロージャを持たせ、`expect(execute()).toBe(expected)`にする |
 | `bun:test`の`mock.module`で受けた引数を後で読む | 期待する形の型（`MockConfig`）を、ファクトリの引数と、受け取る変数の両方に付ける |
 | genericの関数が条件型（`Extract<Union, { f: Cond<T> }>`）を返し、型を証明できない | genericをやめ、理由をコメントに書く。要るようになったら、overloadと型のテストで確かめてから入れる |
+| 空の配列に型を付ける | `[] satisfies T[]`か`const arr: T[] = []`。`{ items: [] }`のように文脈から型が決まる箇所には`satisfies`も要らない |
+| 初期化を遅らせるProxyのtargetに型を付ける | ほかに書き方が無いので、`as`を使ってよい唯一の例外にする（`nextjs.md`） |
+
+残っていないかは`rg ' as [^a-z ]'`で探す。`as [A-Z]`では`as 1 | 2 | 3`を取りこぼし、この式なら`as const`には当たらない。
 
 
 ## 型検査を通るのに壊れた罠
