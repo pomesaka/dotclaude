@@ -66,6 +66,8 @@ PR更新前に変更の正しさを確認する。検証コマンドはプロジ
 ${CLAUDE_SKILL_DIR}/../create-pr/pr-push.sh <bookmark名> '更新後のタイトル' ~/.claude/tmp/pr-body-<PR番号>.md
 ```
 
+`@` 以外のリビジョンを PR にするときは、先頭に `-r <revset>` を付ける（1 つのリビジョンに決まるもの）。
+
 出力の 1 行目の URL を利用者に示す。作業を頼んだセッションに報告するときは、`pr-summary.sh <PR 番号>` の出力をそのまま貼り、その上に「何を変えたか」を数行で書く。
 
 ## Gotchas
