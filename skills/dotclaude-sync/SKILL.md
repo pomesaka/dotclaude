@@ -2,7 +2,7 @@
 name: dotclaude-sync
 description: dotclaudeの作業コピーに溜まった、いくつものセッションの書き込みを、dotclaude-ledgerのModの記録で書き手と理由を確かめながら関心事ごとにコミットし、公開してよいかを確かめてpushする。
 when_to_use: dotclaudeのセッションで「commitしてpushして」「溜まってる変更を入れて」「dotclaudeを同期して」と言われたとき。ほかのプロジェクトのセッションでは使わない。
-allowed-tools: Read, Write, Bash(bun ~/.claude/skills/dotclaude-sync/sync.ts:*), Bash(jj diff:*)
+allowed-tools: Read, Write, Bash(bun ~/.claude/skills/dotclaude-sync/sync.ts:*), Bash(jj diff:*), mcp__retro__drop_finding
 ---
 
 # dotclaudeの変更をまとめてコミットする
@@ -59,7 +59,7 @@ bun ~/.claude/skills/dotclaude-sync/sync.ts commit -F <メッセージのファ�
 bun ~/.claude/skills/dotclaude-sync/sync.ts push
 ```
 
-`push`は、`jj git fetch`をしてリモートの`main`が進んでいれば、その上へrebaseする。そのあと`main`を動かし、`check-public.sh`を通してからpushし、作業コピーに残っていないファイルの記録を消す。pushの後、指示の文書（`CLAUDE.md`、`docs/`、スキル）が前回の整理から2割を超えて増えていれば、`/curate-docs`を勧める文を出す。出たら、報告に添えてpomesakaに勧める。retroの控えに、スキル、エージェント、Modへの要望（使いにくさ）が残っていれば、回数の多い順に出す。これを直すのはdotclaudeのセッションの役目なので、報告に添えて、どれを直すかをpomesakaに聞く。直したら`/retro drop <id>`で外す。rebaseで競合したとき、`check-public.sh`が何かを挙げたときは、pushせずに止まる。挙がった行を直してからやり直す。誤検知だと考えたら、直さずに利用者へ伝える。
+`push`は、`jj git fetch`をしてリモートの`main`が進んでいれば、その上へrebaseする。そのあと`main`を動かし、`check-public.sh`を通してからpushし、作業コピーに残っていないファイルの記録を消す。pushの後、指示の文書（`CLAUDE.md`、`docs/`、スキル）が前回の整理から2割を超えて増えていれば、`/curate-docs`を勧める文を出す。出たら、報告に添えてpomesakaに勧める。retroの控えに、スキル、エージェント、Modへの要望（使いにくさ）が残っていれば、回数の多い順に出す。これを直すのはdotclaudeのセッションの役目なので、報告に添えて、どれを直すかをpomesakaに聞く。直してコミットしたら、`mcp__retro__drop_finding`に id を渡して自分で外す。pomesakaに`/retro drop`を頼まない。rebaseで競合したとき、`check-public.sh`が何かを挙げたときは、pushせずに止まる。挙がった行を直してからやり直す。誤検知だと考えたら、直さずに利用者へ伝える。
 
 ## 報告
 

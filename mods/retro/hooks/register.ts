@@ -180,14 +180,44 @@ const judge = async ($: EngineInterface, trigger: Trigger, toolCalls: number | n
   }
 }
 
+// 控えを1件外す。/retro drop と、Claude が呼ぶ drop_finding の両方がここを通る
+const dropFinding = async ($: EngineInterface, id: string): Promise<{ isDropped: boolean; text: string }> => {
+  const list = await loadCandidates($)
+  if (list === null || !list.some(one => one.id === id)) {
+    return { isDropped: false, text: `retro: no counted finding has the id ${id}. /retro candidates lists them.` }
+  }
+  await appendEvents($, [{ type: 'dropped', id, at: await $.clock.now() }])
+  return { isDropped: true, text: `retro: dropped ${id}.` }
+}
+
+const DROP_TOOL_NAME = 'drop_finding'
+const DROP_TOOL = 'mcp__retro__drop_finding'
+// WHY Claude にも外させる: 要望を直すのは dotclaude のセッションの Claude で、直した後に pomesaka に
+//   /retro drop を打ってもらうと、毎回その分の手間を頼むことになる（pomesaka の指示、2026-11-28）
+const DROP_TOOL_DESCRIPTION = `Remove one counted retro finding (the ids listed after a dotclaude-sync push, or by /retro candidates) once it is fixed, or once it is decided it is not needed.
+Call it right after the fix is committed, instead of asking the user to type /retro drop.`
+const DROP_TOOL_SCHEMA = {
+  type: 'object',
+  properties: { id: { type: 'string', description: 'The id of the finding, such as c8o7sl.' } },
+  required: ['id'],
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: COMMAND,
       description: 'Look back on this session now and count what is worth keeping; findings seen twice go into the docs. "/retro on|off" switch the automatic look-backs, "/retro log" shows what was written, "/retro candidates" lists the counted findings, "/retro drop <id>" removes one',
     })
+    await $.tool.register({ name: DROP_TOOL_NAME, description: DROP_TOOL_DESCRIPTION, inputSchema: DROP_TOOL_SCHEMA, isDeferred: false })
     return next(e)
   })
+
+  on('tool.call', { tool: DROP_TOOL }, async ($, e) => {
+    const id = 'id' in e && typeof e.id === 'string' ? e.id.trim().toLowerCase() : ''
+    if (id === '') return { deny: 'drop_finding failed: pass the id of a counted finding' }
+    const dropped = await dropFinding($, id)
+    return dropped.isDropped ? { result: dropped.text } : { deny: dropped.text }
+  }).catch(($, e, next) => (next.called ? next(e) : { deny: `drop_finding failed: ${next.error.message}` }))
 
   // WHY 次のターンで答えを捨てる: 答えた後に話が進むと、その答えは分岐が読む会話の末尾と食い違う
   on('turn.start', async (_$, e, next) => {
@@ -288,13 +318,8 @@ export const register: Register = on => {
         if (list.length === 0) return { text: 'retro: no findings have been counted yet.' }
         return { text: candidatesText(list) }
       }
-      case 'drop': {
-        const { id } = action
-        const list = await loadCandidates($)
-        if (list === null || !list.some(one => one.id === id)) return { text: `retro: no counted finding has the id ${id}. /retro candidates lists them.` }
-        await appendEvents($, [{ type: 'dropped', id, at: await $.clock.now() }])
-        return { text: `retro: dropped ${id}.` }
-      }
+      case 'drop':
+        return { text: (await dropFinding($, action.id)).text }
       case 'run':
         void judge($, 'manual').catch(() => undefined)
         return { text: 'retro: looking back on this session.' }

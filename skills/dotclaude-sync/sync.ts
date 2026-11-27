@@ -208,7 +208,7 @@ const push = (): void => {
   const notice = growthNotice()
   if (notice !== null) console.log(notice)
   const requests = pendingRequests()
-  if (requests !== '') console.log(`\nスキル、エージェント、Mod への要望（retro の控え。直したら /retro drop <id> で外す）:\n${requests}`)
+  if (requests !== '') console.log(`\nスキル、エージェント、Mod への要望（retro の控え。直したら mcp__retro__drop_finding で外す）:\n${requests}`)
 }
 
 // retro の控えのうち、スキル、エージェント、Mod への要望を、回数の多い順に出す。

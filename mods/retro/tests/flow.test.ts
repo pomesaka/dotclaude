@@ -383,6 +383,24 @@ test('/retro candidates は控えを回数の多い順に返し、/retro drop �
   expect(await $.command.run(command('drop c9'))).toEqual({ text: 'retro: no counted finding has the id c9. /retro candidates lists them.' })
 })
 
+// Claude が直した後に、利用者に /retro drop を頼まずに外す
+const DROP_CALLS: { name: string; input: { [key: string]: unknown }; outcome: { result: string } | { deny: string }; dropped: string[] }[] = [
+  { name: '控えにある id', input: { id: 'c1' }, outcome: { result: 'retro: dropped c1.' }, dropped: ['c1'] },
+  { name: '大文字と前後の空白は落とす', input: { id: ' C1 ' }, outcome: { result: 'retro: dropped c1.' }, dropped: ['c1'] },
+  { name: '控えに無い id', input: { id: 'c9' }, outcome: { deny: 'retro: no counted finding has the id c9. /retro candidates lists them.' }, dropped: [] },
+  { name: 'id が無い', input: {}, outcome: { deny: 'drop_finding failed: pass the id of a counted finding' }, dropped: [] },
+]
+
+for (const { name, input, outcome, dropped } of DROP_CALLS) {
+  test(`drop_finding: ${name}`, async ($, on) => {
+    const seen = world(on, { files: COUNTED_FILES })
+    await $.session.start(START)
+
+    expect(await $.tool.call({ tool: 'mcp__retro__drop_finding', ...input })).toEqual(outcome)
+    expect(eventsIn(seen.files.get(OWN)).filter(one => one.type === 'dropped').map(one => one.id)).toEqual(dropped)
+  })
+}
+
 // 前の版が $.store に持っていた控えを、ファイルへ移す
 const LEGACY = { candidates: { next: 2, list: [COUNTED, { id: 'c2', title: '形が合わない' }] } }
 const MIGRATIONS: { name: string; stored: { [key: string]: unknown }; files: { [path: string]: string }; imported: string[]; isKeyKept: boolean }[] = [
