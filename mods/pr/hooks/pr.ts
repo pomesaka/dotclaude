@@ -213,7 +213,8 @@ const REVIEWS: { [decision: string]: Review } = {
 // GitHub が最後のコミットのチェックをまとめた値（StatusState）。
 // チェックが 1 つも無い PR では statusCheckRollup が null になる（実験用の PR で確認）。
 // CI が失敗した PR では FAILURE が返る（kkyosuke/usagi の PR で確認・2026-10-09）。
-// ほかの値は実物を見ていない。知らない値は pending として出す
+// ほかの値は実物を見ていない。知らない値は pending として出す。
+// 個々のチェックが読めないとき（contexts が空）だけ、この値で決める
 const CHECKS: { [state: string]: Checks } = {
   SUCCESS: 'passing',
   FAILURE: 'failing',
@@ -222,22 +223,56 @@ const CHECKS: { [state: string]: Checks } = {
   EXPECTED: 'pending',
 }
 
+// 個々のチェックの結果（CheckRun の conclusion か、StatusContext の state）を、CI の状態のどれに数えるか。
+// null は、走っていないので数えない。
+// WHY CANCELLED を数えない: 同じコミットで同じワークフローが 2 本立ち、concurrency で 1 本が 2 秒で取り消されると、
+// GitHub の rollup は、もう 1 本が成功していても FAILURE を返す。これを失敗と知らせていた（3 回起きた。2026-11-27 に pomesaka が報告）。
+// 知らない値は、rollup と同じく実行中として数える
+const OUTCOMES: { [outcome: string]: Checks | null } = {
+  SUCCESS: 'passing',
+  NEUTRAL: 'passing',
+  FAILURE: 'failing',
+  ERROR: 'failing',
+  TIMED_OUT: 'failing',
+  ACTION_REQUIRED: 'failing',
+  STARTUP_FAILURE: 'failing',
+  PENDING: 'pending',
+  EXPECTED: 'pending',
+  CANCELLED: null,
+  SKIPPED: null,
+  STALE: null,
+}
+
+// CheckRun は実行中のあいだ conclusion が null
+const outcomeOf = (check: unknown): Checks | null => {
+  const outcome = field(check, 'conclusion') ?? field(check, 'state')
+  if (outcome === null || outcome === undefined) return 'pending'
+  return typeof outcome === 'string' && outcome in OUTCOMES ? (OUTCOMES[outcome] ?? null) : 'pending'
+}
+
+// CI の状態と、失敗したチェックの名前を、同じ規則で決める。走ったチェックのうち、失敗が 1 つでもあれば失敗、
+// 無くて実行中があれば実行中、どれも成功なら成功。走ったチェックが 1 つも無ければ、チェックが無いのと同じ null。
+// 取れるチェックは 100 個まで（ROLLUP）で、それを超えた分は見ない。
+// kkyosuke/usagi の CI が失敗した PR で、返る形を確かめた（2026-10-09）
+const checksOf = (rollup: unknown): { checks: Checks | null; failedChecks: string[] } => {
+  const rollupState = field(rollup, 'state')
+  const nodes = field(field(rollup, 'contexts'), 'nodes')
+  if (!Array.isArray(nodes) || nodes.length === 0) {
+    return { checks: typeof rollupState === 'string' ? (CHECKS[rollupState] ?? 'pending') : null, failedChecks: [] }
+  }
+  const ran = nodes.flatMap((check: unknown) => {
+    const outcome = outcomeOf(check)
+    const name = field(check, 'name') ?? field(check, 'context')
+    return outcome === null ? [] : [{ outcome, name: typeof name === 'string' ? name : null }]
+  })
+  const failedChecks = ran.flatMap(check => (check.outcome === 'failing' && check.name !== null ? [check.name] : []))
+  const has = (outcome: Checks) => ran.some(check => check.outcome === outcome)
+  const checks = has('failing') ? 'failing' : has('pending') ? 'pending' : has('passing') ? 'passing' : null
+  return { checks, failedChecks }
+}
+
 // GitHub の mergeable（MergeableState）。UNKNOWN は、まだ計算していない（cli/cli の開いている PR で 3 つとも見た。2026-10-20）
 const CONFLICTS: { [mergeable: string]: boolean } = { CONFLICTING: true, MERGEABLE: false }
-
-// 失敗として名前を出すチェックの結果。実行中（conclusion が null）と、成功、スキップは入れない
-const FAILED_CHECK = ['FAILURE', 'ERROR', 'CANCELLED', 'TIMED_OUT', 'ACTION_REQUIRED', 'STARTUP_FAILURE']
-
-// 失敗したチェックの名前を取り出す。kkyosuke/usagi の CI が失敗した PR で、返る形を確かめた（2026-10-09）
-const failedChecksOf = (rollup: unknown): string[] => {
-  const nodes = field(field(rollup, 'contexts'), 'nodes')
-  if (!Array.isArray(nodes)) return []
-  return nodes.flatMap((check: unknown) => {
-    const name = field(check, 'name') ?? field(check, 'context')
-    const outcome = field(check, 'conclusion') ?? field(check, 'state')
-    return typeof name === 'string' && typeof outcome === 'string' && FAILED_CHECK.includes(outcome) ? [name] : []
-  })
-}
 
 const statusOf = (pr: unknown): PrStatus | null => {
   const title = field(pr, 'title')
@@ -251,7 +286,7 @@ const statusOf = (pr: unknown): PrStatus | null => {
     state === 'merged'
       ? field(field(pr, 'mergeCommit'), 'statusCheckRollup')
       : field(field(Array.isArray(nodes) ? nodes[0] : undefined, 'commit'), 'statusCheckRollup')
-  const rollupState = field(rollup, 'state')
+  const { checks, failedChecks } = checksOf(rollup)
   const mergedAt = field(pr, 'mergedAt')
   const mergedTime = typeof mergedAt === 'string' ? Date.parse(mergedAt) : Number.NaN
   const mergeable = field(pr, 'mergeable')
@@ -259,8 +294,8 @@ const statusOf = (pr: unknown): PrStatus | null => {
     title,
     state,
     isDraft: field(pr, 'isDraft') === true,
-    checks: typeof rollupState === 'string' ? (CHECKS[rollupState] ?? 'pending') : null,
-    failedChecks: failedChecksOf(rollup),
+    checks,
+    failedChecks,
     review: typeof decision === 'string' ? (REVIEWS[decision] ?? null) : null,
     mergedAt: Number.isNaN(mergedTime) ? null : mergedTime,
     // WHY 開いている PR だけ: 終わった PR の競合は、もう直す相手ではない。UNKNOWN と知らない値は、分からないとして扱う

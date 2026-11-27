@@ -37,6 +37,14 @@ export const prUrl = (number: number, repo = 'o/r') => `https://github.com/${rep
 export const NOW = 1_791_915_383_000
 export const MERGED_AT = '2026-10-13T18:15:23Z'
 
+// rollup の値に合う、build のチェックの結果。CI の状態は個々のチェックから決めるので、rollup と食い違わないようにする。
+// 失敗の名前が渡されていれば、build はそれらの横で成功したものとする
+const buildOutcome = (rollup: string, failed: string[]): string | null => {
+  if (rollup === 'PENDING' || rollup === 'EXPECTED') return null
+  if ((rollup === 'FAILURE' || rollup === 'ERROR') && failed.length === 0) return 'FAILURE'
+  return 'SUCCESS'
+}
+
 // コミットの CI。failed は、失敗したチェックの名前
 const rollupOf = (rollup: string | null, failed: string[]) =>
   rollup === null
@@ -45,7 +53,7 @@ const rollupOf = (rollup: string | null, failed: string[]) =>
         state: rollup,
         contexts: {
           nodes: [
-            { __typename: 'CheckRun', name: 'build', conclusion: 'SUCCESS' },
+            { __typename: 'CheckRun', name: 'build', conclusion: buildOutcome(rollup, failed) },
             ...failed.map(name => ({ __typename: 'CheckRun', name, conclusion: 'FAILURE' })),
           ],
         },

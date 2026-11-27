@@ -438,6 +438,82 @@ const ANSWERS: { name: string; pr: unknown; status: PrStatus | undefined }[] = [
     }),
     status: status({ checks: 'failing', failedChecks: ['ci/deploy'] }),
   },
+  // 同じコミットで同じワークフローが 2 本立ち、1 本が concurrency で 2 秒で取り消された。GitHub の rollup は FAILURE を返す
+  {
+    name: '取り消された実行は失敗に数えず、走った実行の結果で決める',
+    pr: answered({
+      state: 'OPEN',
+      rollup: 'FAILURE',
+      contexts: [
+        { __typename: 'CheckRun', name: 'test', conclusion: 'CANCELLED' },
+        { __typename: 'CheckRun', name: 'test', conclusion: 'SUCCESS' },
+      ],
+    }),
+    status: status({ checks: 'passing' }),
+  },
+  {
+    name: 'マージ後の CI でも、取り消された実行は失敗に数えない',
+    pr: answered({
+      state: 'MERGED',
+      rollup: 'SUCCESS',
+      mergedAt: '2026-10-13T18:15:23Z',
+      mergeRollup: 'FAILURE',
+      mergeContexts: [
+        { __typename: 'CheckRun', name: 'deploy', conclusion: 'SUCCESS' },
+        { __typename: 'CheckRun', name: 'deploy', conclusion: 'CANCELLED' },
+      ],
+    }),
+    status: status({ state: 'merged', checks: 'passing', mergedAt: 1_791_915_323_000 }),
+  },
+  {
+    name: '取り消された実行の横で、もう 1 本が実行中なら実行中',
+    pr: answered({
+      state: 'OPEN',
+      rollup: 'FAILURE',
+      contexts: [
+        { __typename: 'CheckRun', name: 'test', conclusion: 'CANCELLED' },
+        { __typename: 'CheckRun', name: 'test', conclusion: null },
+      ],
+    }),
+    status: status({ checks: 'pending' }),
+  },
+  {
+    name: '取り消された実行の横で、走った実行が失敗したら失敗',
+    pr: answered({
+      state: 'OPEN',
+      rollup: 'FAILURE',
+      contexts: [
+        { __typename: 'CheckRun', name: 'test', conclusion: 'CANCELLED' },
+        { __typename: 'CheckRun', name: 'test', conclusion: 'FAILURE' },
+      ],
+    }),
+    status: status({ checks: 'failing', failedChecks: ['test'] }),
+  },
+  {
+    name: '走った実行が 1 つも無ければ、チェックが無いのと同じ',
+    pr: answered({
+      state: 'OPEN',
+      rollup: 'FAILURE',
+      contexts: [
+        { __typename: 'CheckRun', name: 'test', conclusion: 'CANCELLED' },
+        { __typename: 'CheckRun', name: 'e2e', conclusion: 'SKIPPED' },
+        { __typename: 'CheckRun', name: 'old', conclusion: 'STALE' },
+      ],
+    }),
+    status: status({ checks: null }),
+  },
+  {
+    name: 'NEUTRAL は成功に数える',
+    pr: answered({
+      state: 'OPEN',
+      rollup: 'SUCCESS',
+      contexts: [
+        { __typename: 'CheckRun', name: 'lint', conclusion: 'NEUTRAL' },
+        { __typename: 'CheckRun', name: 'e2e', conclusion: 'SKIPPED' },
+      ],
+    }),
+    status: status({ checks: 'passing' }),
+  },
   { name: '知らない state', pr: answered({ state: 'LOCKED' }), status: undefined },
   { name: 'PR が見つからない（null）', pr: null, status: undefined },
 ]
