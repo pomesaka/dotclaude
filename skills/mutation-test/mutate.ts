@@ -25,7 +25,7 @@ export type Result = Mutant & { status: Status }
 
 const CODE = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.go', '.scala', '.java', '.kt', '.rs', '.py'])
 // テストのファイルは壊さない。壊す対象は本体のコード
-const TEST_FILE = /(^|\/)(tests?|__tests__|e2e)\/|\.(test|spec)\.[a-z]+$|_test\.go$|Spec\.scala$|Test\.(java|kt|scala)$/
+export const TEST_FILE = /(^|\/)(tests?|__tests__|e2e)\/|\.(test|spec)\.[a-z]+$|_test\.go$|Spec\.scala$|Test\.(java|kt|scala)$/
 
 // 壊しても実りの無い行（Google の arid に当たるもの）。ログ、import、宣言だけの行、括弧だけの行、コメント
 const ARID = [
