@@ -12,6 +12,7 @@ Mods（`plugins/mods`）は早期アクセスで、型定義の冒頭に「予�
 
 ## 読み込みと設定
 
+- **Claude Codeが機能を出さないときは、周りの設定を変える前に、「出さない」と決めている条件を読む**: 推測で利用者の環境を変えると、外れたときに変更だけが残る。公式の文書に無ければ、型定義、エラーや代わりの表示の文言、配布されたバイナリの文字列を見る。バイナリは`rg -a -o ".{0,300}<画面に出た文言や機能名>.{0,300}" <バイナリ>`で前後のコードが読める
 - **dotclaudeのModは、フォルダのマーケットプレイスから入れている**: リポジトリ直下の`.claude-plugin/marketplace.json`が一覧で、`settings.json`の`extraKnownMarketplaces`と`enabledPlugins`に登録がある。マーケットプレイスがフォルダで`source`が相対パスなら、コピーではなくフォルダから直接読まれる（`claude plugin list`の`Read from:`で確認）。編集は`/reload-plugins`で反映する。Modを足す手順は`mods/README.md`
 - `settings.json`の`env.CLAUDE_CODE_PLUGIN_DIRS`に絶対パスを書いても読み込める。複数は`:`で区切る（バイナリが`path.delimiter`で分けている）。親のフォルダを書いて中身をまとめて読ませることはできない。こちらは保存のたびに自動で読み込み直される。変更は再起動するまで効かない。マーケットプレイスから入れたModと同時に指定すると二重になる
 - `plugin-authoring`スキルを読み込むと、`~/.claude/dev-mods/<セッションID>/`が監視され、そこに書いたModは番の終わりに読み込み直される。利用者が一度だけ許可を聞かれる
