@@ -91,6 +91,7 @@ Self-hosted application を手で設定したときに見落とした点（2026-
 - **Path のワイルドカードは親のパスを含まない**。`/admin/*` は `/admin` を含まない。ワイルドカードの無いパスが前方一致になるかは公式に書かれていないので、`/admin` と `/admin/*` の両方を登録する
 - **One-time PIN は新しい組織の既定に入っていない**。既定の Cloudflare identity provider は Cloudflare のアカウントを持つ人しかログインできない。外部の利用者に使わせるなら、Identity providers に OTP を足す
 - **Access の後ろの API を手元から叩くには、`cloudflared access login <URL>` と `cloudflared access curl <URL>` を使う**（cloudflared 2026.5.0、2026-11 に確認）。`login` はブラウザで SSO を通し、トークンを手元に保存する。`curl` はそのトークンを付けて叩き、Worker には画面と同じ `Cf-Access-Jwt-Assertion` が届くので、サービストークンや Access の例外を足さずに本人として呼べる。`login` はトークンを標準出力に出すので、エージェントの会話の中で実行すると会話の記録に残る。`cf` に同じ機能があるかは確かめていない
+- **外のクライアント（リモートの MCP など）に OAuth が要るなら、Access の Managed OAuth が認可サーバーを肩代わりできる**（Cloudflare One docs、2026-11 に確認）。動的なクライアント登録（DCR）と RFC 8414/9728 の discovery に対応し、クライアントには RFC 8707 の resource indicator が要る。PKCE S256 と protected resource metadata の扱いは文書に明記が無く、未検証
 
 ## API トークンの Workers の権限とプラン
 
