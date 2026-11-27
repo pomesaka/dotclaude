@@ -1,8 +1,8 @@
 # Cloudflare CLI（cf）リファレンス
 
-> **TL;DR**: Cloudflare CLI（`cf`）のベータ版で実際に確かめた挙動と罠。使う方針は `CLAUDE.md` の CLI Tools にある。ベータなので、コマンドは記憶で組まず、`cf cli search` と公式ドキュメントで確かめてから打つ。
+> **TL;DR**: Cloudflare CLI（`cf`）のベータ版で実際に確かめた挙動と罠。使う方針は `CLAUDE.md` の「Claude Codeで使う道具」にある。ベータなので、コマンドは記憶で組まず、`cf cli search` と公式ドキュメントで確かめてから打つ。
 
-整理する前の版は `archive/2026-11-16/docs/cf.md` にある。
+整理する前の版は `archive/2026-11-16/docs/cf.md` に、調べた経緯の細部は [archive/cf-2026-11-28.md](archive/cf-2026-11-28.md) にある。
 
 2026-09-28 にベータ公開（[Changelog](https://developers.cloudflare.com/changelog/post/2026-09-28-cloudflare-cli-beta/)）。以下は 2026-09-30 に公式ドキュメント（[エージェント向けの使い方](https://developers.cloudflare.com/cf/agents/)・[wrangler からの対応表](https://developers.cloudflare.com/cf/wrangler/reference/)）で確認した内容。安定版までにコマンド・設定・ビルド出力が変わりうると明記されているので、食い違ったらドキュメントを正とする。
 
@@ -24,7 +24,7 @@ cf <command> --dry-run                           # 送るリクエストを表�
 ## 破壊的な操作
 
 - 削除などの破壊的なコマンドは、端末以外では `--force` が無いと `Aborted.` を出して止まる
-- **`--force` はユーザーの確認なしに付けない**。コマンドによっては `--force` が API のパラメータでもあり、「確認を飛ばす」以外の意味を持つ。付ける前に `--dry-run` か `cf schema` で中身を見る
+- `--force` は利用者に確かめてから付ける。コマンドによっては `--force` が API のパラメータでもあり、「確認を飛ばす」以外の意味を持つ。付ける前に `--dry-run` か `cf schema` で中身を見る
 - `--local` を付けると、ローカルの開発用データだけを操作し、API を呼ばない
 
 ## wrangler との対応
@@ -35,7 +35,7 @@ cf <command> --dry-run                           # 送るリクエストを表�
 | `wrangler deploy` | `cf deploy` |
 | `wrangler d1 migrations apply` | `cf d1 migrations apply`（`--dir`・`--pattern`・`--table` はコマンドで渡す。設定ファイルには書かない） |
 | `wrangler d1 execute --local` | `cf d1 raw --local --persist-to <置き場所> <D1 の ID> --sql "..."`（`--batch` は結果を出しても終了しないことがあった。下の「ローカル開発」） |
-| `wrangler d1 execute --remote` | `cf d1 query`（リモートの資源だけ） |
+| `wrangler d1 execute --remote` | `cf d1 query`（リモートのリソースだけ） |
 | `wrangler types` | `cf workers types`（`cloudflare.config.ts` のプロジェクト。Vite のビルドと dev でも自動で書かれる） |
 | `--env <名前>` | `--mode <名前>` |
 
@@ -47,7 +47,7 @@ cf <command> --dry-run                           # 送るリクエストを表�
 | ログのリアルタイム表示 | `npx wrangler tail <Worker 名>` |
 | Worker に付いている Cron の一覧を読む | 見つからなかった（`cf cli search` で 3 通り探した。1.0.0-beta.5・2026-10-14）。ダッシュボードの Worker の Settings → Triggers で見る |
 
-- **Cron が付いているのに動かないときは、まず Cloudflare の障害を見る**: `curl -sS https://www.cloudflarestatus.com/api/v2/incidents.json | jq '.incidents[] | select(.name | test("Cron"))'`。2026-10-12〜14 に「Cron Trigger Activation Issues」が 3 回あり、作成・変更した Cron だけが動かなかった（前からある Cron は動いた）。動いたかは、下の `cf observability telemetry query` で `$workers.event.cron` ごとに数えると分かる
+- **Cron が付いているのに動かないときは、まず Cloudflare の障害を見る**: `curl -sS https://www.cloudflarestatus.com/api/v2/incidents.json | jq '.incidents[] | select(.name | test("Cron"))'`。作成、変更した Cron だけが動かず、前からある Cron は動く障害が 2026-10 に 3 回あった。動いたかは、下の `cf observability telemetry query` で `$workers.event.cron` ごとに数えると分かる
 
 - **過去の Worker のログは `cf observability telemetry query --body '<JSON>'` で読める**（Workers Logs が有効な Worker）。フラグでは絞り込みを書けないので `--body` で渡す。例: `{"queryId":"adhoc-任意","timeframe":{"from":<ミリ秒>,"to":<ミリ秒>},"view":"events","limit":50,"parameters":{"filters":[{"key":"$metadata.service","operation":"eq","type":"string","value":"<Worker 名>"},{"key":"$workers.eventType","operation":"neq","type":"string","value":"fetch"}]}}`。結果は `.events.events[]` の `$metadata.message`・`$metadata.error`・`$workers.eventType`（fetch・scheduled・queue）・`$workers.event`（Cron の式など）。共有アカウントでは、ほかのアプリのログを読まないよう、`$metadata.service` で絞る（2026-10-14 確認）
 - **wrangler の OAuth と cf の OAuth は別**: wrangler が別のアカウントにログインしていても、`cf auth whoami` で目的のアカウントと `workers_observability:read`・`d1:write` などの scope が見えれば、`cf` からは読める。`cf d1 query` が `7403 The given account is not valid or is not authorized` を返したあと、同じログインのまま通ったことがある（原因は未確認・2026-10-14）
@@ -55,7 +55,7 @@ cf <command> --dry-run                           # 送るリクエストを表�
 ## 罠
 
 - **`cf dev` と `cf deploy` は、中で Vite や wrangler に処理を任せている**。ビルドまわりの不具合は `cf` ではなく Vite・wrangler 側の設定を疑う
-- **`cf d1 list` のような API のコマンドは、設定ファイルから `accountId` と `complianceRegion` しか読まない**。`--mode` ごとのバインディングは効かないので、どの資源を操作しているかは出力で確かめる
+- **`cf d1 list` のような API のコマンドは、設定ファイルから `accountId` と `complianceRegion` しか読まない**。`--mode` ごとのバインディングは効かないので、どのリソースを操作しているかは出力で確かめる
 - **`cloudflare.config.ts` のビルド出力は `.cloudflare/output/v0/`**: `wrangler.json` は出ない。Worker の設定は `workers/default/worker.config.json`（name・compatibilityDate・compatibilityFlags・observability・`manifest.mainModule`）、本体は `workers/default/bundle/`（cf 1.0.0-beta.5・`@cloudflare/vite-plugin` 2.0.0-beta で確認・2026-09-30）
 - **ドキュメントの `import cloudflare from "@cloudflare/vite-plugin"`（default import）は動かない**: 2.0.0-beta.sha-ad79608dd の export は名前付きの `cloudflare` だけ（2026-09-30 確認）
 - **`Env` の型は `cf workers types` が `.cloudflare/types/index.d.ts` に書く**（認証不要）。tsconfig の `types` に相対パスで書いても読まれなかった（TypeScript 7.0.2）。`include` に直接足す。また、この型ファイルは `cloudflare.config.ts` 経由で Worker のコードを import するので、`Env` の無い tsconfig（vite.config.ts 用など）に `cloudflare.config.ts` を入れると型エラーになる
@@ -68,16 +68,16 @@ cf <command> --dry-run                           # 送るリクエストを表�
 - **`cf dev` の中身は Vite プラグインの開発サーバー（`cf-vite dev`）**。`cloudflare.config.ts` の `env` に書いたバインディング（D1 など）がローカルで立つ
 - **ローカルのデータの置き場所が `cf dev` と他のコマンドで違う**: `cf dev`（Vite プラグイン）は `<プロジェクト>/.cloudflare/state/v3`、`cf d1 raw --local` などの既定は `~/.config/cloudflare/state`。同じ D1 を見るには `--persist-to .cloudflare/state` を付ける（`v3` は cf が足す）
 - **ローカルの D1 のファイル名は、バインディングの ID から決まる**（`.cloudflare/state/v3/d1/miniflare-D1DatabaseObject/<ハッシュ>.sqlite`）。別のプロセス（seed など）と同じ DB を開くなら、`bindings.d1({ name, id })` で ID を固定し、両方で同じ ID を使う
-- **`--local` のコマンドが結果を出したあと終了しないときは、`cloudflare.config.ts` の無いディレクトリから実行する**（`cf d1 raw`・`cf d1 migrations apply` で確認）。設定ファイルの無いディレクトリからなら 2 秒で終わる。原因は、cf の中の miniflare（5.20260926.0-alpha）がローカル開発用の登録簿（macOS では `~/Library/Preferences/cloudflare/registry`）のファイル監視を始め、終わっても閉じないこと（`fs.watch` の呼び出し履歴で確認）。`--local` の無いリモートの操作は miniflare を起動しないので、この問題は無い（CI から `cf d1 migrations apply <ID> --dir <パス>` をリモートの D1 に当て、3 秒で終了したことを確認・2026-10-02）。`cf dev` を動かしている間に `cf d1 raw --local` が返ってこないこともあった（同じ原因かは未確認）
+- **`--local` のコマンドが結果を出したあと終了しないときは、`cloudflare.config.ts` の無いディレクトリから実行する**（`cf d1 raw`・`cf d1 migrations apply` で確認）。cf の中の miniflare（5 の alpha）が、ローカル開発用の登録簿（macOS では `~/Library/Preferences/cloudflare/registry`）のファイル監視を閉じないためだ。`--local` の無いリモートの操作は miniflare を起動しないので、CI からリモートの D1 に当てる操作では起きない。`cf dev` を動かしている間に `cf d1 raw --local` が返ってこないこともあった（同じ原因かは未確認）
 - **`cloudflare.config.ts` を変えたら、ビルドだけでなく開発サーバーも立ち上げ直して確かめる**。次の 2 つは、起動し直すまで気づけなかった（どちらも cf 1.0.0-beta.5・`@cloudflare/vite-plugin` 2.0.0-beta）
   - `cf dev` を動かしたまま設定ファイルを変えると、Vite が自分で再起動したあと（`[vite] Internal server error: fetch failed` → `server restarted.`）、ブラウザからの `node_modules/.vite/deps/*` の取得が返ってこなくなることがあった。curl での API と HTML は 200 を返し、画面だけが白いまま読み込み続ける。`cf dev` を止めて起動し直すと直る（2026-10-06 に 1 回確認）
   - 設定ファイルから、Worker も読む `src` のファイルを値として import すると、`cf dev` が `Failed to load url /src/... Does the file exist?` で落ちる（Worker の側で同じファイルを読めなくなる）。`vite build` は通る。型だけの import（`import type`）と、`with { type: "cf-worker" }` の entrypoint は問題ない。設定ファイルと Worker の両方で使う定数（Cron の式など）は、設定ファイルには文字列で書き、Worker の側の定数と同じであることをテストで固定する（設定ファイルを文字列として読んで、定数が含まれるかを見る）（2026-10-07）
 - **`cf dev` で Cron を手で発火させるには、Local Explorer の API を使う**: `curl -X POST -H 'content-type: application/json' -d '{"cron":"*/10 * * * *"}' '<dev の URL>/cdn-cgi/local/explorer/api/local/scheduled?worker=<Worker の名前>'`。`triggers` に入れていない式でも、`scheduled` にその式が渡って動く（2026-10-09）。`/__scheduled` と `/cdn-cgi/handler/scheduled` は、どちらも静的アセットの SPA の HTML を返す（2026-10-06）。API の一覧は `cf dev` の起動時のログに出る
 - **アプリと同じバインディングを外のスクリプト（seed など）から使う手段（wrangler の `getPlatformProxy` に当たるもの）は、`cf`・Vite プラグイン・`@cloudflare/config` のどれにも無い**。ローカルの D1 に書くスクリプトは、miniflare 4（安定版）を直接使う: `new Miniflare({ modules: true, script: "export default {}", d1Databases: { DB: <固定した ID> }, d1Persist: ".cloudflare/state/v3/d1" })` → `await mf.getD1Database("DB")` → 終わったら `await mf.dispose()`。`cf dev` を動かしたままでも書き込め、次のリクエストから見える
 - **miniflare 5（alpha）はオプションの形が変わっていて、スクリプトから使いにくい**（`workers: [{ config: <cloudflare.config の形>, dev: {...} }]`）。スクリプトでは miniflare 4 を使う
-- **`cf` は環境変数 `CLOUDFLARE_API_TOKEN` と `CLOUDFLARE_ACCOUNT_ID` を読む**。CI では設定ファイルが無くても、これでリモートの資源を操作できる。`CLOUDFLARE_API_TOKEN` は、`cf auth login`（ブラウザで承認する）で保存したログインより優先される
+- **`cf` は環境変数 `CLOUDFLARE_API_TOKEN` と `CLOUDFLARE_ACCOUNT_ID` を読む**。CI では設定ファイルが無くても、これでリモートのリソースを操作できる。`CLOUDFLARE_API_TOKEN` は、`cf auth login`（ブラウザで承認する）で保存したログインより優先される
 - **`cf d1 migrations apply` は、端末でないとき確認の質問に自動で「yes」と答える**（`Using fallback value in non-interactive context: yes`）。マイグレーションのファイルは既定で `<dir>/*.sql`（drizzle-kit の平らな出力そのまま）。drizzle の入れ子の形なら `--pattern "<dir>/*/migration.sql"`。適用済みの記録は `--table`（既定 `d1_migrations`）
-- **D1 の `batch()` は 1 つのトランザクション**: miniflare の D1（ローカル）で、複数文の batch の途中（既存行が新しい NOT NULL 列に引っかかる等）が失敗すると、それより前の文も含めて丸ごと巻き戻り、表も行も変更前のまま残ることを確認した（2026-10-02）。リモートの D1 でも、`cf d1 migrations apply`（1.0.0-beta.5）はマイグレーション 1 ファイルを丸ごと巻き戻す: `DROP TABLE` 2 つと `CREATE TABLE` の後の `ALTER TABLE ... ADD ... NOT NULL` が `7500 Cannot add a NOT NULL column with default value NULL` で失敗したとき、DROP した表は元のまま残り、`d1_migrations` にもそのファイルは記録されなかった（2026-10-20、sandbox の D1 を `cf d1 query` で読んで確認）
+- **D1 の `batch()` は 1 つのトランザクション**: ローカル（miniflare）の D1 で、複数文の batch の途中が失敗すると、それより前の文も含めて丸ごと巻き戻る。リモートの D1 でも、`cf d1 migrations apply`（1.0.0-beta.5）は途中で失敗したマイグレーション 1 ファイルを丸ごと巻き戻し（`DROP TABLE` した表も残る）、`d1_migrations` にも記録しない
 - **`cf` がプロジェクトの devDependency にしか無いときは、PATH に無い**。`bun run --cwd <cf の入ったアプリ> cf ...` で動かす（ある案件で確認、2026-10-20）
 - **`cf d1 list` に `--json` は無い**（引数のエラーになる。1.0.0-beta.5）。`cf d1 query` は、何もしなくても JSON で返す
 - **`cf d1 query <ID> --sql "文1; 文2; …"` は複数の文を 1 回で流せる**。結果は文ごとの配列で返る。DROP TABLE 20 文を 1 回で流して全部通った（2026-10-20、sandbox の D1）。途中で失敗したときに前の文まで巻き戻るかは試していない

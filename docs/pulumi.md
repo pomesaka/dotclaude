@@ -1,6 +1,6 @@
-# Pulumi（TypeScript / AWS）で踏んだ罠と、この利用者の構成
+# Pulumi（TypeScript / AWS）の構成の決めごとと、踏んだ罠
 
-> **TL;DR**: PulumiでAWSのインフラを書く、レビューする、GitHub Actionsからデプロイするときに読む。入門の内容は書かず、この利用者の構成の決めごとと、実際に間違えた点だけを置く。
+> **TL;DR**: PulumiでAWSのインフラを書く、レビューする、GitHub Actionsからデプロイするときに読む。入門の内容は書かず、pomesakaの構成の決めごとと、実際に間違えた点だけを置く。
 
 整理する前の版は`archive/2026-11-16/docs/`の`pulumi.md`、`pulumi-aws.md`、`pulumi-cicd.md`にある（この文書は3つをまとめたもの）。GitHub Actionsだけの話は`github-actions.md`にある。
 
@@ -24,7 +24,7 @@
 
 - **`pulumi.output(urlMap)`は、内側のOutputをほどかない**: `urlMap`が`Record<string, Output<string>>`のとき、`pulumi.output(urlMap)`は`Output<Record<string, Output<string>>>`になる。`pulumi.all(urlMap)`なら`Output<Record<string, string>>`になる。前者を`StackReference.requireOutput("ecrUrls")`で読む側は、`.apply(urls => urls["key"])`が`string`として扱われ、実行時エラーになる。
 
-- **`requireOutput()`の`as`キャスト**: `requireOutput()`は`Output<any>`を返すため型アノテーション方式はコンパイルエラー。`as pulumi.Output<string>`が唯一の実用的な型付け方法。CLAUDE.mdの「as禁止」はTypeScriptのappコードのルールであり、Pulumiのinfraコードには適用しない
+- **`requireOutput()`の`as`キャスト**: `requireOutput()`は`Output<any>`を返すため型アノテーション方式はコンパイルエラー。`as pulumi.Output<string>`が唯一の実用的な型付け方法。共通の方針の「`as`キャストを使わない」はTypeScriptのappコードの決まりで、Pulumiのinfraコードには当てはめない
 
 ## Secrets Manager
 
@@ -54,7 +54,8 @@ previewでは、componentのcreate、意図した改名のcreate+delete（IAMの
 
 ## IAM
 
-- **Pulumiのデプロイロールは、触るサービスを`service:*`で持つ。IAMだけは広げない**: action単位にすると、`up --refresh`が呼ぶread系のAPI（`rds:DescribeGlobalClusters`など、resource-levelに対応しないものが多い）で403が続く。IAMは`role/<prefix>-*`に絞ったままにする（CIに`iam:*`をResource `*`で渡すと、侵害されたときに任意のロールへAdministratorAccessを付けられる）。Secretsはactionを広げてよいが、Resourceは自プロジェクトのARNに限る。新しいサービスを足すときは、手元のadminで`pulumi up`して権限以外の誤り（ビルド、コンテナのmanifestの形、リソースの設定）を先に出す（`preview`では出ない）。adminでは権限不足は見つからないので、`rg 'new aws\.'`でinfraが触るサービスを並べてロールと比べる。正確に洗い出すなら、CIのロールか同じポリシーのロールをassumeして`up`するか、`iamlive`を使う。CIの往復（毎回十数分）で1つずつ直さない。
+- **Pulumiのデプロイロールは、触るサービスを`service:*`で持つ。IAMだけは広げない**: action単位にすると、`up --refresh`が呼ぶread系のAPI（`rds:DescribeGlobalClusters`など、resource-levelに対応しないものが多い）で403が続く。IAMは`role/<prefix>-*`に絞ったままにする（CIに`iam:*`をResource `*`で渡すと、侵害されたときに任意のロールへAdministratorAccessを付けられる）。Secretsはactionを広げてよいが、Resourceは自プロジェクトのARNに限る。
+- **新しいサービスを足すときは、権限の不足をCIの往復（毎回十数分）で1つずつ直さない**: 手元のadminで`pulumi up`して権限以外の誤り（ビルド、コンテナのmanifestの形、リソースの設定）を先に出す（`preview`では出ない）。adminでは権限不足は見つからないので、`rg 'new aws\.'`でinfraが触るサービスを並べてロールと比べる。正確に洗い出すなら、CIのロールか同じポリシーのロールをassumeして`up`するか、`iamlive`を使う。
 - アカウント単位のAPI（`ecs:DescribeServices`、`ecr:GetAuthorizationToken`など）はARNで絞れず、`Resource: "*"`が要る。操作ごとにStatementを分けて、Resourceの範囲を使い分ける
 - PulumiでIAMロールを管理するなら、`PassRole`に加えて`CreateRole`、`DeleteRole`、`GetRole`、`AttachRolePolicy`、`DetachRolePolicy`、`TagRole`が要る。`arn:aws:iam::<ACCOUNT>:role/<prefix>-*`に絞った専用のStatementにする
 - ポリシーが重なっているときは、広い範囲（`ecs:*`）を残し、個別のStatement（`ECSUpdate`）を消す。ECRは`PulumiInfraAccess`から外し、専用のStatement（`ECRAuth`、`ECRRepoAccess`）に任せる
