@@ -6,21 +6,20 @@
 
 ## Bunとテスト
 
-- **`import.meta.dir`はTypeScriptの`ImportMeta`に無く、typecheckでエラーになる**。`dirname(fileURLToPath(import.meta.url))`を使う。
-- **`import.meta.glob`（Viteがビルド時に変換する）を評価するモジュールは、`bun test`からimportするとロードの時点で落ちる**。純粋な関数を別のモジュールに出し、型は`import type`だけで取り込む（実行時には消える）。実データを既定の引数で束ねた版はglobの側に置く。テストは合成したデータを渡す。
+- **`import.meta.dir`はTypeScriptの`ImportMeta`に無く、型検査でエラーになる**。`dirname(fileURLToPath(import.meta.url))`を使う。
+- **`import.meta.glob`（Viteがビルド時に変換する）を評価するモジュールは、`bun test`からimportするとロードの時点で落ちる**。純粋な関数を別のモジュールに出し、型は`import type`だけで取り込む（実行時には消える）。実データを既定の引数で束ねた版はglobの側に置き、テストは合成したデータを渡す。
 - **`bun:test`の`mock.module`は、テストファイルをまたいで残る**。bun testは複数のファイルを1つのプロセスで走らせるので、モックしたモジュール自身のテスト（`dep.test.ts`）が、実装でなくモックを読んで落ちる。落ちるのはほかのファイルなので、全体を走らせるまで気づかない。判断基準は「モックしたいモジュールに、自分のテストファイルがあるか」。あるなら、モジュールを差し替えず、対象の関数に依存を引数で渡す（`fn(config, deps = { git, gh })`）。
 - **`spyOn(globalThis, "fetch")`はグローバルを書き換えるので、`afterEach`で`mockRestore()`する**。戻さないと、同じファイルの後のテストへモックが漏れる。ローカルのオブジェクトへの`spyOn`は戻さなくてよい。
 - **`bun test`は、テストを対象の隣に置いたまま、ファイル名で段ごとに分けて走らせられる**。統合テストのファイルを`*.integration.test.ts`と名付け、単体テストは`bun test --path-ignore-patterns '**/*.integration.test.ts'`、統合テストは`bun test integration.test`で走らせる。名前の決め方は`testing-policy.md`の段の表の下にある。段ごとにディレクトリを分けると、テストを対象の隣に置けなくなる。テストの準備のヘルパーが`bun:test`やテスト専用のライブラリを読むなら、本体のtsconfigの`exclude`と、テスト用のtsconfigの`include`に足す（Bun 1.4.3、2026-11に確認）。
-- **`test.each`の名前で、`$name`のすぐ後ろに全角の括弧を置くと、値に置き換わらない**。`金額（$name）`は`金額（$name`の後ろが文字化けしたまま出た。`金額は、$name`のように、`$name`を名前の末尾に置くか、後ろを半角の空白か読点で区切る。名前を変えた後は、テストの出力で名前が値に置き換わっているかを見る（Bun 1.4.3、2026-11に確認）。
+- **`test.each`の名前で、`$name`のすぐ後ろに全角の括弧を置くと、値に置き換わらない**。`金額（$name）`は、名前が壊れて出る（junitの出力では空の名前になった）。`金額は、$name`のように、`$name`を名前の末尾に置くか、後ろを半角の空白か読点で区切る。名前を変えた後は、テストの出力で名前が値に置き換わっているかを見る（Bun 1.4.3、2026-11に確認）。
 
 ## Biome
 
-- **`noArrayIndexKey`は、JSXの中の`key={i}`を拒否する**。内容から作ったkeyを使う。静的な配列で全要素が一意なら、値をkeyにする。`key={item.key}`のようなプロパティは対象にならない。`// biome-ignore`は、`key={i}`が開始タグと別の行にあると効かないので、`.map()`をJSXの外の変数に出してからコメントを付ける。
+- **`noArrayIndexKey`は、JSXの中の`key={i}`を拒否する**。内容から作ったkeyを使い、静的な配列で全要素が一意なら値をkeyにする。`key={item.key}`のようなプロパティは対象にならない。`// biome-ignore`は、`key={i}`が開始タグと別の行にあると効かないので、`.map()`をJSXの外の変数に出してからコメントを付ける。
 - **使わなくなった関数は、`_`を付けずに削除する**。Biomeの`noUnusedVariables`は`_`で通るが、`noUnusedLocals`のTS6133は残る。Biomeが`_`に書き換えたら、本当に使うつもりかを考え直す。
-- **EditのたびにBiomeのauto-fixを走らせるhookがある環境では、importを足すEditと、それを使うEditを分けない**。`noUnusedImports`が、使う箇所を書く前のimportを消す。
-- **`biome check --write`などの整形を流した後は、直す箇所を読み直してから`old_string`を書く**。整形は行の分け方とJSXの字下げを変えるので、整形の前に読んだ文字列では当たらず、直したつもりの型エラーやテストの失敗が残る。判断基準は「最後にそのファイルを読んだ後に、整形やauto-fixが走ったか」で、走ったなら覚えている本文は古い（Biome 2.5.14、2026-11に確認）。
+- **ファイルを最後に読んだ後で整形やauto-fixが走ったら、覚えている本文は古い**。Editのたびにauto-fixを走らせるhookがある環境では、importを足すEditと、それを使うEditを分けない（`noUnusedImports`が、使う箇所を書く前のimportを消す）。`biome check --write`を流した後は、直す箇所を読み直してから`old_string`を書く。整形は行の分け方とJSXの字下げを変えるので、整形の前に読んだ文字列では当たらず、直したつもりの型エラーやテストの失敗が残る（Biome 2.5.14、2026-11に確認）。
 
 ## Next.jsの開発環境
 
-- **ルートグループ`(name)`を含むパスへのimportを、LSPが「Cannot find module」と誤って報告することがある**。`tsc --noEmit`が通っていれば無視する。これを消すためにファイルを動かさない。
+- **ルートグループ`(name)`を含むパスへのimportを、LSPが「Cannot find module」と誤って報告することがある**。`tsc --noEmit`が通っていれば無視し、これを消すためにファイルを動かさない。
 - **PlaywrightでNext.jsのdevサーバーを確かめるとき、`getByRole("alert")`はdev overlayと重なる**。画面の隅の「1 Issue」のバッジが`role="alert"`に当たる要素を持ち、複数にマッチしてstrict modeがthrowする。`.catch(() => false)`で受けていると、エラー表示があるのに無いと判定する。`getByRole("alert", { name: ... })`か`form.getByRole(...)`で絞るか、`next build`と`next start`で確かめる。
