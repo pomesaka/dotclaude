@@ -40,8 +40,6 @@ AIで全体が速くなるかは、調査で結果が割れている。
 
 換算の圧力は、契約と予算が時間で書かれるところから来る（この環境の判断）。だから、見積の単位を変えても、時間で答える場面が残る限り換算は起きる。換算が現場でどれだけ多いかの量のデータは見つからなかった。
 
-見積そのものを減らす議論（#NoEstimates）もある。Woody Zuillは、見積に代わるやり方を探る話題の名前だとしている。Jeffriesは、見積がプログラマを急がせる棍棒として使われることが多いと書いている。
-
 ## 「いくらで、いつまでに」には器で答える
 
 「いくらで、いつまでに」と聞かれたら、中身を見積もって足し上げるのでなく、器を決めて答える。月に出す人と時間を固定し、その中で入れる中身を入れ替える。BasecampのShape Upは、これをappetite（見積でなく、かけたい時間）と呼び、「見積は設計から始まり数字で終わる。appetiteは数字から始まり設計で終わる」と対比している。原則は、時間を固定し、範囲を変えることだ。
@@ -56,9 +54,7 @@ AIで全体が速くなるかは、調査で結果が割れている。
 
 ## 人を足す前に
 
-遅れたプロジェクトに人を足すと、もっと遅れる（Brooksの法則）。足した人の立ち上がりは分けられず、全員が互いにすり合わせる作業なら、手間はn(n-1)/2で増える。
-
-AIで書くのが速くなった今は、詰まりが決める、確かめる、待つに移っている。人やエージェントを足すと、すり合わせと、差分を読む手間が増える。足すのは、独立した作業を並べられるときだけにする。決める人が1人のプロジェクトでは、その人の決める速さがいちばん効く。選択肢、推す案、根拠を揃えて出し、決めるのにかかる時間を縮める（この段落はこの環境の判断）。
+遅れたプロジェクトに人を足すと、もっと遅れる（Brooksの法則）。AIで書くのが速くなった今は、詰まりが決める、確かめる、待つに移っている。人やエージェントを足すと、すり合わせと、差分を読む手間が増える。足すのは、独立した作業を並べられるときだけにする。決める人が1人のプロジェクトでは、その人の決める速さがいちばん効く。選択肢、推す案、根拠を揃えて出し、決めるのにかかる時間を縮める（この段落はこの環境の判断）。
 
 ## 出典
 
@@ -66,10 +62,9 @@ AIで書くのが速くなった今は、詰まりが決める、確かめる、
 
 本文を読んだもの（調べたエージェントがWebFetchかPDFの抽出で確かめた）:
 
-- Frederick P. Brooks『The Mythical Man-Month』第2章（1975）。日程の配分、Brooksの法則、n(n-1)/2
-- Ron Jeffries「[Story Points Revisited](https://ronjeffries.com/articles/019-01ff/story-points/Index.html)」（2019）、「[The #NoEstimates Movement](https://ronjeffries.com/xprog/articles/the-noestimates-movement/)」（2013）
+- Frederick P. Brooks『The Mythical Man-Month』第2章（1975）。日程の配分、Brooksの法則
+- Ron Jeffries「[Story Points Revisited](https://ronjeffries.com/articles/019-01ff/story-points/Index.html)」（2019）
 - Mountain Goat Software「[Don't Equate Story Points to Hours](https://mountaingoatsoftware.com/blog/dont-equate-story-points-to-hours)」（2024）
-- Woody Zuill「[The NoEstimates Hashtag](https://zuill.us/WoodyZuill/2013/05/17/the-noestimates-hashtag/)」（2013）
 - David J. Snowden, Mary E. Boone「[A Leader's Framework for Decision Making](https://hbr.org/2007/11/a-leaders-framework-for-decision-making)」HBR（2007）。複雑な領域のprobe-sense-respond
 - Jeff Bezos「[2015年の株主への手紙](https://www.sec.gov/Archives/edgar/data/1018724/000119312516530910/d168744dex991.htm)」。one-way door／two-way door
 - Ryan Singer『[Shape Up](https://basecamp.com/shapeup/1.2-chapter-03)』第3章（2019）。appetite
