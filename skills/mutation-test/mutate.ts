@@ -12,7 +12,7 @@
 //
 // WHY 文字の置き換え: 使う側のプロジェクトは TypeScript、Go、Scala にまたがる。2026-11-18 に xwb のレビューで手作りした
 //   同じ作りのスクリプトが、テストの件数では見えない守られていない分岐と要らないコードを見つけた。
-//   Vitest のプロジェクトでは mizchi/mutator のように AST で壊す道具のほうが速く正確なので、そちらを先に使う（SKILL.md）
+//   Vitest と bun test のプロジェクトでは mizchi/mutator のように AST で壊す道具のほうが速く正確なので、そちらを先に使う（SKILL.md）
 // WHY 差分の行だけ: レビューの対象は変更で、ファイル全体を壊すと数が増えて読まれない。Google の実践も変更した行だけを壊し、
 //   1 行に 1 つまでにしている（Petrović ほか「Practical Mutation Testing at Scale」2021）
 import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'

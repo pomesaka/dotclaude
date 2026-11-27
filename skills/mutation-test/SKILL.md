@@ -2,7 +2,7 @@
 name: mutation-test
 description: 変更した行を1か所ずつ壊し、テストが落ちるかを確かめる（mutation test）。壊しても落ちない所を、テストが足りない、要らないコード、壊しても動きが同じ、に仕分ける。
 when_to_use: 条件の多いロジックを足すか変えて、テストが通った後、報告やレビューの前に確かめるとき。「壊して確かめて」「mutation test して」「テストが本当に守っているか見て」と言われたとき。test-reviewer が、条件の多いロジックの変更をレビューするとき。
-allowed-tools: Read, Bash(bun ~/.claude/skills/mutation-test/mutate.ts:*), Bash(npx mutator:*)
+allowed-tools: Read, Bash(bun ~/.claude/skills/mutation-test/mutate.ts:*), Bash(npx mutator:*), Bash(bunx mutator:*)
 ---
 
 # 壊して確かめる（mutation test）
@@ -19,8 +19,8 @@ allowed-tools: Read, Bash(bun ~/.claude/skills/mutation-test/mutate.ts:*), Bash(
 
 | プロジェクト | 道具 |
 |---|---|
-| Vitestで動くTypeScript | `npx mutator --since <ベースのリビジョン> --reporter agent`（[mizchi/mutator](https://github.com/mizchi/mutator)）。ASTで壊し、テストごとのカバレッジで回すテストを絞るので、下の道具より速く正確だ。入っていなければ、入れるかを利用者に聞く |
-| それ以外（`bun test`、Go、Scala、ほか） | 下の`mutate.ts` |
+| VitestかBunの`bun test`で動くTypeScript | `npx mutator --since <ベースのリビジョン> --reporter agent`（[mizchi/mutator](https://github.com/mizchi/mutator)）。ASTで壊し、テストごとのカバレッジで回すテストを絞るので、下の道具より速く正確だ。入っていなければ、入れるかを利用者に聞く。`bun test`は試験的な対応で、Bun 1.4以降とESMのソースが要る。`mutator.config.ts`に`runner: 'bun'`、`bunfig.toml`に`[test]`の表で`root`を書く。CommonJSのモジュールとpreloadで読むモジュールは壊せない |
+| それ以外（Go、Scala、ほか） | 下の`mutate.ts` |
 
 ## mutate.ts
 
