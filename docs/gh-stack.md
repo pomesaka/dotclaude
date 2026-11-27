@@ -26,7 +26,7 @@ gh api repos/<owner>/<repo>/pulls/<PR番号> --jq .stack
 # {"base":{"ref":"main",...},"id":1832585,"number":40,"position":2,"size":10}
 ```
 
-`number`はStackの番号で、`merge`と`unstack`に渡す。
+`number`はStackの番号で、`merge`と`unstack`に渡す。PRの数の上限は資料に書かれていない。10本は登録できた（実測）。
 
 ## jjで使えるコマンド
 
@@ -40,11 +40,11 @@ jjで使うのは次の3つ。どれも手元の追跡用の状態を作らな�
 | `gh stack merge <Stackの番号かPR番号>` | そのPRまでを下からまとめてマージする |
 | `gh stack unstack <Stackの番号>` | Stackを解く。PRとブランチは残る |
 
-rebaseとpushはjjでやる。下のPRを直すときは`jj new <rev>`で編集して`jj squash --into <rev>`し、上のPRが自動でrebaseされたあと`jj git push --all`する。
+rebaseとpushはjjでやる。下のPRを直すときは`jj new <rev>`で編集して`jj squash --into <rev>`し、上のPRが自動でrebaseされたあと`jj git push --all`する。衝突したら`jj.md`の「衝突を解くときの操作と印」のとおり下から解く。
 
 ## 手順
 
-1. jjで変更を積み、PRごとにブックマークを付けて`jj git push --all`する
+1. jjで変更を積み、PRごとにbookmarkを付けて`jj git push --all`する
 2. PRを下から順に作る。向き先は1つ前のブランチにする（`gh pr create --base <前のブランチ> --head <ブランチ>`）
 3. すぐに`gh stack link <下から順のPR番号>`を実行する
 4. `gh api .../pulls/<番号> --jq .stack`で`position`と`size`を確かめる
@@ -71,23 +71,19 @@ rebaseとpushはjjでやる。下のPRを直すときは`jj new <rev>`で編集�
 
 - 下からしかマージできない（資料）
 - 全部、1本だけ、途中までのどれでもよい。merge commit・squash・rebaseの3つが使える（資料）
-- 下のPRをマージすると、次のPRの向き先が`main`になる（実測）。資料には「残りのブランチは自動でrebaseされる」とあるが、**merge commitでマージしたときは、残りのブランチは書き換えられなかった**。先頭のコミットは手元と同じままで、`jj git fetch`するだけでよく、rebaseもpushも要らなかった（実測。2本続けてマージして同じ結果）。squashやrebaseでマージしたときは未確認
+- 下のPRをマージすると、次のPRの向き先が`main`になる（実測）。資料には「残りのブランチは自動でrebaseされる」とあるが、**merge commitでマージしたときは、残りのブランチは書き換えられなかった**。先頭のコミットは手元と同じままで、`jj git fetch`するだけでよく、rebaseもpushも要らなかった（実測。2本続けてマージして同じ結果）
 - マージ済みのPRはStackに残る。`size`は変わらず、残りのPRの`position`も詰まらない（実測）
 - 向き先が`main`に変わったPRには、登録後のpushで走ったCIの結果がそのまま付いている。マージのたびにCIを待つ必要は無かった（実測）
 - `gh stack merge`は、選んだPRまでを全部マージするか1本もマージしないかのどちらかになる。マージの条件を飛ばすことはできない（資料）
 - 向き先にmerge queueがあれば、マージの代わりにキューへ入る（資料）
 
-`gh stack merge`と`gh stack unstack`は取り消せない外向きの操作なので、ユーザーに言われたときだけ実行する。
+`gh stack merge`と`gh stack unstack`は取り消せない外向きの操作なので、pomesakaに言われたときだけ実行する。
 
 ### 一番上まで揃わないと動かないStack
 
 下から順のマージは、途中のPRがそれぞれ動く（型検査が通り、デプロイしてよい）ことを前提にしている。`main`へのpushでデプロイが走るリポジトリで、途中のPRが単独では動かないStackを下からマージすると、PRごとに壊れた状態が本番へ出る。積む時点で、途中のPRも動く形に保つか、一番上まで揃って初めて動く形にするかを決め、後者ならPRの本文にマージの順を書いておく。
 
-後者のマージは、上のPRから順に、それぞれの向き先のブランチへマージし、全部が入った一番下のPRを最後に1回だけ`main`へ入れる。`main`に入るのは最終の形の1回だけになる。登録済みのStackで上のPRを先にマージできるか、先に`unstack`が要るかは未確認。
-
-## 制限
-
-- PRの数の上限は資料に書かれていない。10本は登録できた（実測）
+後者のマージは、上のPRから順に、それぞれの向き先のブランチへマージし、全部が入った一番下のPRを最後に1回だけ`main`へ入れる。`main`に入るのは最終の形の1回だけになる。
 
 ## 登録したあとの修正
 
@@ -97,6 +93,6 @@ rebaseとpushはjjでやる。下のPRを直すときは`jj new <rev>`で編集�
 
 ## まだ確かめていないこと
 
-- squashやrebaseでマージしたときに、残りのブランチがどう書き換えられ、手元のjjのブックマークとどう食い違うか
-- 登録済みのStackで、上のPRを先に向き先のブランチへマージできるか
+- squashやrebaseでマージしたときに、残りのブランチがどう書き換えられ、手元のjjのbookmarkとどう食い違うか
+- 登録済みのStackで、上のPRを先に向き先のブランチへマージできるか、先に`unstack`が要るか
 - エージェント向けのスキル（`gh skill install github/gh-stack`）の中身

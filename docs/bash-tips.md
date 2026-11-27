@@ -1,12 +1,12 @@
 # Bash / CLI Tips
 
-> **TL;DR**: Bash ツールでコマンドを組むときに踏んだ罠。`bunx` / `npx` は版を固定する。`cd dir && cmd` は `-C` / `--cwd` / `-R` のような作業ディレクトリの指定か、2 回の呼び出しに分ける。破壊的な操作は絶対パスで書く。
+> **TL;DR**: Bash ツールでコマンドを組むときに踏んだ罠。`bunx` / `npx` は版を固定する。`cd dir && cmd` は作業ディレクトリを指定するフラグか、2 回の呼び出しに分ける。破壊的な操作は絶対パスで書く。
 
-整理する前の版は `archive/2026-11-16/docs/bash-tips.md` にある。
+整理する前の版は `archive/2026-11-16/docs/bash-tips.md` に、2026-11-27の整理で消した項目の元の文は [archive/bash-tips-2026-11-27.md](archive/bash-tips-2026-11-27.md) にある。
 
 ## `bunx <tool>`（npx 系）はバージョンを固定しないとリポと食い違う
 
-`bunx @biomejs/biome check` のようにバージョン無指定で実行すると、リポが依存している版とは別の版（古いキャッシュや latest）を引いてしまい、設定ファイルのスキーマ不一致で落ちることがある（例: biome 2.x の `includes` / `css.parser.tailwindDirectives` を 1.x が "unknown key" で拒否）。lint/format/codegen 系の CLI は、リポの `package.json` の版に合わせて `bunx @biomejs/biome@2.4.15 ...` のようにピン留めするか、リポに install 済みのバイナリを使う。
+版を指定しない `bunx @biomejs/biome check` は、リポが依存している版でなく、古いキャッシュや latest を引き、設定ファイルのスキーマが合わずに落ちることがある（biome 2.x の `includes` を 1.x が "unknown key" で拒否する）。lint、format、codegen の CLI は、リポの `package.json` の版に合わせて `bunx @biomejs/biome@2.4.15 ...` のように固定するか、リポに入っているバイナリを使う。
 
 ## macOS のコマンドの違い
 
@@ -21,17 +21,11 @@
 
 `unset VAR_A VAR_B ...` の 1 行に目的の違う変数を混ぜると、後から変数を足すときに意図しない unset を巻き込む（clone を無効にするための行に、diff の計算に使う SHA の変数まで入っていた）。目的が変わるところで行を分けるか、コメントを入れる。
 
-## 複合コマンドを避ける — `cd /path && cmd` の代替
+## `cd /path && cmd` の代わりの書き方
 
-`&&`/`||`/`;` を含む複合コマンドはパーミッションプロンプトを誘発するので避ける（ポリシーは CLAUDE.md）。`cd /path && cmd` を使いたくなったときの代替は次のとおり。
-
-- `cmd -C /path` / `cmd --cwd /path` など、作業ディレクトリを指定するフラグ（ツールが対応していれば）
-- `jj diff -R /path` のようにリポジトリ/対象を指定するフラグを使う
-- どうしても順次実行が必要なら、2回に分けて別々の Bash 呼び出しにする
-
-## auto-mode classifier に拒否されたコマンドは、ユーザーに `! <コマンド>` で実行してもらう
-
-「permission rule を足して再試行」を選択肢に出さない。拒否を解くために自分で `settings.local.json` に allow を書く操作は、それ自体が「[Auto-Mode Bypass]」として拒否される（classifier は自分の判定を迂回する設定変更をさせない）。選択肢に出すとユーザーが選んだ後で詰まり、確認が 1 往復無駄になる。拒否されたら、そのままコピペできる完全なコマンド（`EDITOR=true` 等の前置も込み）を提示して `!` での実行を頼み、実行後の検証から引き継ぐ。
+- `cmd -C /path`、`cmd --cwd /path` のように、作業ディレクトリを指定するフラグ（ツールが対応していれば）
+- `jj diff -R /path` のように、リポジトリを指定するフラグ
+- どうしても順に実行するなら、別々の Bash の呼び出しに分ける
 
 ## 破壊的操作（`rm -rf` 等）は絶対パスで書く
 

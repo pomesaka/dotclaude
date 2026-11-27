@@ -23,7 +23,7 @@ Claude CodeとCodexに共通の決めごとは、次の文書にある。
 - **gh stack**: 積んだPRは、作った直後に`gh stack link <下から順のPR番号>`でGitHubのStackとして登録する。向き先のブランチをつないだだけではStackにならず、途中のPRにCIが走らない。jjでは`link`と、番号を渡す`merge`、`unstack`だけが動く。`merge`と`unstack`は、利用者に言われたときに行う。使い方は`~/.claude/docs/gh-stack.md`にある。
 - **portless**: ローカルの開発サーバーは`/portless`のスキルで起動する。
 - 利用者が「メモリが逼迫している」と言ったら、`~/.claude/docs/macos-memory-debugging.md`を読む。
-- auto-modeのclassifierに拒否されたコマンドは、利用者に`! <コマンド>`で実行してもらう。そのまま貼れる完全なコマンドを示して頼む。許可の規則を足して再試行する案は出さない。規則を足す操作も拒否されるためだ。
+- auto-modeのclassifierに拒否されたコマンドは、利用者に`! <コマンド>`で実行してもらう。そのまま貼れる完全なコマンド（打ったときの`EDITOR=true`のような前置きも込み）を示して頼む。許可の規則を足して再試行する案は出さない。規則を足す操作も拒否されるためだ。
 
 ## ブランチの名前
 
