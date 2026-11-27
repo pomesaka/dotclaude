@@ -2,7 +2,7 @@
 name: curate-docs
 description: ~/.claude/docs/ とスキルを監査し、使われていないもの、重複、食い違い、古い記述、積み重なった実例を見つけて整理する。実例は原則にまとめ、消える固有の情報を archive に移す。
 when_to_use: 「docs を整理して」「スキルを整理して」「使っていないものを消したい」「docs が大きくなってきた」「重複を見て」「原則にまとめて」「gotcha が多すぎる」と言われたとき。
-allowed-tools: Read, Edit, Write, AskUserQuestion, WebSearch, WebFetch, Bash(fd *), Bash(wc *), Bash(rg *), Bash(date *), Bash(bun ~/.claude/skills/curate-docs/usage.ts:*), Bash(bun ~/.claude/skills/curate-docs/growth.ts:*)
+allowed-tools: Read, Edit, Write, AskUserQuestion, WebSearch, WebFetch, Bash(fd *), Bash(wc *), Bash(rg *), Bash(date *), Bash(bun ~/.claude/skills/curate-docs/usage.ts:*), Bash(bun ~/.claude/skills/curate-docs/growth.ts:*), Bash(bun ~/.claude/skills/curate-docs/evals.ts:*), Bash(jj file show *)
 ---
 
 # curate-docs
@@ -102,7 +102,7 @@ fd -e md . ~/.claude/docs
 
 - **強い語、理由の無い規則**: 範囲と理由のあるふつうの文に書き直す。理由が分からない規則は、消さずに利用者に聞く。例外なく守らせたい規則は、文を強めず、検査かhookにする候補として挙げる
 - **一般論、答えられない行、念押し**: 消す。1つの実装に閉じた理由を文書からコードへ移すときは、移す先のコードと既存のコメントを読み、同じコメントを足さない。「型定義やスキルに書いてあるから」「別の文書にあるから」は、消す理由にならない。モデルはその文書を読んだ時点で判断し、指した先を読みに行かないことが多い。消すなら、判断に要る1文を残して参照を添える
-- **直した後は、evals で確かめる**: 前と後の文書を、CLAUDE.md も道具も切った`claude -p`に同じ場面で答えさせ、版を伏せて採点させる。場面は、消した項目、まとめた項目、移した項目から作る。2回流して2回とも下がった場面だけを低下とし、判断に要る1文を戻す。2026-11-27の整理では、型定義やスキルに任せて消した項目で、6つの場面が2回とも下がった
+- **直した後は、evals で確かめる**: 前と後の文書を、CLAUDE.md も道具も切った`claude -p`に同じ場面で答えさせ、版を伏せて採点させる（`bun ~/.claude/skills/curate-docs/evals.ts <場面のJSON> <結果.md>`。JSONの形はファイルの冒頭。前の版は`jj file show -r <整理の前> <パス>`で取り出す）。場面は、消した項目、まとめた項目、移した項目から作る。2回流して2回とも下がった場面だけを低下とし、判断に要る1文を戻す。2026-11-27の整理では、型定義やスキルに任せて消した項目で、6つの場面が2回とも下がった
 - **`@`での読み込み**: 毎回は要らない文書なら、`@`を外してパスだけを書き、どんな作業のときに読むかを添える。書き換えた後の文が、読みに行く手がかりとして足りるかを読み直す
 - **分ける**: 1つの文書に、別々の作業で要る節が混ざっているときだけ分ける。読む作業が1つなら、分けると読み手が両方を開くことになる。分ける前に利用者に確かめ、分けた後は`shared-agent-policy.md`の「作業ごとに読む文書」の表を直す
 - **古くなった注意書き**: モデルや道具が変わって理由が成り立たなくなったものは、`archive/`へ移す
