@@ -92,7 +92,8 @@
     "ui-design@pomesaka-ui-design": true,
     "verify-guide@dotclaude": true,
     "write-guard@dotclaude": true,
-    "check-streak@dotclaude": true
+    "check-streak@dotclaude": true,
+    "budget@dotclaude": true
   },
   "extraKnownMarketplaces": {
     "claude-deck": {
