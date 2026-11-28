@@ -54,6 +54,9 @@ cf <command> --dry-run                           # 送るリクエストを表�
 
 ## 罠
 
+- **`cf builds` のコマンドは `--account-id` を受け付けない**: `cf builds workers get <Worker>` は `Unknown arguments: account-id` で止まる。アカウントは環境変数 `CLOUDFLARE_ACCOUNT_ID` で渡す。OAuth のログイン（`~/Library/Preferences/cloudflare/config/default.json`、1 つだけ）に入っていないアカウントは `[10000] Authentication error`（403）になる。`cf auth whoami` の `accounts` に目的のアカウントがあるかを先に見る（cf 1.0.0-rc.1 を `bunx cf@1.0.0-rc.1` で実行、2026-11-28）
+- **Workers Builds の Preview の URL は既定で公開される**: production 以外のブランチへの push ごとに、Preview のビルドが走る（Settings > Build > Branch control の **Enable Preview Builds**）。サインインを求めるには Cloudflare Access をかける（[Previews](https://developers.cloudflare.com/workers/previews/)、[Build branches](https://developers.cloudflare.com/workers/ci-cd/builds/build-branches/)、2026-11-28 に読んだ）
+
 - **`cf dev` と `cf deploy` は、中で Vite や wrangler に処理を任せている**。ビルドまわりの不具合は `cf` ではなく Vite・wrangler 側の設定を疑う
 - **`cf d1 list` のような API のコマンドは、設定ファイルから `accountId` と `complianceRegion` しか読まない**。`--mode` ごとのバインディングは効かないので、どのリソースを操作しているかは出力で確かめる
 - **`cloudflare.config.ts` のビルド出力は `.cloudflare/output/v0/`**: `wrangler.json` は出ない。Worker の設定は `workers/default/worker.config.json`（name・compatibilityDate・compatibilityFlags・observability・`manifest.mainModule`）、本体は `workers/default/bundle/`（cf 1.0.0-beta.5・`@cloudflare/vite-plugin` 2.0.0-beta で確認・2026-09-30）
