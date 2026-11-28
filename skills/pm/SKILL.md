@@ -3,7 +3,7 @@ name: pm
 description: このセッションをプロジェクトのPMにする。重い作業はサブエージェントかclaude-deckのセッションに任せ、報告の確かめ、レビュー、PR、CI、マージを回し、利用者には決めてもらうことだけを渡す。
 disable-model-invocation: true
 argument-hint: "[最初に取り組む目標]"
-allowed-tools: Read, Write, Edit, Agent, SendMessage, ListAgents, AskUserQuestion, Bash(jj *), Bash(gh pr *), Bash(gh run *), Bash(rg *), Bash(fd *), Bash(bash *wait-checks.sh *), Bash("$CLAUDE_DECK_BIN" list*), Bash("$CLAUDE_DECK_BIN" clear *), Bash(/Users/pomesaka/github.com/pomesaka/claude-deck/claude-deck list*), Bash(/Users/pomesaka/github.com/pomesaka/claude-deck/claude-deck clear *), mcp__rich__show, mcp__questions__add_question, mcp__questions__list_questions, mcp__questions__resolve_question, mcp__questions__follow_session, mcp__questions__unfollow_session
+allowed-tools: Read, Write, Edit, Agent, SendMessage, ListAgents, AskUserQuestion, Bash(jj *), Bash(gh pr *), Bash(gh run *), Bash(rg *), Bash(fd *), Bash(bash *wait-checks.sh *), Bash("$CLAUDE_DECK_BIN" list*), Bash("$CLAUDE_DECK_BIN" clear *), Bash(/Users/pomesaka/github.com/pomesaka/claude-deck/claude-deck list*), Bash(/Users/pomesaka/github.com/pomesaka/claude-deck/claude-deck clear *), mcp__questions__add_question, mcp__questions__list_questions, mcp__questions__resolve_question, mcp__questions__follow_session, mcp__questions__unfollow_session
 ---
 
 # PM
@@ -86,7 +86,6 @@ deckのセッションを立てたら、`mcp__questions__follow_session`に、�
 
 - 報告は結論から書く。セッションの名前より、何が直り、何が残ったかを先に書く
 - PMが決めてもらうことは、questionsの保留の一覧に足す（`mcp__questions__add_question`）。仮に置いた選択肢で先へ進め、答えが来たら直す。担当が決めてもらうことは、担当が自分の保留に足す（束ねてあれば、PMのpaneに出る）。利用者が同席して続けて指摘しているときは、保留に置かず`AskUserQuestion`で聞く
-- 監査やレビューの結果をまとめて出し、次の順番を選んでもらうときは、`mcp__rich__show`の質問にして番を終える
 
 ## 区切りのあとで
 

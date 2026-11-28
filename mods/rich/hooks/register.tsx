@@ -8,12 +8,10 @@ const TOOL_NAME = 'show'
 const TOOL = 'mcp__rich__show'
 const PANE = 'rich'
 
-const DESCRIPTION = `Draw a short explanation in the terminal: cards, a box-and-arrow diagram, markdown, tabs, and questions the user answers by clicking.
-Use it when a figure, a side-by-side comparison, or a clickable choice reads faster than prose. Plain reports stay as normal text.
+const DESCRIPTION = `Draw a short explanation in the terminal: cards, a box-and-arrow diagram, markdown, and tabs.
+Use it when a figure or a side-by-side comparison reads faster than prose. Plain reports stay as normal text.
 where "inline" (default) draws in the transcript at this point; "pane" keeps it beside the conversation until closed.
-Questions here do NOT block: the answer arrives as the user's next message. Use them only for a choice you hand over as your turn ends. When you need the answer to continue this turn, use AskUserQuestion instead.
-When the choice is between options you compare in cards, make the cards the choices (give the cards block key and question) rather than adding a question block that lists the same options again.
-After a call with questions, end your turn; do not repeat the question in text.`
+Do not ask the user to decide anything with it, neither with a question block nor with cards as choices: buttons in the transcript scroll away under later replies and are left unanswered. Ask with AskUserQuestion when the decision is irreversible or costly to redo; otherwise record it with mcp__questions__add_question, assume your recommended choice and keep working. This applies when the user is to pick one of the options you compared in cards, too.`
 
 const INPUT_SCHEMA = {
   type: 'object',
@@ -41,7 +39,7 @@ const INPUT_SCHEMA = {
           cards: {
             type: 'array',
             description:
-              'type=cards: 2-3 cards side by side. To let the user choose between the cards, also give this block key and question: each card title becomes a button, and no separate question block is needed for that choice.',
+              'type=cards: 2-3 cards side by side. Giving the block key and question turns each card title into a button; do not use it to ask for a decision (see the tool description).',
             items: {
               type: 'object',
               properties: {

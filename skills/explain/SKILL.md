@@ -1,7 +1,7 @@
 ---
 name: explain
 description: 利用者本人に向けた説明を作る。何を知らない読み手に、何を、どの順で説明するかを決めてから、出す先（会話の中、pane、ブラウザのページ）を選んで描く。案の比較、保留の説明、PRのキャッチアップ、コードの設計の説明など。
-when_to_use: 「説明して」「図で見せて」「比較して見せて」「まとめて見せて」「richで見せて」「HTMLで説明して」「paneに出して」と言われたとき。番の終わりに、案の比較、流れの図、次の一手の選択肢のどれかを渡すとき。1〜2文で済む質問と、文章と表で足りる報告には使わず、チャットで答える。
+when_to_use: 「説明して」「図で見せて」「比較して見せて」「まとめて見せて」「richで見せて」「HTMLで説明して」「paneに出して」と言われたとき。番の終わりに、案の比較か流れの図を渡すとき。1〜2文で済む質問と、文章と表で足りる報告には使わず、チャットで答える。
 argument-hint: "[説明してほしいこと]"
 allowed-tools: Read, Grep, Glob, Write, Edit, Skill, mcp__rich__show, Bash(jj *), Bash(gh *), Bash(rg *), Bash(fd *), Bash(open *), Bash("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" *), Bash(bun ~/.claude/skills/figure-docs/scripts/check-layout.ts:*)
 ---
@@ -86,6 +86,6 @@ allowed-tools: Read, Grep, Glob, Write, Edit, Skill, mcp__rich__show, Bash(jj *)
 
 ## 決めてほしいことがあるとき
 
-問いは、説明と同じ場所に置き、クリックで答えられるようにする。本文の箇条書きやチャットだけで済ませない。置き方は出す先ごとに違うので、参照ファイルに従う（会話の中とpaneはカードか質問のボタン、ブラウザは`question.html`の部品）。
+会話の中とpaneに出す説明では、問いを`show`に入れず、`~/.claude/CLAUDE.md`の「応答」のとおり`AskUserQuestion`かquestionsのModで聞く。ブラウザのページでは、`question.html`の部品で問いを置く。
 
 届いた答えは、利用者の決定として扱って作業を続ける。
