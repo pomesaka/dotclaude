@@ -86,6 +86,11 @@
       "name": "check-streak",
       "source": "./mods/check-streak",
       "description": "Counts how many times in a row the same check (tests, type check, lint) fails for the agent; on the third failure without a pass, tells the agent in the tool result to stop fixing and call the user with its diagnosis"
+    },
+    {
+      "name": "budget",
+      "source": "./mods/budget",
+      "description": "One usage budget on a subscription rate-limit window (set_budget, clear_budget, read_budget): when any session sees the window reach the threshold, toasts once and tells the session that set it to wrap up, report and stop; dropped when the window resets"
     }
   ]
 }

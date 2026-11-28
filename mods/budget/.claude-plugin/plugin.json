@@ -1,0 +1,8 @@
+{
+  "name": "budget",
+  "version": "0.1.0",
+  "description": "One usage budget on a subscription rate-limit window (set_budget, clear_budget, read_budget): when any session sees the window reach the threshold, toasts once and tells the session that set it to wrap up, report and stop; dropped when the window resets",
+  "author": {
+    "name": "pomesaka"
+  }
+}
