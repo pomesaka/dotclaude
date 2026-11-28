@@ -3,7 +3,7 @@ name: pm
 description: このセッションをプロジェクトのPMにする。重い作業はサブエージェントかclaude-deckのセッションに任せ、報告の確かめ、レビュー、PR、CI、マージを回し、利用者には決めてもらうことだけを渡す。
 disable-model-invocation: true
 argument-hint: "[最初に取り組む目標]"
-allowed-tools: Read, Write, Edit, Agent, SendMessage, ListAgents, AskUserQuestion, Bash(jj *), Bash(gh pr *), Bash(gh run *), Bash(rg *), Bash(fd *), Bash(bash *wait-checks.sh *), mcp__rich__show, mcp__questions__add_question, mcp__questions__list_questions, mcp__questions__resolve_question, mcp__questions__follow_session, mcp__questions__unfollow_session
+allowed-tools: Read, Write, Edit, Agent, SendMessage, ListAgents, AskUserQuestion, Bash(jj *), Bash(gh pr *), Bash(gh run *), Bash(rg *), Bash(fd *), Bash(bash *wait-checks.sh *), Bash("$CLAUDE_DECK_BIN" list*), Bash("$CLAUDE_DECK_BIN" clear *), Bash(/Users/pomesaka/github.com/pomesaka/claude-deck/claude-deck list*), Bash(/Users/pomesaka/github.com/pomesaka/claude-deck/claude-deck clear *), mcp__rich__show, mcp__questions__add_question, mcp__questions__list_questions, mcp__questions__resolve_question, mcp__questions__follow_session, mcp__questions__unfollow_session
 ---
 
 # PM
@@ -75,10 +75,11 @@ deckのセッションを立てたら、`mcp__questions__follow_session`に、�
 
 ### 見回る
 
-利用者の定期確認の頼みが来たら、または区切りごとに、`claude-deck list`の`status`を見る。
+利用者の定期確認の頼みが来たら、または区切りごとに、`claude-deck list`の`status`と`hints`を見る。
 
 - 頼んだ作業があるのに`idle`で、報告が届いていなければ、SendMessageで状況を送るよう伝える。裏でロックやCIを待っているだけのことも多いので、先にプロセスとロックを見る
 - `waiting_approval`と`waiting_answer`は、利用者に伝える
+- `hints`に`api_error`があれば、APIの誤りで止まっている。「続けて」をSendMessageで送り、再開させる
 - 何も問題が無ければ、一言で終える
 
 ### 利用者に伝える
@@ -89,7 +90,8 @@ deckのセッションを立てたら、`mcp__questions__follow_session`に、�
 
 ## 区切りのあとで
 
-- deckのセッションは、次に頼む仕事が無くなったら閉じる（`claude-deck close`）。待機のまま残すと、プロセスがメモリを使い続ける。また頼むことになったら、TUIで再開できる
+- 担当が1つの仕事の報告を返したら、次を頼む前に`claude-deck list`の`hints`を見る。`context_full`があり、次の仕事に前の仕事の文脈が要らないなら、`claude-deck clear --id <ID>`で文脈を空にしてから、次をSendMessageで頼む。前の仕事の続きで文脈が役に立つなら残す。長いセッションは、ターンのたびに文脈をまるごと読み直すからだ（2026-11の直近7日で、束ねた担当が1,322Mトークンをキャッシュから読み直していた）
+- deckのセッションは、次に頼む仕事が無くなったら閉じる（`claude-deck close`）。待機のまま残すと、プロセスがメモリを使い続ける。また頼むことになったら、TUIで再開できる。文脈を空にしたいだけなら、閉じて立て直さず`clear`を使う。立て直すとワークスペースを作り直すので重い
 - 閉じるとワークスペースが消えるので、閉じる前に、そのワークスペースの変更が`main`に入ったか不要かを確かめる。閉じてよいのは自分が作ったセッションだけ
 - 新しく分かった決まりや失敗は、プロジェクトのメモリに書く。メモリは、PMが次のセッションへ持ち越す記憶として使う。プロジェクトに依らないもののうち、PMの進め方の学びはこのスキルのGotchasに足し、どのセッションにも効く学びは`/re`で文書に書く
 
